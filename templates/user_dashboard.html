@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html>
+<head><title>Home</title></head>
+<body>
+<h2>Welcome, {{ email }}</h2>
+<p>Role: {{ role }}</p>
+
+{% if role == "super" %}
+<p>You have full access to all pages.</p>
+{% else %}
+<p>You have limited access.</p>
+{% endif %}
+
+<a href="/logout">Logout</a>
+</body>
+</html>
