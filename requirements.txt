@@ -4,3 +4,4 @@ dotenv
 pandas 
 pytz
 gunicorn
+msal
