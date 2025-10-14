@@ -1,4 +1,4 @@
-from flask import Flask, redirect, url_for, session, request, render_template
+from flask import Flask, redirect, url_for, session, request, render_template, jsonify
 from msal import ConfidentialClientApplication
 import requests
 import os
@@ -135,6 +135,51 @@ def authorized():
 def logout():
     session.clear()
     return redirect("/")
+
+
+# ==============================================================================
+# == BUSINESS CARDS ROUTES ==
+# ==============================================================================
+
+@app.route("/business-cards")
+def business_cards():
+    """Renders the Business Cards page with data from OneDrive."""
+    if "user" not in session:
+        return redirect(url_for("login"))
+
+    user = session.get("user", {})
+    
+    # Fetch contacts from the function we created in sharepoint_data.py
+    contacts = get_all_contacts_from_onedrive()
+    
+    # We will create this HTML file in the next step
+    return render_template("pages/business_cards.html",
+                           user=user,
+                           contacts=contacts,
+                           photo=user.get('photo'))
+
+
+@app.route("/api/update-contact", methods=['POST'])
+def api_update_contact():
+    """API endpoint to handle updates to a contact."""
+    if "user" not in session:
+        return jsonify({"success": False, "error": "Unauthorized"}), 401
+
+    data = request.get_json()
+    row_id = data.get('row_id')
+    contact_data = data.get('contact_data')
+
+    if not row_id or not contact_data:
+        return jsonify({"success": False, "error": "Missing required data"}), 400
+
+    success = update_contact_in_onedrive_excel(row_id, contact_data)
+
+    if success:
+        return jsonify({"success": True, "message": "Contact updated successfully."})
+    else:
+        return jsonify({"success": False, "error": "Failed to update Excel file."}), 500
+
+# ==============================================================================
 
 
 if __name__ == "__main__":

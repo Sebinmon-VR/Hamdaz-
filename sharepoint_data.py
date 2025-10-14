@@ -80,6 +80,93 @@ def get_sharepoint_list_items(site_domain, site_path, list_name):
 
     return [item['fields'] for item in items_response.get('value', [])]
 
+# ==============================================================================
+# ==||| FOR BUSINESS CARDS |||==
+# ==============================================================================
+
+# --- Configuration for OneDrive Feature ---
+# We load the variables again to ensure this section is self-contained.
+CLIENT_ID_ONEDRIVE = os.getenv("CLIENT_ID")
+CLIENT_SECRET_ONEDRIVE = os.getenv("CLIENT_SECRET")
+TENANT_ID_ONEDRIVE = os.getenv("TENANT_ID")
+ONEDRIVE_USER_ID = os.getenv("ONEDRIVE_USER_ID")
+
+AUTHORITY_ONEDRIVE = f"https://login.microsoftonline.com/{TENANT_ID_ONEDRIVE}"
+SCOPES_ONEDRIVE = ["https://graph.microsoft.com/.default"]
+GRAPH_API_ENDPOINT = "https://graph.microsoft.com/v1.0"
+FILE_PATH = "Contacts.xlsx"
+WORKSHEET_NAME = "Sheet1"
+
+# A separate, dedicated MSAL app instance for our new feature.
+onedrive_msal_app = ConfidentialClientApplication(
+    client_id=CLIENT_ID_ONEDRIVE,
+    authority=AUTHORITY_ONEDRIVE,
+    client_credential=CLIENT_SECRET_ONEDRIVE,
+)
+
+def get_onedrive_access_token():
+    """Acquires an access token specifically for the OneDrive functions."""
+    result = onedrive_msal_app.acquire_token_silent(scopes=SCOPES_ONEDRIVE, account=None)
+    if not result:
+        result = onedrive_msal_app.acquire_token_for_client(scopes=SCOPES_ONEDRIVE)
+    
+    if "access_token" in result:
+        return result["access_token"]
+    else:
+        raise Exception(f"Failed to acquire OneDrive token: {result.get('error_description')}")
+
+def get_all_contacts_from_onedrive():
+    """Fetches all data from the Contacts.xlsx file in the specified user's OneDrive."""
+    try:
+        access_token = get_onedrive_access_token()
+        headers = {"Authorization": f"Bearer {access_token}"}
+        url = (
+            f"{GRAPH_API_ENDPOINT}/users/{ONEDRIVE_USER_ID}/drive/root:/"
+            f"{FILE_PATH}:/workbook/worksheets('{WORKSHEET_NAME}')/usedRange"
+        )
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+        rows = response.json().get("values", [])
+        if len(rows) < 2: return []
+        header = rows[0]
+        return [dict(zip(header + ['row_id'], row + [i+2])) for i, row in enumerate(rows[1:])]
+    except Exception as e:
+        print(f"Error fetching contacts from OneDrive: {e}")
+        return []
+
+def update_contact_in_onedrive_excel(row_id, updated_data_dict):
+    """Updates a single row in the Contacts.xlsx file."""
+    try:
+        access_token = get_onedrive_access_token()
+        headers = {"Authorization": f"Bearer {access_token}"}
+        
+        # Get header to determine column order
+        header_url = (
+            f"{GRAPH_API_ENDPOINT}/users/{ONEDRIVE_USER_ID}/drive/root:/"
+            f"{FILE_PATH}:/workbook/worksheets('{WORKSHEET_NAME}')/range(address='A1:Z1')"
+        )
+        header_res = requests.get(header_url, headers=headers)
+        header_res.raise_for_status()
+        header = header_res.json().get("values", [[]])[0]
+        if not header: raise Exception("Could not retrieve header row.")
+        
+        # Prepare data for update
+        values_to_update = [updated_data_dict.get(col_name, "") for col_name in header]
+        last_col = chr(ord('A') + len(header) - 1)
+        range_address = f"A{row_id}:{last_col}{row_id}"
+        
+        update_url = (
+            f"{GRAPH_API_ENDPOINT}/users/{ONEDRIVE_USER_ID}/drive/root:/"
+            f"{FILE_PATH}:/workbook/worksheets('{WORKSHEET_NAME}')/range(address='{range_address}')"
+        )
+        
+        patch_res = requests.patch(update_url, headers=headers, json={"values": [values_to_update]})
+        patch_res.raise_for_status()
+        return True
+    except Exception as e:
+        print(f"Error updating contact in OneDrive: {e}")
+        return False
+
 
 # Example usage:
 if __name__ == "__main__":
