@@ -3,70 +3,75 @@
 {% block title %}Business Cards{% endblock %}
 
 {% block content %}
-
 <style>
-    /* This custom CSS is from your previous version and is preserved */
     .content-container { padding: 2em; background-color: #f8f9fa; min-height: 100vh; }
     .page-header { margin-bottom: 1.5em; }
     .page-header h1 { margin: 0; font-size: 2rem; color: #343a40; }
-    .controls { display: flex; gap: 1em; margin-bottom: 1.5em; align-items: center; }
-    #searchInput { flex-grow: 1; padding: 0.75em; border: 1px solid #ced4da; border-radius: 0.25rem; font-size: 1rem; }
-    .filter-buttons button { padding: 0.75em 1.5em; border: 1px solid #0d6efd; background-color: white; color: #0d6efd; cursor: pointer; border-radius: 0.25rem; transition: all 0.2s; }
+    
+    /* THE FIX IS HERE: Corrected alignment for search and filter controls */
+    .controls { 
+        display: flex; 
+        gap: 1rem; /* Adds space between search and buttons */
+        margin-bottom: 1.5em; 
+        align-items: center; /* Vertically aligns the items */
+    }
+    #searchInput { 
+        flex-grow: 1; /* Allows search bar to take available space */
+        padding: 0.75em; 
+        border: 1px solid #ced4da; 
+        border-radius: 0.25rem; 
+        font-size: 1rem; 
+    }
+    .filter-buttons {
+        display: flex; /* Ensures buttons are in a row */
+        flex-shrink: 0; /* Prevents buttons from shrinking */
+    }
+    .filter-buttons button { padding: 0.75em 1.5em; border: 1px solid #0d6efd; background-color: white; color: #0d6efd; cursor: pointer; transition: all 0.2s; }
+    .filter-buttons button:first-child { border-top-left-radius: 0.25rem; border-bottom-left-radius: 0.25rem; }
+    .filter-buttons button:last-child { border-top-right-radius: 0.25rem; border-bottom-right-radius: 0.25rem; border-left: none;}
     .filter-buttons button.active, .filter-buttons button:hover { background-color: #0d6efd; color: white; }
+
     .table-container { overflow-x: auto; background: white; border-radius: 0.25rem; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
     table { width: 100%; border-collapse: collapse; }
     th, td { padding: 1em; text-align: left; border-bottom: 1px solid #dee2e6; white-space: nowrap; }
     th { background-color: #e9ecef; font-weight: 600; color: #495057; }
     tbody tr:hover { background-color: #f1f1f1; }
-    .action-buttons button { padding: 0.5em 1em; border: none; border-radius: 0.25rem; cursor: pointer; font-size: 0.9rem; margin-right: 5px; transition: background-color 0.2s; }
-    .btn-edit { background-color: #0d6efd; color: white; }
-    .btn-save { background-color: #198754; color: white; }
-    .btn-cancel { background-color: #6c757d; color: white; }
-    .btn-edit:hover { background-color: #0b5ed7; }
-    .btn-save:hover { background-color: #157347; }
-    .btn-cancel:hover { background-color: #5c636a; }
-    td input[type="text"] { width: 100%; min-width: 150px; padding: 0.5em; box-sizing: border-box; border: 1px solid #ced4da; border-radius: 0.25rem; }
+    .btn-edit { background-color: #0d6efd; color: white; padding: 0.5em 1em; border: none; border-radius: 0.25rem; cursor: pointer; font-size: 0.9rem; }
+    
+    .modal-dialog { max-width: 550px; }
+    .modal-content { border-radius: 0.75rem; border: none; box-shadow: 0 5px 15px rgba(0,0,0,0.2); }
+    .modal-header { border-bottom: 1px solid #e9ecef; padding: 1.25rem 1.5rem; }
+    .modal-title { font-weight: 600; font-size: 1.2rem; }
+    .modal-body { padding: 1.5rem; max-height: 65vh; overflow-y: auto; }
+    .modal-footer { border-top: 1px solid #e9ecef; padding: 1rem 1.5rem; }
+    .form-field-group .form-label { font-weight: 600; margin-bottom: .5rem; color: #495057; }
+    .form-field-group { margin-bottom: 1.25rem; }
+
 </style>
 
 <div class="content-container">
     <div class="page-header">
         <h1>Business Cards</h1>
     </div>
-
-    <!-- Controls for Search and Filter -->
     <div class="controls">
-        <input type="text" id="searchInput" class="form-control" placeholder="Search by name, organization, etc...">
+        <input type="text" id="searchInput" class="form-control" placeholder="Search Contact based on keywords...">
         <div class="filter-buttons">
             <button class="filter-btn active" data-filter="All">All</button>
             <button class="filter-btn" data-filter="Customer">Customers</button>
             <button class="filter-btn" data-filter="Supplier">Suppliers</button>
         </div>
     </div>
-
-    <!-- Table to display contacts -->
     <div class="table-container">
         <table id="contactsTable">
             <thead>
                 <tr>
-                    <!-- Headers are manually defined for reliability -->
-                    <th>Category</th>
-                    <th>Organization</th>
-                    <th>Name</th>
-                    <th>Designation</th>
-                    <th>Contact</th>
-                    <th>Email</th>
-                    <th>Website</th>
-                    <th>Address</th>
-                    <th>Remarks</th>
-                    <th>Contact Type</th>
-                    <th>Actions</th>
+                    <th>Category</th><th>Organization</th><th>Name</th><th>Designation</th><th>Contact</th><th>Email</th><th>Website</th><th>Address</th><th>Remarks</th><th>Contact Type</th><th>Actions</th>
                 </tr>
             </thead>
             <tbody>
                 {% if contacts %}
                     {% for contact in contacts %}
                     <tr data-row-id="{{ contact.row_id }}" data-type="{{ contact['Contact Type'] or 'N/A' }}">
-                        <!-- Data is now called by its specific header name to ensure correct placement -->
                         <td data-field="Category">{{ contact.get('Category', '') }}</td>
                         <td data-field="Organization">{{ contact.get('Organization', '') }}</td>
                         <td data-field="Name">{{ contact.get('Name', '') }}</td>
@@ -77,14 +82,12 @@
                         <td data-field="Address">{{ contact.get('Address', '') }}</td>
                         <td data-field="Remarks">{{ contact.get('Remarks', '') }}</td>
                         <td data-field="Contact Type">{{ contact.get('Contact Type', '') }}</td>
-                        <td class="action-buttons">
-                            <button class="btn-edit">Edit</button>
-                        </td>
+                        <td><button class="btn-edit">Edit</button></td>
                     </tr>
                     {% endfor %}
                 {% else %}
                     <tr>
-                        <td colspan="11" class="text-center py-5">No contacts found or there was an error loading the data.</td>
+                        <td colspan="11" class="text-center py-4">No contacts found.</td>
                     </tr>
                 {% endif %}
             </tbody>
@@ -92,20 +95,38 @@
     </div>
 </div>
 
-
-<!-- This modal for messages remains the same -->
-<div class="modal fade" id="messageModal" tabindex="-1">
-    <div class="modal-dialog">
+<!-- Edit Contact Modal -->
+<div class="modal fade" id="editContactModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="messageModalTitle">Message</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <h5 class="modal-title">Edit Contact</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <p id="messageModalBody"></p>
+                <form id="editContactForm">
+                    <input type="hidden" id="editRowId">
+                    <div id="form-fields-container"></div>
+                </form>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary" id="saveContactChanges">Save Changes</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- THE NEW FEATURE: A separate modal for success/failure messages -->
+<div class="modal fade" id="messageModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-sm">
+        <div class="modal-content">
+            <div class="modal-header" id="messageModalHeader">
+                <h5 class="modal-title" id="messageModalTitle">Message</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p id="messageModalBody"></p>
             </div>
         </div>
     </div>
@@ -114,137 +135,109 @@
 {% endblock %}
 
 {% block scripts %}
-{{ super() }}
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
-
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // --- ACCURATE FIX: Wrap all logic in a function to ensure it runs after elements are confirmed to exist ---
-    function initializeBusinessCardsPage() {
-        const tableBody = document.querySelector('#contactsTable tbody');
-        const searchInput = document.getElementById('searchInput');
-        const filterButtons = document.querySelectorAll('.filter-btn');
-        const modalElement = document.getElementById('messageModal');
-        let messageModal;
+    const tableBody = document.querySelector('#contactsTable tbody');
+    const searchInput = document.getElementById('searchInput');
+    const filterButtons = document.querySelectorAll('.filter-btn');
+    const editModal = new bootstrap.Modal(document.getElementById('editContactModal'));
+    const messageModal = new bootstrap.Modal(document.getElementById('messageModal')); // Initialize message modal
+    const formFieldsContainer = document.getElementById('form-fields-container');
+    const saveContactButton = document.getElementById('saveContactChanges');
+    
+    // THE NEW FEATURE: Helper function to show messages
+    function showMessage(title, body, isSuccess) {
+        const modalTitle = document.getElementById('messageModalTitle');
+        const modalBody = document.getElementById('messageModalBody');
+        const modalHeader = document.getElementById('messageModalHeader');
 
-        // Defensive check: only proceed if the main elements are on the page.
-        if (!tableBody || !searchInput || !filterButtons.length > 0 || !modalElement) {
-            console.error('Initialization failed: One or more required elements are missing from the page.');
-            return;
-        }
-
-        // --- ACCURATE FIX: Safely initialize the modal only if Bootstrap is loaded ---
-        if (window.bootstrap && window.bootstrap.Modal) {
-            messageModal = new bootstrap.Modal(modalElement);
+        modalTitle.textContent = title;
+        modalBody.textContent = body;
+        
+        if (isSuccess) {
+            modalHeader.classList.remove('bg-danger');
+            modalHeader.classList.add('bg-success');
+            modalTitle.classList.add('text-white');
         } else {
-            console.error('Bootstrap Modal component not found. Message pop-ups will not work.');
-            // Fallback to browser alerts if Bootstrap fails
-            window.showMessage = (title, body) => alert(`${title}: ${body}`);
+            modalHeader.classList.remove('bg-success');
+            modalHeader.classList.add('bg-danger');
+            modalTitle.classList.add('text-white');
         }
-
-        // --- Show Message Helper ---
-        function showMessage(title, body) {
-            if (messageModal) {
-                document.getElementById('messageModalTitle').textContent = title;
-                document.getElementById('messageModalBody').textContent = body;
-                messageModal.show();
-            } else {
-                // Use the fallback if modal failed to initialize
-                window.showMessage(title, body);
-            }
-        }
-
-        // --- MAIN FILTER/SEARCH FUNCTION ---
-        function applyFilters() {
-            const searchTerm = searchInput.value.toLowerCase();
-            tableBody.querySelectorAll('tr').forEach(row => {
-                const rowText = row.textContent.toLowerCase();
-                const rowType = row.dataset.type;
-                const matchesSearch = rowText.includes(searchTerm);
-                const matchesFilter = (activeFilter === 'All' || rowType === activeFilter);
-                row.style.display = matchesSearch && matchesFilter ? '' : 'none';
-            });
-        }
-
-        // --- EVENT LISTENERS ---
-        let activeFilter = 'All';
-        searchInput.addEventListener('input', applyFilters);
-
-        filterButtons.forEach(button => {
-            button.addEventListener('click', function() {
-                filterButtons.forEach(btn => btn.classList.remove('active'));
-                this.classList.add('active');
-                activeFilter = this.dataset.filter;
-                applyFilters();
-            });
-        });
-
-        // --- EDIT/SAVE/CANCEL LOGIC (EVENT DELEGATION) ---
-        tableBody.addEventListener('click', function(e) {
-            const target = e.target;
-            const row = target.closest('tr');
-            if (!row) return;
-
-            if (target.classList.contains('btn-edit')) {
-                row.querySelectorAll('td[data-field]').forEach(cell => {
-                    const originalValue = cell.textContent.trim();
-                    cell.innerHTML = `<input type="text" class="form-control form-control-sm" value="${originalValue}" data-original-value="${originalValue}">`;
-                });
-                row.querySelector('.action-buttons').innerHTML = `
-                    <button class="btn-save">Save</button>
-                    <button class="btn-cancel">Cancel</button>
-                `;
-            }
-
-            if (target.classList.contains('btn-cancel')) {
-                row.querySelectorAll('td[data-field]').forEach(cell => {
-                    const input = cell.querySelector('input');
-                    cell.textContent = input.dataset.originalValue;
-                });
-                row.querySelector('.action-buttons').innerHTML = `<button class="btn-edit">Edit</button>`;
-            }
-
-            if (target.classList.contains('btn-save')) {
-                const rowId = row.dataset.rowId;
-                const contactData = {};
-                row.querySelectorAll('td[data-field]').forEach(cell => {
-                    const input = cell.querySelector('input');
-                    contactData[cell.dataset.field] = input.value;
-                });
-
-                fetch('/api/update-contact', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        row_id: parseInt(rowId),
-                        contact_data: contactData
-                    })
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        row.querySelectorAll('td[data-field]').forEach(cell => {
-                            cell.innerHTML = contactData[cell.dataset.field];
-                        });
-                        row.querySelector('.action-buttons').innerHTML = `<button class="btn-edit">Edit</button>`;
-                        if(contactData['Contact Type']) {
-                            row.dataset.type = contactData['Contact Type'];
-                        }
-                        showMessage('Success', 'Contact updated successfully!');
-                    } else {
-                        throw new Error(data.error || 'Failed to save data.');
-                    }
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                    showMessage('Error', `An error occurred while saving: ${error.message}`);
-                });
-            }
-        });
+        
+        messageModal.show();
     }
 
-    // Run the initializer
-    initializeBusinessCardsPage();
+    let activeFilter = 'All';
+    const applyFilters = () => {
+        const term = searchInput.value.toLowerCase();
+        tableBody.querySelectorAll('tr').forEach(row => {
+            const type = row.dataset.type;
+            const text = row.textContent.toLowerCase();
+            const show = text.includes(term) && (activeFilter === 'All' || type === activeFilter);
+            row.style.display = show ? '' : 'none';
+        });
+    };
+
+    searchInput.addEventListener('input', applyFilters);
+    filterButtons.forEach(btn => btn.addEventListener('click', function() {
+        filterButtons.forEach(b => b.classList.remove('active'));
+        this.classList.add('active');
+        activeFilter = this.dataset.filter;
+        applyFilters();
+    }));
+
+    tableBody.addEventListener('click', e => {
+        if (e.target.classList.contains('btn-edit')) {
+            const row = e.target.closest('tr');
+            document.getElementById('editRowId').value = row.dataset.rowId;
+            formFieldsContainer.innerHTML = '';
+            
+            const headers = Array.from(document.querySelectorAll('#contactsTable th')).map(th => th.textContent);
+
+            row.querySelectorAll('td[data-field]').forEach((cell, index) => {
+                const field = cell.dataset.field;
+                const value = cell.textContent.trim();
+                const label = headers[index];
+                
+                const fieldHtml = `<div class="form-field-group"><label for="edit-${field}" class="form-label">${label}</label><input type="text" class="form-control" id="edit-${field}" data-field-name="${field}" value="${value}"></div>`;
+                formFieldsContainer.insertAdjacentHTML('beforeend', fieldHtml);
+            });
+            editModal.show();
+        }
+    });
+
+    saveContactButton.addEventListener('click', () => {
+        const rowId = document.getElementById('editRowId').value;
+        const contactData = {};
+        formFieldsContainer.querySelectorAll('input').forEach(input => {
+            contactData[input.dataset.fieldName] = input.value;
+        });
+
+        fetch('/api/update-contact', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ row_id: parseInt(rowId), contact_data: contactData })
+        })
+        .then(res => res.json())
+        .then(data => {
+            editModal.hide(); // Hide the edit modal first
+            if (data.success) {
+                const row = tableBody.querySelector(`tr[data-row-id="${rowId}"]`);
+                row.querySelectorAll('td[data-field]').forEach(cell => {
+                    cell.textContent = contactData[cell.dataset.field] || '';
+                });
+                row.dataset.type = contactData['Contact Type'] || 'N/A';
+                showMessage('Success', 'Contact updated successfully.', true); // THE FIX IS HERE
+            } else { 
+                throw new Error(data.error || 'Unknown error occurred.');
+            }
+        })
+        .catch(err => {
+            editModal.hide(); // Also hide on error
+            showMessage('Error', `Contact update failed: ${err.message}`, false); // THE FIX IS HERE
+        });
+    });
 });
 </script>
 {% endblock %}

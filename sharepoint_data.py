@@ -85,33 +85,30 @@ def get_sharepoint_list_items(site_domain, site_path, list_name):
 # ==============================================================================
 
 # --- Configuration for OneDrive Feature ---
-# We load the variables again to ensure this section is self-contained.
+
 CLIENT_ID_ONEDRIVE = os.getenv("CLIENT_ID")
 CLIENT_SECRET_ONEDRIVE = os.getenv("CLIENT_SECRET")
 TENANT_ID_ONEDRIVE = os.getenv("TENANT_ID")
-ONEDRIVE_USER_ID = os.getenv("ONEDRIVE_USER_ID")
-
 AUTHORITY_ONEDRIVE = f"https://login.microsoftonline.com/{TENANT_ID_ONEDRIVE}"
-SCOPES_ONEDRIVE = ["https://graph.microsoft.com/.default"]
+SCOPE_ONEDRIVE = ["https://graph.microsoft.com/.default"]
+ONEDRIVE_USER_ID = os.getenv("ONEDRIVE_USER_ID")
+FILE_PATH = os.getenv("ONEDRIVE_FILE_PATH", "Contacts.xlsx")
+WORKSHEET_NAME = os.getenv("ONEDRIVE_WORKSHEET_NAME", "Sheet1")
 GRAPH_API_ENDPOINT = "https://graph.microsoft.com/v1.0"
-FILE_PATH = "Contacts.xlsx"
-WORKSHEET_NAME = "Sheet1"
 
-# A separate, dedicated MSAL app instance for our new feature.
 onedrive_msal_app = ConfidentialClientApplication(
-    client_id=CLIENT_ID_ONEDRIVE,
+    CLIENT_ID_ONEDRIVE,
     authority=AUTHORITY_ONEDRIVE,
-    client_credential=CLIENT_SECRET_ONEDRIVE,
+    client_credential=CLIENT_SECRET_ONEDRIVE
 )
 
 def get_onedrive_access_token():
-    """Acquires an access token specifically for the OneDrive functions."""
-    result = onedrive_msal_app.acquire_token_silent(scopes=SCOPES_ONEDRIVE, account=None)
+    """Acquires an access token for OneDrive operations."""
+    result = onedrive_msal_app.acquire_token_silent(SCOPE_ONEDRIVE, account=None)
     if not result:
-        result = onedrive_msal_app.acquire_token_for_client(scopes=SCOPES_ONEDRIVE)
-    
+        result = onedrive_msal_app.acquire_token_for_client(scopes=SCOPE_ONEDRIVE)
     if "access_token" in result:
-        return result["access_token"]
+        return result['access_token']
     else:
         raise Exception(f"Failed to acquire OneDrive token: {result.get('error_description')}")
 
@@ -120,16 +117,26 @@ def get_all_contacts_from_onedrive():
     try:
         access_token = get_onedrive_access_token()
         headers = {"Authorization": f"Bearer {access_token}"}
+        
         url = (
             f"{GRAPH_API_ENDPOINT}/users/{ONEDRIVE_USER_ID}/drive/root:/"
             f"{FILE_PATH}:/workbook/worksheets('{WORKSHEET_NAME}')/usedRange"
         )
         response = requests.get(url, headers=headers)
         response.raise_for_status()
-        rows = response.json().get("values", [])
-        if len(rows) < 2: return []
+        data = response.json()
+        
+        rows = data.get('values', [])
+        if not rows or len(rows) < 2:
+            return [] 
+
         header = rows[0]
-        return [dict(zip(header + ['row_id'], row + [i+2])) for i, row in enumerate(rows[1:])]
+        contacts = []
+        for i, row_data in enumerate(rows[1:]):
+            contact_dict = {header[j]: row_data[j] if j < len(row_data) else "" for j in range(len(header))}
+            contact_dict['row_id'] = i + 2  # Excel rows are 1-based, data starts on row 2
+            contacts.append(contact_dict)
+        return contacts
     except Exception as e:
         print(f"Error fetching contacts from OneDrive: {e}")
         return []
@@ -140,7 +147,6 @@ def update_contact_in_onedrive_excel(row_id, updated_data_dict):
         access_token = get_onedrive_access_token()
         headers = {"Authorization": f"Bearer {access_token}"}
         
-        # Get header to determine column order
         header_url = (
             f"{GRAPH_API_ENDPOINT}/users/{ONEDRIVE_USER_ID}/drive/root:/"
             f"{FILE_PATH}:/workbook/worksheets('{WORKSHEET_NAME}')/range(address='A1:Z1')"
@@ -150,7 +156,6 @@ def update_contact_in_onedrive_excel(row_id, updated_data_dict):
         header = header_res.json().get("values", [[]])[0]
         if not header: raise Exception("Could not retrieve header row.")
         
-        # Prepare data for update
         values_to_update = [updated_data_dict.get(col_name, "") for col_name in header]
         last_col = chr(ord('A') + len(header) - 1)
         range_address = f"A{row_id}:{last_col}{row_id}"
@@ -166,7 +171,6 @@ def update_contact_in_onedrive_excel(row_id, updated_data_dict):
     except Exception as e:
         print(f"Error updating contact in OneDrive: {e}")
         return False
-
 
 # Example usage:
 if __name__ == "__main__":
