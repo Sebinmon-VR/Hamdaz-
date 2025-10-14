@@ -6,8 +6,7 @@ from dotenv import load_dotenv
 import base64
 from datetime import datetime
 from sharepoint_data import *
-
-
+from sharepoint_items import *
 load_dotenv(override=True)
 
 app = Flask(__name__)
@@ -34,6 +33,7 @@ GRAPH_API_ENDPOINT = "https://graph.microsoft.com/v1.0"
 SITE_DOMAIN = "hamdaz1.sharepoint.com"
 SITE_PATH = "/sites/ProposalTeam"
 LIST_NAME = "Proposals"
+EXCLUDED_USERS = ["Sebin", "Shamshad", "Jaymon", "Hisham Arackal", "Althaf", "Nidal", "Nayif Muhammed S", "Afthab"]
 
 
 # ---------------- Helper Function ----------------
@@ -77,19 +77,21 @@ def index():
         user = session["user"]
         email = user.get("mail") or user.get("userPrincipalName")
         access_token = session.get("access_token")
-
-        # Fetch photo in background if not already in session
         if access_token and "photo" not in user:
             photo = fetch_user_photo(access_token)
             session["user"] = user  # update session with photo
-
+            
         role = "admin" if email.lower() in SUPERUSERS else "user"
-        items = get_sharepoint_list_items('hamdaz1.sharepoint.com', '/sites/ProposalTeam', 'Proposals')
         
-        tasks = items
+        # items = get_sharepoint_list_items('hamdaz1.sharepoint.com', '/sites/ProposalTeam', 'Proposals')
+        
         greeting=greetings()
+        tasks = fetch_sharepoint_list(SITE_DOMAIN, SITE_PATH, LIST_NAME)
+        df=items_to_dataframe(tasks)
+        analytics= compute_overall_analytics(df)
+        per_user=compute_user_analytics_with_last_date(df ,EXCLUDED_USERS)
         
-        return render_template(f"{role}_dashboard.html", role=role, user=user , greeting=greeting , tasks=tasks ,photo=photo)
+        return render_template(f"{role}_dashboard.html", role=role, user=user , greeting=greeting , tasks=tasks ,photo=photo , analytics=analytics ,per_user=per_user)
 
     return render_template("login.html")
 
