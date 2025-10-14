@@ -1,7 +1,5 @@
 requests
 flask
 dotenv 
-pandas 
-pytz
 gunicorn
 msal

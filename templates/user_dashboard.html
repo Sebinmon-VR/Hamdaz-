@@ -1,16 +1,21 @@
-<!DOCTYPE html>
-<html>
-<head><title>Home</title></head>
-<body>
-<h2>Welcome, {{ email }}</h2>
-<p>Role: {{ role }}</p>
 
-{% if role == "super" %}
-<p>You have full access to all pages.</p>
-{% else %}
-<p>You have limited access.</p>
-{% endif %}
+{% extends "base.html" %}
 
-<a href="/logout">Logout</a>
-</body>
-</html>
+{% block content %}
+
+<h3 style="margin-top: 20px; font-size: 20px ; margin-bottom: 10px; margin-left: 35px;">{{greeting}} {{user.displayName }}!</h3>
+
+<div class="container" style="margin-top: 20px; margin-left: 35px; background: #e5e5e5; width: 100%; height: 80vh;">
+
+  <div class="max-w-5xl mx-auto py-10">
+  
+
+   {{tasks}}
+  </div>
+
+
+</div>
+
+
+
+{% endblock %}
