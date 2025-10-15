@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+
+{% block content %}
+<link rel="stylesheet" href="{{ url_for('static', filename='styles/teams.css') }}">
+
+<div class="teams-container">
+    <div class="teams-header">
+        <h1>Team Analytics Dashboard</h1>
+        <p>Overview of team performance and task distribution</p>
+    </div>
+
+    <div class="teams-table-container">
+        <table class="teams-table">
+            <thead>
+                <tr>
+                    <th>Team Member</th>
+                    <th>Total Tasks</th>
+                    <th>Ongoing Tasks</th>
+                    <th>Completed Tasks</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for user in user_analytics.to_dict(orient='records') %}
+                <tr>
+                    <td>
+                        <div class="member-info">
+                            <div class="member-avatar">
+                                {{ user.User[:2].upper() }}
+                            </div>
+                            <div class="member-details">
+                                <span class="member-name">{{ user.User }}</span>
+                                <span class="member-role">Team Member</span>
+                            </div>
+                        </div>
+                    </td>
+                    <td>
+                        <div class="task-count">
+                            <span class="count-value">{{ user.TotalTasks }}</span>
+                            <span class="count-label">Total assigned</span>
+                        </div>
+                    </td>
+                    <td>
+                        <span class="status-badge status-ongoing">
+                            {{ user.OngoingTasksCount }}
+                        </span>
+                    </td>
+                    <td>
+                        <span class="status-badge status-completed">
+                            {{ user.CompletedTasksCount }}
+                        </span>
+                    </td>
+                    <td>
+                        <a href="{{ url_for('user_profile', username=user.User) }}" class="view-profile-btn">
+                            View Profile
+                            <svg viewBox="0 0 20 20" fill="currentColor">
+                                <path d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z"/>
+                            </svg>
+                        </a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

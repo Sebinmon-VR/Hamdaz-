@@ -1,0 +1,140 @@
+.teams-container {
+    padding: 2rem;
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.teams-header {
+    margin-bottom: 2rem;
+}
+
+.teams-header h1 {
+    font-size: 2rem;
+    color: #333;
+    margin-bottom: 0.5rem;
+}
+
+.teams-header p {
+    color: #666;
+    font-size: 1rem;
+}
+
+.teams-table-container {
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    overflow: hidden;
+}
+
+.teams-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+}
+
+.teams-table th {
+    background: #f8f9fa;
+    padding: 1rem;
+    text-align: left;
+    font-weight: 600;
+    color: #333;
+    border-bottom: 2px solid #eee;
+}
+
+.teams-table td {
+    padding: 1rem;
+    border-bottom: 1px solid #eee;
+    vertical-align: middle;
+}
+
+.member-info {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.member-avatar {
+    width: 40px;
+    height: 40px;
+    background: #e3f2fd;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #1976d2;
+    font-weight: 500;
+}
+
+.member-details {
+    display: flex;
+    flex-direction: column;
+}
+
+.member-name {
+    font-weight: 500;
+    color: #333;
+}
+
+.member-role {
+    font-size: 12px;
+    color: #666;
+}
+
+.task-count {
+    display: flex;
+    flex-direction: column;
+}
+
+.count-value {
+    font-weight: 500;
+    color: #333;
+}
+
+.count-label {
+    font-size: 12px;
+    color: #666;
+}
+
+.status-badge {
+    padding: 0.5rem 1rem;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 500;
+    display: inline-block;
+}
+
+.status-ongoing {
+    background: #fff8e1;
+    color: #f57c00;
+}
+
+.status-completed {
+    background: #e8f5e9;
+    color: #2e7d32;
+}
+
+.view-profile-btn {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.5rem 1rem;
+    border: 1px solid #1976d2;
+    border-radius: 4px;
+    color: #1976d2;
+    font-weight: 500;
+    text-decoration: none;
+    transition: all 0.2s ease;
+}
+
+.view-profile-btn:hover {
+    background: #e3f2fd;
+}
+
+.view-profile-btn svg {
+    margin-left: 0.5rem;
+    width: 16px;
+    height: 16px;
+}
+
+.teams-table tr:hover {
+    background: #fafafa;
+}

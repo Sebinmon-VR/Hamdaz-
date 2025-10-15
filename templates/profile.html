@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>{{ user_analytics.Username }} - Profile</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 p-4">
+
+<div class="max-w-7xl mx-auto">
+
+    <!-- PROFILE TOP SECTION -->
+    <div class="flex flex-wrap gap-4 mb-4">
+        <!-- Profile Card -->
+        <div class="bg-white p-4 rounded-xl shadow-md w-full sm:w-1/3 flex flex-col items-center">
+            <img src="{{ user_analytics.get('PhotoURL', '/static/default_user.png') }}" 
+                 alt="Profile Photo" class="w-20 h-20 rounded-full mb-2">
+            <h2 class="text-lg font-bold">{{ user_analytics.Username }}</h2>
+            <p class="text-gray-500 text-sm">{{ user_analytics.get('Email', 'No email') }}</p>
+        </div>
+
+        <!-- Analytics Cards -->
+        <div class="flex-1 grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <div class="bg-white p-2 rounded-lg shadow text-center">
+                <h3 class="text-gray-500 text-sm">Total</h3>
+                <p class="text-lg font-bold">{{ user_analytics.TotalTasks }}</p>
+            </div>
+            <div class="bg-white p-2 rounded-lg shadow text-center">
+                <h3 class="text-gray-500 text-sm">Ongoing</h3>
+                <p class="text-lg font-bold">{{ user_analytics.OngoingTasksCount }}</p>
+            </div>
+            <div class="bg-white p-2 rounded-lg shadow text-center">
+                <h3 class="text-gray-500 text-sm">Completed</h3>
+                <p class="text-lg font-bold">{{ user_analytics.CompletedTasksCount }}</p>
+            </div>
+            <div class="bg-white p-2 rounded-lg shadow text-center">
+                <h3 class="text-gray-500 text-sm">Missed</h3>
+                <p class="text-lg font-bold text-red-500">{{ user_analytics.MissedTasksCount }}</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- ONGOING TASKS SECTION -->
+{% for task in user_analytics['OngoingTasks'] %}
+    <div class="bg-white p-2 rounded-lg shadow hover:shadow-lg transition">
+        <h3 class="font-semibold text-sm truncate">{{ task['Title'] }}</h3>
+        <p class="text-gray-500 text-xs">Due: {{ task['BCD'] }}</p>
+        <p class="text-xs">Status: <span class="font-medium">{{ task['Status'] }}</span></p>
+    </div>
+{% endfor %}
+
+
+    <!-- ALL TASKS SECTION -->
+    <div>
+        <h2 class="text-lg font-bold mb-2">All Tasks</h2>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            {% for task in user_analytics.OngoingTasks + user_analytics.CompletedTasks %}
+            <div class="bg-white p-2 rounded-lg shadow hover:shadow-lg transition">
+                <h3 class="font-semibold text-sm truncate">{{ task.Title }}</h3>
+                <p class="text-gray-500 text-xs">Due: {{ task.BCD }}</p>
+                <p class="text-xs">Status: <span class="font-medium">{{ task.Status }}</span></p>
+                <p class="text-xs">Assigned: {{ task.AssignedTo }}</p>
+            </div>
+            {% else %}
+            <p class="text-gray-500 text-sm">No tasks available.</p>
+            {% endfor %}
+        </div>
+    </div>
+
+</div>
+
+</body>
+</html>
+{% endblock %}

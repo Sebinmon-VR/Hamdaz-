@@ -6,21 +6,23 @@
 
         <div class="nav-right"
             style="width:90%; display: flex; background: #dc464600; justify-content: right; height: 50px; position: relative;">
-            <div class="searchbar" style="width: 80%; background: #00000000; display: flex; align-items: center; justify-content: center;">
-              <input type="search" name="" id="" placeholder="Search Anything..." style="width: 50%; height: 30px; border-radius: 5px; border: none; padding: 5px; background: #acacac23;">
+            <div class="searchbar"
+                style="width: 80%; background: #00000000; display: flex; align-items: center; justify-content: center;">
+                <input type="search" name="" id="" placeholder="Search Anything..."
+                    style="width: 50%; height: 30px; border-radius: 5px; border: none; padding: 5px; background: #acacac23;">
             </div>
             <!-- Profile Box -->
-            <div class="profile_box" style="  background: #9d7b7b00; display: flex; flex-direction: column; justify-content: center; border-left: 1px solid rgba(0, 0, 0, 0.077);">
+            <div class="profile_box"
+                style="  background: #9d7b7b00; display: flex; flex-direction: column; justify-content: center; border-left: 1px solid rgba(0, 0, 0, 0.077);">
                 <p style="font-size: 10px; margin-left: 5px; margin-right: 6px;">{{ user.displayName }}</p>
                 <p style="margin-right: 10px; font-size: 10px; margin-left: 5px; margin-top: 5px;">{{ user.mail }}</p>
             </div>
 
             <!-- Profile Picture -->
             <div class="profile-container" style="position: relative;">
-                <img src="{{ photo }}" alt="Profile Picture" class="profile-pic" 
-                    width="50" height="50"
+                <img src="{{ photo }}" alt="Profile Picture" class="profile-pic" width="50" height="50"
                     style="border-radius:50%; cursor: pointer; margin-right: 10px; background:#fa8383;">
-                
+
                 <!-- Dropdown Card -->
                 <div id="profile-card" class="profile-card hidden">
                     <div class="profile-card-header">
@@ -45,12 +47,20 @@
             <div class="line"><span>Main Menu</span></div>
             <li><a href="dashboard"><img src="/static/icons/dashboard.png" alt=""> Dashboard</a></li>
             <li><a href="teams"><img src="/static/icons/teams.png" alt=""> Team</a></li>
+
+            {% if user.is_admin %}
+
+            <li><a href="/vendorpartnership"><img src="/static/icons/users.png" alt="">Vendor Partnership</a></li>
+            {% endif %}
+
             <li><a href="customers"><img src="/static/icons/customer.png" alt=""> Customer</a></li>
             <li><a href="businesscard"><img src="/static/icons/businesscard.png" alt=""> Business Cards</a></li>
             <div class="line"><span>Business Management</span></div>
             <li><a href="orders"><img src="/static/icons/orders.png" alt=""> Orders</a></li>
             <li><a href="payments"><img src="/static/icons/payments.png" alt=""> Payments</a></li>
             <li><a href="reports"><img src="/static/icons/reports.png" alt=""> Reports</a></li>
+
+
             <div class="line"><span>Chatbot</span></div>
             <li><a href="chatbot"><img src="/static/icons/chatbot.png" alt=""> Chatbot</a></li>
         </ul>
@@ -63,86 +73,85 @@
 
 <style>
     .profile-card {
-    position: absolute;
-    top: 60px;
-    right: 10px;
-    width: 230px;
-    background: rgba(255, 255, 255, 0.019);
-    backdrop-filter: blur(12px);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    border-radius: 5px;
-    padding: 15px;
-    display: flex;
-    flex-direction: column;
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.055);
-    z-index: 9999;
-}
+        position: absolute;
+        top: 60px;
+        right: 10px;
+        width: 230px;
+        background: rgba(255, 255, 255, 0.019);
+        backdrop-filter: blur(12px);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        border-radius: 5px;
+        padding: 15px;
+        display: flex;
+        flex-direction: column;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.055);
+        z-index: 9999;
+    }
 
-.hidden {
-    display: none;
-}
+    .hidden {
+        display: none;
+    }
 
-.profile-card-header {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
-    padding-bottom: 10px;
-}
+    .profile-card-header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+        padding-bottom: 10px;
+    }
 
-.profile-thumb {
-    width: 45px;
-    height: 45px;
-    border-radius: 50%;
-}
+    .profile-thumb {
+        width: 45px;
+        height: 45px;
+        border-radius: 50%;
+    }
 
-.profile-card-header h4 {
-    margin: 0;
-    font-size: 16px;
-    font-weight: 600;
-}
+    .profile-card-header h4 {
+        margin: 0;
+        font-size: 16px;
+        font-weight: 600;
+    }
 
-.profile-card-header p {
-    margin: 0;
-    font-size: 13px;
-    color: #dcdcdc;
-}
+    .profile-card-header p {
+        margin: 0;
+        font-size: 13px;
+        color: #dcdcdc;
+    }
 
-.profile-card-body {
-    margin-top: 10px;
-    display: flex;
-    flex-direction: column;
-}
+    .profile-card-body {
+        margin-top: 10px;
+        display: flex;
+        flex-direction: column;
+    }
 
-.card-link {
-    color: #000000;
-    text-decoration: none;
-    margin: 5px 0;
-    transition: color 0.3s;
-}
+    .card-link {
+        color: #000000;
+        text-decoration: none;
+        margin: 5px 0;
+        transition: color 0.3s;
+    }
 
-.card-link:hover {
-    color: #90e0ef;
-}
+    .card-link:hover {
+        color: #90e0ef;
+    }
 
-.logout {
-    color: #ff6b6ba2;
-}
-
+    .logout {
+        color: #ff6b6ba2;
+    }
 </style>
 
 <script>
-const profilePic = document.querySelector('.profile-pic');
-const profileCard = document.getElementById('profile-card');
+    const profilePic = document.querySelector('.profile-pic');
+    const profileCard = document.getElementById('profile-card');
 
-profilePic.addEventListener('click', () => {
-    profileCard.classList.toggle('hidden');
-});
+    profilePic.addEventListener('click', () => {
+        profileCard.classList.toggle('hidden');
+    });
 
-// Hide when clicking outside
-window.addEventListener('click', (e) => {
-    if (!profilePic.contains(e.target) && !profileCard.contains(e.target)) {
-        profileCard.classList.add('hidden');
-    }
-});
+    // Hide when clicking outside
+    window.addEventListener('click', (e) => {
+        if (!profilePic.contains(e.target) && !profileCard.contains(e.target)) {
+            profileCard.classList.add('hidden');
+        }
+    });
 </script>

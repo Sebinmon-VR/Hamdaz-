@@ -23,18 +23,26 @@ def get_user_display_name(site_domain, user_id, access_token):
         return None
 
 
-def get_sharepoint_list_items(site_domain, site_path, list_name):
+def get_sharepoint_list_items(site_domain, site_path, list_name, cache_timeout=300):
     """
     Fetch all items from a SharePoint list using Microsoft Graph API.
+    Results are cached for the specified timeout period.
     
     Args:
         site_domain (str): e.g., 'hamdaz1.sharepoint.com'
         site_path (str): e.g., '/sites/ProposalTeam'
         list_name (str): e.g., 'Proposals'
+        cache_timeout (int): Cache timeout in seconds (default: 5 minutes)
     
     Returns:
         list: A list of dictionaries containing SharePoint list items.
     """
+    # Try to get cached data first
+    cache_key = f"sharepoint_items_{site_domain}_{site_path}_{list_name}"
+    if hasattr(get_sharepoint_list_items, 'cache'):
+        cached_data = get_sharepoint_list_items.cache.get(cache_key)
+        if cached_data is not None:
+            return cached_data
     # Load credentials
     client_id = os.getenv("CLIENT_ID")
     client_secret = os.getenv("CLIENT_SECRET")
