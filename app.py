@@ -35,7 +35,7 @@ SCOPE = [
     "offline_access"
 ]
 
-SUPERUSERS = ["sebin@hamdaz.com"]
+SUPERUSERS = ["sebin@hamdaz.com","jishad@hamdaz.com", "hisham@hamdaz.com", "mustaq@hamdaz.com"]
 LIMITED_USERS = ["hello@hamdaz.com"]
 
 # Initialize MSAL
