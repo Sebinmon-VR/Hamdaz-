@@ -1,5 +1,6 @@
 # Web Framework and Server
 Flask==2.0.1
+Werkzeug==2.0.3
 gunicorn==20.1.0
 Flask-Caching==2.0.1
 
