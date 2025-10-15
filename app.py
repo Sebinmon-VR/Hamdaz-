@@ -233,10 +233,11 @@ def user_profile(username):
 @app.route("/login")
 def login():
     # Combine both Graph API scopes and OIDC scopes
-    all_scopes = SCOPE + OIDC_SCOPES
+    all_scopes = list(set(SCOPE + OIDC_SCOPES))  # Convert to list to ensure MSAL compatibility
     auth_url = msal_app.get_authorization_request_url(
         scopes=all_scopes,
-        redirect_uri=REDIRECT_URI
+        redirect_uri=REDIRECT_URI,
+        prompt="select_account"  # Added to ensure proper authentication flow
     )
     return redirect(auth_url)
 
