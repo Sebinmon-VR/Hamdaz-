@@ -26,13 +26,18 @@ TENANT_ID = os.getenv("TENANT_ID")
 REDIRECT_URI = os.getenv("REDIRECT_URI")  # Must match Azure
 AUTHORITY = f"https://login.microsoftonline.com/{TENANT_ID}"
 SCOPE = [
-    "User.Read",
-    "Sites.Read.All",
-    "Sites.ReadWrite.All",
-    "User.ReadBasic.All",
+    "https://graph.microsoft.com/User.Read",
+    "https://graph.microsoft.com/Sites.Read.All",
+    "https://graph.microsoft.com/Sites.ReadWrite.All",
+    "https://graph.microsoft.com/User.ReadBasic.All"
+]
+
+# OpenID Connect scopes
+OIDC_SCOPES = [
     "profile",
     "email",
-    "offline_access"
+    "offline_access",
+    "openid"
 ]
 
 SUPERUSERS = ["sebin@hamdaz.com","jishad@hamdaz.com", "hisham@hamdaz.com", "mustaq@hamdaz.com"]
@@ -227,8 +232,10 @@ def user_profile(username):
 
 @app.route("/login")
 def login():
+    # Combine both Graph API scopes and OIDC scopes
+    all_scopes = SCOPE + OIDC_SCOPES
     auth_url = msal_app.get_authorization_request_url(
-        scopes=SCOPE,
+        scopes=all_scopes,
         redirect_uri=REDIRECT_URI
     )
     return redirect(auth_url)
@@ -243,9 +250,11 @@ def authorized():
 
     try:
         # Use the same REDIRECT_URI as registered in Azure
+        # Combine both Graph API scopes and OIDC scopes
+        all_scopes = SCOPE + OIDC_SCOPES
         result = msal_app.acquire_token_by_authorization_code(
             code,
-            scopes=SCOPE,
+            scopes=all_scopes,
             redirect_uri=REDIRECT_URI
         )
         
