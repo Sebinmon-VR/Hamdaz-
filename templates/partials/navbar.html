@@ -46,27 +46,31 @@
         <ul>
             <div class="line"><span>Main Menu</span></div>
             <li><a href="dashboard"><img src="/static/icons/dashboard.png" alt=""> Dashboard</a></li>
-            <li><a href="teams"><img src="/static/icons/teams.png" alt=""> Team</a></li>
+            {% if is_admin(user.mail or user.userPrincipalName) %}
+            <div class="line"><span>Teams</span></div>
+            <li><a href="/teams"><img src="/static/icons/sales.png" alt="">Pre-sales</a></li>
+            <li><a href="/bd"><img src="/static/icons/bd.png" alt="">Business Development</a></li>
+            <li><a href="/cs"><img src="/static/icons/cs.png" alt="">Customer Success</a></li>
 
-            {% if user.is_admin %}
 
-            <li><a href="/vendorpartnership"><img src="/static/icons/users.png" alt="">Vendor Partnership</a></li>
+            <div class="line"><span>Partnership</span></div>
+            <li><a href="/vendorpartnership"><img src="/static/icons/partnership.png" alt="">Vendors</a></li>
+            <div class="line"><span>Business Management</span></div>
+            <li><a href="orders"><img src="/static/icons/orders.png" alt=""> Orders</a></li>
+            <li><a href="payments"><img src="/static/icons/payments.png" alt=""> Payments</a></li>
             {% endif %}
 
             <li><a href="customers"><img src="/static/icons/customer.png" alt=""> Customer</a></li>
             <li><a href="businesscard"><img src="/static/icons/businesscard.png" alt=""> Business Cards</a></li>
-            <div class="line"><span>Business Management</span></div>
-            <li><a href="orders"><img src="/static/icons/orders.png" alt=""> Orders</a></li>
-            <li><a href="payments"><img src="/static/icons/payments.png" alt=""> Payments</a></li>
+            <div class="line"><span>Reports</span></div>
+
             <li><a href="reports"><img src="/static/icons/reports.png" alt=""> Reports</a></li>
 
 
             <div class="line"><span>Chatbot</span></div>
             <li><a href="chatbot"><img src="/static/icons/chatbot.png" alt=""> Chatbot</a></li>
         </ul>
-        <div class="sidebar-footer" style="position: absolute; bottom: 20px;">
-            <a href="/logout"><img src="/static/icons/logout.png" alt="">Logout</a>
-        </div>
+
     </div>
 </div>
 

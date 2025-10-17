@@ -12,7 +12,175 @@
 </head>
 <body class="bg-gray-100 p-6">
     <!-- Overall Analytics -->
-         <h2 style="margin-bottom: 20px; margin-left: 35px; margin-top: 5px; ">Pre-Sales Analytics</h2>
+         <div class="flex justify-between items-center px-8 py-4">
+    <h2 class="text-xl font-semibold">Pre-Sales Analytics</h2>
+    
+    <!-- Period Filter -->
+    <div class="flex items-center gap-4">
+        <form id="periodFilter" class="flex items-center gap-4">
+            <select id="periodSelect" name="period" class="border rounded px-3 py-1 text-sm">
+                <option value="month" {% if current_period == 'month' %}selected{% endif %}>Monthly</option>
+                <option value="year" {% if current_period == 'year' %}selected{% endif %}>Yearly</option>
+                <option value="all" {% if current_period == 'all' %}selected{% endif %}>All Time</option>
+            </select>
+            
+            <div id="yearContainer" {% if current_period == 'all' %}class="hidden"{% endif %}>
+                <select id="yearSelect" name="year" class="border rounded px-3 py-1 text-sm">
+                    {% for year in available_years %}
+                    <option value="{{ year }}" {% if year == current_year %}selected{% endif %}>{{ year }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            
+            <div id="monthContainer" {% if current_period != 'month' %}class="hidden"{% endif %}>
+                <select id="monthSelect" name="month" class="border rounded px-3 py-1 text-sm">
+                    {% for month in range(1, 13) %}
+                    <option value="{{ month }}" {% if month == current_month %}selected{% endif %}>
+                        {{ ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'][month-1] }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div id="loading-spinner" class="hidden">
+                <svg class="animate-spin h-5 w-5 text-indigo-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+            </div>
+        </form>
+    </div>
+    
+    <script>
+        // Function to show loading state
+        function showLoading() {
+            document.getElementById('loading-spinner').classList.remove('hidden');
+        }
+
+        // Function to hide loading state
+        function hideLoading() {
+            document.getElementById('loading-spinner').classList.add('hidden');
+        }
+
+        // Function to update analytics via AJAX
+        async function updateAnalytics(params) {
+            showLoading();
+            try {
+                const searchParams = new URLSearchParams(params);
+                const response = await fetch(`/update_analytics?${searchParams}`);
+                if (!response.ok) throw new Error('Network response was not ok');
+                const data = await response.json();
+                
+                // Update analytics cards
+                updateAnalyticsDisplay(data);
+            } catch (error) {
+                console.error('Error:', error);
+            } finally {
+                hideLoading();
+            }
+        }
+
+        // Function to update the display with new data
+        function updateAnalyticsDisplay(data) {
+            // Update analytics cards
+            Object.keys(data.analytics).forEach(key => {
+                const elements = document.querySelectorAll(`[data-analytics="${key}"]`);
+                elements.forEach(el => {
+                    el.textContent = data.analytics[key];
+                });
+            });
+
+            // Update percentages and charts
+            if (data.analytics.total_tasks > 0) {
+                const tasks = data.analytics;
+                updateTaskDistribution(tasks);
+                updateCircularProgress(tasks);
+            }
+
+            // Update user table
+            updateUserTable(data.per_user);
+        }
+
+        function updateTaskDistribution(tasks) {
+            const total = tasks.total_tasks;
+            if (total === 0) return;
+
+            const completed = (tasks.tasks_completed / total * 100).toFixed(1);
+            const pending = (tasks.tasks_pending / total * 100).toFixed(1);
+            const missed = (tasks.tasks_missed / total * 100).toFixed(1);
+
+            // Update progress bars
+            document.querySelector('.bg-green-400').style.width = `${completed}%`;
+            document.querySelector('.bg-yellow-400').style.width = `${pending}%`;
+            document.querySelector('.bg-red-400').style.width = `${missed}%`;
+
+            // Update percentages
+            document.querySelectorAll('.completed-pct').forEach(el => el.textContent = `${completed}%`);
+            document.querySelectorAll('.pending-pct').forEach(el => el.textContent = `${pending}%`);
+            document.querySelectorAll('.missed-pct').forEach(el => el.textContent = `${missed}%`);
+        }
+
+        function updateCircularProgress(tasks) {
+            const percentage = tasks.tasks_completed / tasks.total_tasks * 100;
+            const circle = document.querySelector('.text-green-500');
+            circle.setAttribute('stroke-dasharray', `${percentage}, 100`);
+            document.querySelector('text').textContent = `${Math.round(percentage)}%`;
+        }
+
+        function updateUserTable(userData) {
+            const tbody = document.querySelector('tbody');
+            tbody.innerHTML = '';
+            
+            Object.entries(userData).forEach(([user, data]) => {
+                tbody.innerHTML += `
+                    <tr class="border-b hover:bg-gray-50 transition-colors">
+                        <td class="py-2 px-3">${user}</td>
+                        <td class="py-2 px-3">${data.total_tasks}</td>
+                        <td class="py-2 px-3">${data.tasks_pending}</td>
+                        <td class="py-2 px-3">${data.tasks_completed}</td>
+                        <td class="py-2 px-3">${data.tasks_missed}</td>
+                    </tr>
+                `;
+            });
+        }
+
+        // Event listeners for filter changes
+        document.getElementById('periodSelect').addEventListener('change', function(e) {
+            const period = e.target.value;
+            const yearContainer = document.getElementById('yearContainer');
+            const monthContainer = document.getElementById('monthContainer');
+            
+            // Show/hide year and month selects based on period
+            yearContainer.classList.toggle('hidden', period === 'all');
+            monthContainer.classList.toggle('hidden', period !== 'month');
+            
+            // Update analytics
+            const params = new URLSearchParams({
+                period: period,
+                year: document.getElementById('yearSelect').value,
+                month: document.getElementById('monthSelect').value
+            });
+            updateAnalytics(params);
+        });
+
+        document.getElementById('yearSelect').addEventListener('change', function(e) {
+            const params = new URLSearchParams({
+                period: document.getElementById('periodSelect').value,
+                year: e.target.value,
+                month: document.getElementById('monthSelect').value
+            });
+            updateAnalytics(params);
+        });
+
+        document.getElementById('monthSelect').addEventListener('change', function(e) {
+            const params = new URLSearchParams({
+                period: document.getElementById('periodSelect').value,
+                year: document.getElementById('yearSelect').value,
+                month: e.target.value
+            });
+            updateAnalytics(params);
+        });
+    </script>
+</div>
 
 <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
     <!-- Total Users -->
@@ -23,7 +191,7 @@
             </svg>
         </div>
         <p class="text-xs text-gray-500 uppercase font-medium">Total Users</p>
-        <p class="text-lg font-semibold">{{ analytics.total_users }}</p>
+        <p class="text-lg font-semibold" data-analytics="total_users">{{ analytics.total_users }}</p>
     </div>
 
     <!-- Total Tasks -->
@@ -34,7 +202,14 @@
             </svg>
         </div>
         <p class="text-xs text-gray-500 uppercase font-medium">Total Tasks</p>
-        <p class="text-lg font-semibold">{{ analytics.total_tasks }}</p>
+        <div class="flex flex-col items-center">
+            <p class="text-lg font-semibold" data-analytics="total_tasks">{{ analytics.total_tasks }}</p>
+            {% if current_period == 'month' and analytics.changes %}
+                <p class="text-xs {% if analytics.changes.total_tasks_change > 0 %}text-green-500{% else %}text-red-500{% endif %}">
+                    {{ "+" if analytics.changes.total_tasks_change > 0 else "" }}{{ "%.1f"|format(analytics.changes.total_tasks_change) }}% vs last month
+                </p>
+            {% endif %}
+        </div>
     </div>
 
     <!-- Completed Tasks -->
@@ -45,7 +220,14 @@
             </svg>
         </div>
         <p class="text-xs text-gray-500 uppercase font-medium">Completed</p>
-        <p class="text-lg font-semibold">{{ analytics.tasks_completed }}</p>
+        <div class="flex flex-col items-center">
+            <p class="text-lg font-semibold" data-analytics="tasks_completed">{{ analytics.tasks_completed }}</p>
+            {% if current_period == 'month' and analytics.changes %}
+                <p class="text-xs {% if analytics.changes.completed_tasks_change > 0 %}text-green-500{% else %}text-red-500{% endif %}">
+                    {{ "+" if analytics.changes.completed_tasks_change > 0 else "" }}{{ "%.1f"|format(analytics.changes.completed_tasks_change) }}% vs last month
+                </p>
+            {% endif %}
+        </div>
     </div>
 
     <!-- Pending Tasks -->
@@ -56,7 +238,7 @@
             </svg>
         </div>
         <p class="text-xs text-gray-500 uppercase font-medium">Pending</p>
-        <p class="text-lg font-semibold">{{ analytics.tasks_pending }}</p>
+        <p class="text-lg font-semibold" data-analytics="tasks_pending">{{ analytics.tasks_pending }}</p>
     </div>
 
     <!-- Missed Tasks -->
@@ -67,7 +249,7 @@
             </svg>
         </div>
         <p class="text-xs text-gray-500 uppercase font-medium">Missed</p>
-        <p class="text-lg font-semibold">{{ analytics.tasks_missed }}</p>
+        <p class="text-lg font-semibold" data-analytics="tasks_missed">{{ analytics.tasks_missed }}</p>
     </div>
 
     <!-- Orders Received -->
@@ -78,7 +260,14 @@
             </svg>
         </div>
         <p class="text-xs text-gray-500 uppercase font-medium">Orders Received</p>
-        <p class="text-lg font-semibold">{{ analytics.orders_received }}</p>
+        <div class="flex flex-col items-center">
+            <p class="text-lg font-semibold" data-analytics="orders_received">{{ analytics.orders_received }}</p>
+            {% if current_period == 'month' and analytics.changes %}
+                <p class="text-xs {% if analytics.changes.orders_received_change > 0 %}text-green-500{% else %}text-red-500{% endif %}">
+                    {{ "+" if analytics.changes.orders_received_change > 0 else "" }}{{ "%.1f"|format(analytics.changes.orders_received_change) }}% vs last month
+                </p>
+            {% endif %}
+        </div>
     </div>
 
 </div>
@@ -128,30 +317,58 @@
                         stroke="currentColor" fill="none" cx="18" cy="18" r="16" transform="rotate(-90 18 18)" />
                 <text x="18" y="20" class="text-xs font-semibold text-gray-700" text-anchor="middle">{{ overall_percentage | round(0) }}%</text>
             </svg>
-            <p class="text-gray-600 text-xs font-medium text-center">Overall Task Completion</p>
+            {% if current_period == 'month' %}
+                <p class="text-gray-600 text-xs font-medium text-center">Task Completion for {{ ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'][current_month-1] }} {{ current_year }}</p>
+            {% elif current_period == 'year' %}
+                <p class="text-gray-600 text-xs font-medium text-center">Task Completion for {{ current_year }}</p>
+            {% else %}
+                <p class="text-gray-600 text-xs font-medium text-center">Overall Task Completion</p>
+            {% endif %}
         </div>
 
         <!-- Minimalistic Bar Chart (Task Status Distribution) -->
         <div class="bg-white p-4 rounded-lg shadow-sm">
             <h3 class="text-sm font-semibold text-gray-700 mb-2">Task Status Distribution</h3>
-            <div class="flex items-center gap-2 text-xs text-gray-500 mb-2">
-                <span class="flex-1 bg-green-400 h-2 rounded" style="width: {{ (analytics.tasks_completed / analytics.total_tasks * 100) if analytics.total_tasks > 0 else 0 }}%"></span>
-                <span class="flex-1 bg-yellow-400 h-2 rounded" style="width: {{ (analytics.tasks_pending / analytics.total_tasks * 100) if analytics.total_tasks > 0 else 0 }}%"></span>
-                <span class="flex-1 bg-red-400 h-2 rounded" style="width: {{ (analytics.tasks_missed / analytics.total_tasks * 100) if analytics.total_tasks > 0 else 0 }}%"></span>
+            <div class="grid grid-cols-3 gap-4 mb-4">
+                <div>
+                    {% set completed_pct = (analytics.tasks_completed / analytics.total_tasks * 100) if analytics.total_tasks > 0 else 0 %}
+                    <div class="w-full bg-gray-200 rounded-full h-2.5">
+                        <div class="bg-green-400 h-2.5 rounded-full" 
+                            style="width: {{ completed_pct }}%"
+                            {% if completed_pct == 0 %}hidden{% endif %}></div>
+                    </div>
+                    <p class="mt-1 text-center">Completed</p>
+                    <p class="text-center text-sm">{{ "%.1f"|format(completed_pct) }}%</p>
+                </div>
+                <div>
+                    {% set pending_pct = (analytics.tasks_pending / analytics.total_tasks * 100) if analytics.total_tasks > 0 else 0 %}
+                    <div class="w-full bg-gray-200 rounded-full h-2.5">
+                        <div class="bg-yellow-400 h-2.5 rounded-full" 
+                            style="width: {{ pending_pct }}%"
+                            {% if pending_pct == 0 %}hidden{% endif %}></div>
+                    </div>
+                    <p class="mt-1 text-center">Pending</p>
+                    <p class="text-center text-sm">{{ "%.1f"|format(pending_pct) }}%</p>
+                </div>
+                <div>
+                    {% set missed_pct = (analytics.tasks_missed / analytics.total_tasks * 100) if analytics.total_tasks > 0 else 0 %}
+                    <div class="w-full bg-gray-200 rounded-full h-2.5">
+                        <div class="bg-red-400 h-2.5 rounded-full" 
+                            style="width: {{ missed_pct }}%"
+                            {% if missed_pct == 0 %}hidden{% endif %}></div>
+                    </div>
+                    <p class="mt-1 text-center">Missed</p>
+                    <p class="text-center text-sm">{{ "%.1f"|format(missed_pct) }}%</p>
+                </div>
             </div>
             <div class="flex justify-between text-xs text-gray-500">
-                <span>Completed</span>
-                <span>Pending</span>
-                <span>Missed</span>
+                <span>Completed ({{ "%.1f"|format((analytics.tasks_completed / analytics.total_tasks * 100) if analytics.total_tasks > 0 else 0) }}%)</span>
+                <span>Pending ({{ "%.1f"|format((analytics.tasks_pending / analytics.total_tasks * 100) if analytics.total_tasks > 0 else 0) }}%)</span>
+                <span>Missed ({{ "%.1f"|format((analytics.tasks_missed / analytics.total_tasks * 100) if analytics.total_tasks > 0 else 0) }}%)</span>
             </div>
         </div>
 
-        <!-- Minimalistic Orders Received -->
-        <div class="bg-white p-4 rounded-lg shadow-sm flex flex-col items-center">
-            <p class="text-xs text-gray-500">Orders Received</p>
-            <p class="text-lg font-bold text-gray-700">{{ analytics.orders_received }}</p>
-        </div>
-
+        
     </div>
 
 </div>

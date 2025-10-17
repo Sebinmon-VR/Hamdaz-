@@ -23,6 +23,24 @@ if not all([CLIENT_ID, CLIENT_SECRET, TENANT_ID]):
 
 GRAPH_API = "https://graph.microsoft.com/v1.0"
 
+# --- Configuration for OneDrive Feature ---
+
+CLIENT_ID_ONEDRIVE = os.getenv("CLIENT_ID")
+CLIENT_SECRET_ONEDRIVE = os.getenv("CLIENT_SECRET")
+TENANT_ID_ONEDRIVE = os.getenv("TENANT_ID")
+ONEDRIVE_PRIMARY_USER_ID = os.getenv("ONEDRIVE_PRIMARY_USER_ID")
+AUTHORITY_ONEDRIVE = f"https://login.microsoftonline.com/{TENANT_ID_ONEDRIVE}"
+SCOPE_ONEDRIVE = ["https://graph.microsoft.com/.default"]
+ONEDRIVE_USER_ID = os.getenv("ONEDRIVE_USER_ID")
+FILE_PATH = os.getenv("ONEDRIVE_FILE_PATH", "Contacts.xlsx")
+WORKSHEET_NAME = os.getenv("ONEDRIVE_WORKSHEET_NAME", "Sheet1")
+GRAPH_API_ENDPOINT = "https://graph.microsoft.com/v1.0"
+
+onedrive_msal_app = ConfidentialClientApplication(
+    CLIENT_ID_ONEDRIVE,
+    authority=AUTHORITY_ONEDRIVE,
+    client_credential=CLIENT_SECRET_ONEDRIVE
+)
 
 # ----------------------------
 # MSAL Authentication
@@ -154,9 +172,6 @@ def fetch_sharepoint_list(site_domain, site_path, list_name):
 
 
 
-
-import pandas as pd
-
 def items_to_dataframe(items):
     """
     Convert a list of SharePoint item dictionaries into a Pandas DataFrame.
@@ -181,25 +196,83 @@ def items_to_dataframe(items):
     return df
 
 
-def compute_overall_analytics(df):
+def compute_overall_analytics(df, period=None):
+    """
+    Compute overall analytics with optional period filtering.
+    
+    Args:
+        df (pd.DataFrame): DataFrame with SharePoint items
+        period (dict, optional): Dictionary with filter parameters:
+            - 'type': 'month', 'year', or 'all'
+            - 'year': Year to filter for (int)
+            - 'month': Month to filter for (int, 1-12)
+    """
     if df.empty:
-        return {"total_users":0,"total_tasks":0,"tasks_completed":0,"tasks_pending":0,"tasks_missed":0,"orders_received":0}
+        return {"total_users": 0, "total_tasks": 0, "tasks_completed": 0, "tasks_pending": 0, "tasks_missed": 0, "orders_received": 0, "changes": {}}
+    
     uae_tz = pytz.timezone("Asia/Dubai")
     now_uae = datetime.now(uae_tz)
+    
+    # Convert dates to UAE timezone
     df['BCD'] = pd.to_datetime(df['BCD'], errors='coerce', utc=True).dt.tz_convert(uae_tz)
-    total_users = df['AssignedTo'].nunique()
-    total_tasks = len(df)
-    tasks_completed = len(df[df['SubmissionStatus']=='Submitted'])
-    tasks_pending = len(df[(df['SubmissionStatus']!='Submitted') & (df['BCD']>=now_uae)])
-    tasks_missed = len(df[(df['SubmissionStatus']!='Submitted') & (df['BCD']<now_uae)])
-    orders_received = len(df[df['Status']=='Received']) if 'Status' in df.columns else 0
+    df['Created'] = pd.to_datetime(df['Created'], errors='coerce', utc=True).dt.tz_convert(uae_tz)
+
+    # Apply period filter if specified
+    if period and period['type'] != 'all':
+        filtered_df = df.copy()
+        if period['type'] == 'month':
+            filtered_df = df[
+                (df['Created'].dt.year == period['year']) & 
+                (df['Created'].dt.month == period['month'])
+            ]
+        elif period['type'] == 'year':
+            filtered_df = df[df['Created'].dt.year == period['year']]
+    else:
+        filtered_df = df
+
+    total_users = filtered_df['AssignedTo'].nunique()
+    total_tasks = len(filtered_df)
+    tasks_completed = len(filtered_df[filtered_df['SubmissionStatus'] == 'Submitted'])
+    tasks_pending = len(filtered_df[(filtered_df['SubmissionStatus'] != 'Submitted') & (filtered_df['BCD'] >= now_uae)])
+    tasks_missed = len(filtered_df[(filtered_df['SubmissionStatus'] != 'Submitted') & (filtered_df['BCD'] < now_uae)])
+    orders_received = len(filtered_df[filtered_df['Status'] == 'Received']) if 'Status' in filtered_df.columns else 0
+
+    # Calculate month-over-month changes if viewing current month
+    changes = {}
+    if period and period['type'] == 'month':
+        # Get last month's data
+        last_month = period['month'] - 1
+        last_year = period['year']
+        if last_month == 0:
+            last_month = 12
+            last_year -= 1
+
+        last_month_df = df[
+            (df['Created'].dt.year == last_year) & 
+            (df['Created'].dt.month == last_month)
+        ]
+
+        if not last_month_df.empty:
+            last_month_stats = {
+                "total_tasks": len(last_month_df),
+                "tasks_completed": len(last_month_df[last_month_df['SubmissionStatus'] == 'Submitted']),
+                "orders_received": len(last_month_df[last_month_df['Status'] == 'Received']) if 'Status' in last_month_df.columns else 0
+            }
+
+            changes = {
+                "total_tasks_change": ((total_tasks - last_month_stats["total_tasks"]) / last_month_stats["total_tasks"] * 100) if last_month_stats["total_tasks"] > 0 else 0,
+                "completed_tasks_change": ((tasks_completed - last_month_stats["tasks_completed"]) / last_month_stats["tasks_completed"] * 100) if last_month_stats["tasks_completed"] > 0 else 0,
+                "orders_received_change": ((orders_received - last_month_stats["orders_received"]) / last_month_stats["orders_received"] * 100) if last_month_stats["orders_received"] > 0 else 0
+            }
+
     return {
         "total_users": total_users,
         "total_tasks": total_tasks,
         "tasks_completed": tasks_completed,
         "tasks_pending": tasks_pending,
         "tasks_missed": tasks_missed,
-        "orders_received": orders_received
+        "orders_received": orders_received,
+        "changes": changes
     }
     
         
@@ -236,7 +309,18 @@ def compute_user_analytics(df):
     return analytics
 
 
-def compute_user_analytics_with_last_date(df ,EXCLUDED_USERS):
+def compute_user_analytics_with_last_date(df, EXCLUDED_USERS, period=None):
+    """
+    Compute user analytics with optional period filtering.
+    
+    Args:
+        df (pd.DataFrame): DataFrame with SharePoint items
+        EXCLUDED_USERS (list): List of users to exclude
+        period (dict, optional): Dictionary with filter parameters:
+            - 'type': 'month', 'year', or 'all'
+            - 'year': Year to filter for (int)
+            - 'month': Month to filter for (int, 1-12)
+    """
     if df.empty or 'AssignedTo' not in df.columns:
         return {}
 
@@ -247,14 +331,26 @@ def compute_user_analytics_with_last_date(df ,EXCLUDED_USERS):
     uae_tz = pytz.timezone("Asia/Dubai")
     now_uae = datetime.now(uae_tz)
 
+    # Convert dates to UAE timezone
+    df['Created'] = pd.to_datetime(df['Created'], errors='coerce', utc=True).dt.tz_convert(uae_tz)
+    df['BCD'] = pd.to_datetime(df['BCD'], errors='coerce', utc=True).dt.tz_convert(uae_tz)
+
+    # Apply period filter if specified
+    if period and period['type'] != 'all':
+        if period['type'] == 'month':
+            df = df[
+                (df['Created'].dt.year == period['year']) & 
+                (df['Created'].dt.month == period['month'])
+            ]
+        elif period['type'] == 'year':
+            df = df[df['Created'].dt.year == period['year']]
+
     start_col = None
     for col in df.columns:
         if col.lower().replace(" ", "") == "startdate":
             start_col = col
             break
 
-    if 'BCD' in df.columns:
-        df['BCD'] = pd.to_datetime(df['BCD'], errors='coerce', utc=True).dt.tz_convert(uae_tz)
     if start_col:
         df[start_col] = pd.to_datetime(df[start_col], errors='coerce', utc=True).dt.tz_convert(uae_tz)
 
@@ -265,10 +361,10 @@ def compute_user_analytics_with_last_date(df ,EXCLUDED_USERS):
 
         analytics[user] = {
             "total_tasks": len(user_df),
-            "tasks_completed": len(user_df[user_df['SubmissionStatus']=='Submitted']),
-            "tasks_pending": len(user_df[(user_df['SubmissionStatus']!='Submitted') & (user_df['BCD']>=now_uae)]),
-            "tasks_missed": len(user_df[(user_df['SubmissionStatus']!='Submitted') & (user_df['BCD']<now_uae)]),
-            "orders_received": len(user_df[user_df['Status']=='Received']) if 'Status' in df.columns else 0,
+            "tasks_completed": len(user_df[user_df['SubmissionStatus'] == 'Submitted']),
+            "tasks_pending": len(user_df[(user_df['SubmissionStatus'] != 'Submitted') & (user_df['BCD'] >= now_uae)]),
+            "tasks_missed": len(user_df[(user_df['SubmissionStatus'] != 'Submitted') & (user_df['BCD'] < now_uae)]),
+            "orders_received": len(user_df[user_df['Status'] == 'Received']) if 'Status' in df.columns else 0,
             "last_assigned_date": last_assigned_date_str
         }
     return analytics
@@ -393,6 +489,7 @@ def generate_user_analytics(df, user_column='AssignedTo', status_column='Status'
     analytics_df = pd.DataFrame(analytics)
     return analytics_df
 
+
 def get_user_analytics_specific(df: pd.DataFrame, username: str) -> dict:
     """
     Returns analytics and task lists for a specific user.
@@ -442,34 +539,16 @@ def get_user_analytics_specific(df: pd.DataFrame, username: str) -> dict:
         'MissedTasksCount': len(missed_tasks),
         'OngoingTasks': ongoing_tasks.to_dict('records'),
         'CompletedTasks': completed_tasks.to_dict('records'),
-        'MissedTasks': missed_tasks.to_dict('records')
+        'MissedTasks': missed_tasks.to_dict('records'),
+        'OrdersReceived': len(user_tasks[user_tasks['Order Status']=='Received']) if 'Order status' in user_tasks.columns else 0 ,
+        'user_tasks': user_tasks.to_dict('records')
     }
-
-
-
 
 
 # ==============================================================================
 # ==||| FOR BUSINESS CARDS |||==
 # ==============================================================================
 
-# --- Configuration for OneDrive Feature ---
-
-CLIENT_ID_ONEDRIVE = os.getenv("CLIENT_ID")
-CLIENT_SECRET_ONEDRIVE = os.getenv("CLIENT_SECRET")
-TENANT_ID_ONEDRIVE = os.getenv("TENANT_ID")
-AUTHORITY_ONEDRIVE = f"https://login.microsoftonline.com/{TENANT_ID_ONEDRIVE}"
-SCOPE_ONEDRIVE = ["https://graph.microsoft.com/.default"]
-ONEDRIVE_USER_ID = os.getenv("ONEDRIVE_USER_ID")
-FILE_PATH = os.getenv("ONEDRIVE_FILE_PATH", "Contacts.xlsx")
-WORKSHEET_NAME = os.getenv("ONEDRIVE_WORKSHEET_NAME", "Sheet1")
-GRAPH_API_ENDPOINT = "https://graph.microsoft.com/v1.0"
-
-onedrive_msal_app = ConfidentialClientApplication(
-    CLIENT_ID_ONEDRIVE,
-    authority=AUTHORITY_ONEDRIVE,
-    client_credential=CLIENT_SECRET_ONEDRIVE
-)
 
 def get_onedrive_access_token():
     """Acquires an access token for OneDrive operations."""
@@ -540,3 +619,149 @@ def update_contact_in_onedrive_excel(row_id, updated_data_dict):
     except Exception as e:
         print(f"Error updating contact in OneDrive: {e}")
         return False
+
+
+# ==============================================================================
+# ==============================================================================
+
+def get_all_customers_from_onedrive():
+    """Fetches all data from the Customers.xlsx file in the specified user's OneDrive."""
+    try:
+        access_token = get_onedrive_access_token()
+        headers = {"Authorization": f"Bearer {access_token}"}
+        
+        url = (
+            f"{GRAPH_API_ENDPOINT}/users/{ONEDRIVE_PRIMARY_USER_ID}/drive/root:/"
+            f"Customers.xlsx:/workbook/worksheets('Sheet1')/usedRange"
+        )
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+        data = response.json()
+        
+        rows = data.get('values', [])
+        if not rows or len(rows) < 2:
+            return [] 
+
+        header = rows[0]
+        customers = []
+        for i, row_data in enumerate(rows[1:]):
+            customer_dict = {header[j]: row_data[j] if j < len(row_data) else "" for j in range(len(header))}
+            customer_dict['row_id'] = i + 2  # Excel rows are 1-based, data starts on row 2
+            customers.append(customer_dict)
+        return customers
+    except Exception as e:
+        print(f"Error fetching customers from OneDrive: {e}")
+        return []
+    
+    
+def get_user_details_from_excell():
+    try:
+        access_token = get_onedrive_access_token()
+        headers = {"Authorization": f"Bearer {access_token}"}
+        
+        url = (
+            f"{GRAPH_API_ENDPOINT}/users/{ONEDRIVE_PRIMARY_USER_ID}/drive/root:/"
+            f"Userdatas.xlsx:/workbook/worksheets('Sheet1')/usedRange"
+        )
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+        data = response.json()
+        
+        rows = data.get('values', [])
+        if not rows or len(rows) < 2:
+            return [] 
+
+        header = rows[0]
+        customers = []
+        for i, row_data in enumerate(rows[1:]):
+            customer_dict = {header[j]: row_data[j] if j < len(row_data) else "" for j in range(len(header))}
+            customer_dict['row_id'] = i + 2  # Excel rows are 1-based, data starts on row 2
+            customers.append(customer_dict)
+        return customers
+    except Exception as e:
+        print(f"Error fetching customers from OneDrive: {e}")
+        return []
+    
+def upload_photo_to_onedrive(photo_file, user_id, email):
+    """
+    Uploads a user profile photo to OneDrive and returns the shared link.
+    Uses Graph API user ID for unique naming.
+    
+    photo_file: Werkzeug FileStorage (from Flask request.files)
+    user_id: Graph API user id
+    email: used for readability in filename
+    """
+    try:
+        access_token = get_onedrive_access_token()
+        headers = {"Authorization": f"Bearer {access_token}"}
+
+        # Extract file extension
+        file_ext = photo_file.filename.split('.')[-1]
+        filename = f"profile_photos/{email}_{user_id}.{file_ext}"
+
+        # Read file content
+        file_content = photo_file.read()
+
+        # Upload file to OneDrive
+        upload_url = (
+            f"{GRAPH_API_ENDPOINT}/users/{ONEDRIVE_PRIMARY_USER_ID}/drive/root:/{filename}:/content"
+        )
+        response = requests.put(upload_url, headers=headers, data=file_content)
+        response.raise_for_status()
+        uploaded_file = response.json()
+
+        # Create a shareable link
+        link_url = (
+            f"{GRAPH_API_ENDPOINT}/users/{ONEDRIVE_PRIMARY_USER_ID}/drive/items/{uploaded_file['id']}/createLink"
+        )
+        payload = {"type": "view", "scope": "anonymous"}  # anonymous view link
+        link_response = requests.post(link_url, headers=headers, json=payload)
+        link_response.raise_for_status()
+
+        share_link = link_response.json()['link']['webUrl']
+        return share_link
+
+    except Exception as e:
+        print(f"Error uploading photo to OneDrive: {e}")
+        return ""
+
+    
+def add_or_update_user_in_excel(email, user_id, name, role, photo_file=None):
+    """
+    Adds a new user or updates an existing user in Excel.
+    Uses Graph API user ID as unique identifier.
+    """
+    try:
+        access_token = get_onedrive_access_token()
+        headers = {"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"}
+
+        users = get_user_details_from_excell()
+        user = next((u for u in users if u.get("email", "").lower() == email.lower()), None)
+
+        # Upload photo to OneDrive if provided
+        dp_url = ""
+        if photo_file:
+            dp_url = upload_photo_to_onedrive(photo_file, user_id, email)
+
+        if user:
+            # Update existing row
+            row_id = user["row_id"]
+            update_values = [[name, email, role, dp_url, 1]]  # columns: name, email, role, dp_url, flag
+            update_url = f"{GRAPH_API_ENDPOINT}/users/{ONEDRIVE_PRIMARY_USER_ID}/drive/root:/Userdatas.xlsx:/workbook/worksheets('Sheet1')/range(address='A{row_id}:E{row_id}')"
+            response = requests.patch(update_url, headers=headers, json={"values": update_values})
+            response.raise_for_status()
+        else:
+            # Append new row (Graph API user ID as unique identifier)
+            append_values = [[user_id, name, email, role, dp_url, 1]]  # columns: user_id, name, email, role, dp_url, flag
+            append_url = f"{GRAPH_API_ENDPOINT}/users/{ONEDRIVE_PRIMARY_USER_ID}/drive/root:/Userdatas.xlsx:/workbook/worksheets('Sheet1')/tables('Table1')/rows/add"
+            response = requests.post(append_url, headers=headers, json={"values": append_values})
+            response.raise_for_status()
+
+        return True
+
+    except Exception as e:
+        print(f"Error adding/updating user in Excel: {e}")
+        return False
+
+# ==============================================================================
+# ==============================================================================

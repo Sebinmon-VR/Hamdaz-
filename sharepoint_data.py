@@ -88,9 +88,3 @@ def get_sharepoint_list_items(site_domain, site_path, list_name, cache_timeout=3
 
     return [item['fields'] for item in items_response.get('value', [])]
 
-
-# Example usage:
-if __name__ == "__main__":
-    items = get_sharepoint_list_items('hamdaz1.sharepoint.com', '/sites/ProposalTeam', 'Proposals')
-    for i in items:
-        print(i)

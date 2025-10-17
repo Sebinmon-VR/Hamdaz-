@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Complete Your Profile</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss/dist/tailwind.min.css" rel="stylesheet">
+</head>
+<body class="flex items-center justify-center h-screen bg-gray-100">
+    <form method="POST" enctype="multipart/form-data" class="bg-white shadow-lg p-8 rounded-xl w-96 space-y-4">
+        <h2 class="text-2xl font-bold text-center">Complete Your Profile</h2>
+
+        <div>
+            <label class="block text-sm font-medium">Name</label>
+            <input type="text" value="{{ user['displayName'] }}" readonly class="w-full p-2 border rounded-lg bg-gray-100">
+        </div>
+
+        <div>
+            <label class="block text-sm font-medium">Email</label>
+            <input type="email" value="{{ user['mail'] or user['userPrincipalName'] }}" readonly class="w-full p-2 border rounded-lg bg-gray-100">
+        </div>
+
+        <div>
+            <label class="block text-sm font-medium">Role</label>
+            <select name="role" required class="w-full p-2 border rounded-lg">
+                <option value="">Select role</option>
+                <option value="Pre-Sales">Pre-Sales</option>
+                <option value="Business Development">Business Development</option>
+                <option value="Customer Success">Customer Success</option>
+            </select>
+        </div>
+
+        <div>
+            <label class="block text-sm font-medium">Profile Photo</label>
+            <input type="file" name="photo" accept="image/*" class="w-full p-2 border rounded-lg">
+        </div>
+
+        <button type="submit" class="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700">Save & Continue</button>
+    </form>
+</body>
+</html>
