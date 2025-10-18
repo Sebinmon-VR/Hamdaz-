@@ -54,24 +54,24 @@ EXCLUDED_USERS = ["Sebin", "Shamshad", "Jaymon", "Hisham Arackal", "Althaf", "Ni
 
 
 # ---------------- Helper Function ----------------
-def fetch_user_photo(access_token):
-    """
-    Fetches the user's profile photo from Microsoft Graph.
-    Returns a base64-encoded string or None if not available.
-    """
-    try:
-        photo_resp = requests.get(
-            "https://graph.microsoft.com/v1.0/me/photo/$value",
-            headers={"Authorization": f"Bearer {access_token}"},
-            stream=True
-        )
-        if photo_resp.status_code == 200:
-            return "data:image/jpeg;base64," + base64.b64encode(photo_resp.content).decode()
-        else:
-            return None
-    except Exception as e:
-        print("Error fetching profile photo:", e)
-        return None
+# def fetch_user_photo(access_token):
+#     """
+#     Fetches the user's profile photo from Microsoft Graph.
+#     Returns a base64-encoded string or None if not available.
+#     """
+#     try:
+#         photo_resp = requests.get(
+#             "https://graph.microsoft.com/v1.0/me/photo/$value",
+#             headers={"Authorization": f"Bearer {access_token}"},
+#             stream=True
+#         )
+#         if photo_resp.status_code == 200:
+#             return "data:image/jpeg;base64," + base64.b64encode(photo_resp.content).decode()
+#         else:
+#             return None
+#     except Exception as e:
+#         print("Error fetching profile photo:", e)
+#         return None
 
 # ==============================================================================
 
@@ -138,10 +138,10 @@ def index():
         access_token = session.get("access_token")
 
         # Fetch user photo if not in session
-        if access_token and "photo" not in user:
-            photo = fetch_user_photo(access_token)
-            user["photo"] = photo
-            session["user"] = user
+        # if access_token and "photo" not in user:
+        #     photo = fetch_user_photo(access_token)
+        #     user["photo"] = photo
+        #     session["user"] = user
 
         # Load Excel data
         user_flag_data = get_user_details_from_excell()
@@ -207,7 +207,7 @@ def index():
             user=user,
             greeting=greeting,
             tasks=tasks,
-            photo=user.get("photo"),
+            # photo=user.get("photo"),
             analytics=analytics,
             per_user=per_user,
             current_period=period_type,
@@ -239,10 +239,10 @@ def user_form():
 
     if request.method == "POST":
         role = request.form.get("role")
-        photo_file = request.files.get("photo")
+        # photo_file = request.files.get("photo")
 
         # Save or update user in Excel
-        success = add_or_update_user_in_excel(email, user_id, user.get("displayName"), role, photo_file)
+        success = add_or_update_user_in_excel(email, user_id, user.get("displayName"), role)
         if success:
             return redirect(url_for("index"))
         else:
@@ -359,10 +359,10 @@ def task_details(title):
     if "user" not in session:
         return redirect(url_for('login'))
     user = session.get("user")
-    photo = session.get("user", {}).get("photo")
+    # photo = session.get("user", {}).get("photo")
     df = items_to_dataframe(fetch_sharepoint_list(SITE_DOMAIN, SITE_PATH, LIST_NAME))
     task = get_task_details(df, title)
-    return render_template("pages/task_details.html", task=task, user=user, photo=photo)
+    return render_template("pages/task_details.html", task=task, user=user)
 
 # ==============================================================================
 # == BUSINESS CARDS ROUTES ==
@@ -376,12 +376,12 @@ def business_cards():
     # THE FIX IS HERE: We now get the user and photo from the session
     user = session.get("user")
     # Safely get photo, providing a default empty dict if user is not found
-    photo = session.get("user", {}).get("photo")
+    # photo = session.get("user", {}).get("photo")
 
     contacts = get_all_contacts_from_onedrive()
 
     # THE FIX IS HERE: We now pass the user and photo to the template
-    return render_template("pages/business_cards.html", contacts=contacts, user=user, photo=photo)
+    return render_template("pages/business_cards.html", contacts=contacts, user=user)
 
 # ==============================================================================
 
@@ -411,10 +411,10 @@ def customer():
     if "user" not in session:
         return redirect(url_for('login'))
     user = session.get("user")
-    photo = session.get("user", {}).get("photo")
+    # photo = session.get("user", {}).get("photo")
     raw_customers = fetch_customers()
     structured_customers = structure_customers_data(raw_customers)
-    return render_template("pages/customers.html", customers=structured_customers, user=user, photo=photo)
+    return render_template("pages/customers.html", customers=structured_customers, user=user)
 
 
 
