@@ -274,7 +274,7 @@ def bd():
 
 @app.route("/cs")
 def cs():
-    return render_template("customer_success_dashboard.html")
+    return render_template("customer_success_team.html")
 
 # ==============================================================================
 
