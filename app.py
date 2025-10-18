@@ -8,6 +8,8 @@ import base64
 from datetime import datetime
 from sharepoint_data import *
 from sharepoint_items import *
+from zoho import *
+
 load_dotenv(override=True)
 
 app = Flask(__name__)
@@ -21,7 +23,7 @@ REDIRECT_URI = os.getenv("REDIRECT_URI")  # Must match Azure
 AUTHORITY = f"https://login.microsoftonline.com/{TENANT_ID}"
 SCOPE = ["User.Read"]
 
-SUPERUSERS = ["sebin@hamdaz.com"]
+SUPERUSERS = [""]
 LIMITED_USERS = ["hello@hamdaz.com"]
 
 # Initialize MSAL
@@ -352,8 +354,15 @@ def logout():
 
 # ==============================================================================
 
-
-
+@app.route("/task_details/<title>")
+def task_details(title):
+    if "user" not in session:
+        return redirect(url_for('login'))
+    user = session.get("user")
+    photo = session.get("user", {}).get("photo")
+    df = items_to_dataframe(fetch_sharepoint_list(SITE_DOMAIN, SITE_PATH, LIST_NAME))
+    task = get_task_details(df, title)
+    return render_template("pages/task_details.html", task=task, user=user, photo=photo)
 
 # ==============================================================================
 # == BUSINESS CARDS ROUTES ==
@@ -403,10 +412,9 @@ def customer():
         return redirect(url_for('login'))
     user = session.get("user")
     photo = session.get("user", {}).get("photo")
-    customers = get_all_customers_from_onedrive()
-    
-    
-    return render_template("pages/customers.html", customers=customers, user=user, photo=photo)
+    raw_customers = fetch_customers()
+    structured_customers = structure_customers_data(raw_customers)
+    return render_template("pages/customers.html", customers=structured_customers, user=user, photo=photo)
 
 
 

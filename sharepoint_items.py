@@ -765,3 +765,17 @@ def add_or_update_user_in_excel(email, user_id, name, role, photo_file=None):
 
 # ==============================================================================
 # ==============================================================================
+
+
+def get_task_details(df: pd.DataFrame, task_title: str) -> dict:
+    """
+    Returns details of a specific task by title.
+    """
+    if df.empty:
+        return {}
+
+    task_row = df[df['Title'] == task_title]
+    if task_row.empty:
+        return {}
+
+    return task_row.iloc[0].to_dict()
