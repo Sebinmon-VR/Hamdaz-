@@ -7,12 +7,12 @@ from datetime import datetime, timedelta
 # =======================
 # CONFIGURATION
 # =======================
-load_dotenv()
+load_dotenv(override=True)
 
-CLIENT_ID = "1000.GJWAFT75TAM1MT80M8GRLPM969I3VE"
-CLIENT_SECRET = "c5c5a32d263a4e5d3b213dae71b44582ad383bcf41"
-REFRESH_TOKEN = "1000.2be1ed1a4af4c9389ff6b32f62c7d9fb.8128317cfca0028e28e3ad7a6a1b2f40"
-ORGANIZATION_ID = "855589474"  # Your Zoho Books org ID
+CLIENT_ID = os.getenv("zoho_CLIENT_ID")
+CLIENT_SECRET = os.getenv("zoho_CLIENT_SECRET")
+REFRESH_TOKEN = os.getenv("zoho_REFRESH_TOKEN")
+ORGANIZATION_ID = os.getenv("zoho_ORGANIZATION_ID")
 BASE_URL = "https://www.zohoapis.com/books/v3"
 
 ACCESS_TOKEN = os.getenv("ACCESS_TOKEN")
