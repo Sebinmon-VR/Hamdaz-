@@ -23,7 +23,7 @@ REDIRECT_URI = os.getenv("REDIRECT_URI")  # Must match Azure
 AUTHORITY = f"https://login.microsoftonline.com/{TENANT_ID}"
 SCOPE = ["User.Read"]
 
-SUPERUSERS = [""]
+SUPERUSERS = ["sebin@hamdaz.com","jisha@hamdaz.com"]
 LIMITED_USERS = ["hello@hamdaz.com"]
 
 # Initialize MSAL
@@ -267,6 +267,14 @@ def teams():
     user = session["user"]
     email = user.get("mail") or user.get("userPrincipalName")
     return render_template("teams.html" ,user=user , email=email ,user_analytics=user_analytics )
+
+@app.route("/bd")
+def bd():
+    return render_template("business_dev_team.html")
+
+@app.route("/cs")
+def cs():
+    return render_template("customer_success_dashboard.html")
 
 # ==============================================================================
 
