@@ -6,25 +6,29 @@ import os
 from dotenv import load_dotenv
 import base64
 from datetime import datetime
+import threading
+import time
+import pandas as pd  # Required for timestamp conversion
 from sharepoint_data import *
 from sharepoint_items import *
 from zoho import *
 
+# ================== LOAD ENVIRONMENT ==================
 load_dotenv(override=True)
 
 app = Flask(__name__)
-app.secret_key = os.getenv("FLASK_SECRET_KEY", "supersecretkey123")  # fixed key
+app.secret_key = os.getenv("FLASK_SECRET_KEY", "supersecretkey123")
 
 # ---------------- Azure AD Config ----------------
 CLIENT_ID = os.getenv("CLIENT_ID")
 CLIENT_SECRET = os.getenv("CLIENT_SECRET")
 TENANT_ID = os.getenv("TENANT_ID")
-REDIRECT_URI = os.getenv("REDIRECT_URI")  # Must match Azure
+REDIRECT_URI = os.getenv("REDIRECT_URI")
 AUTHORITY = f"https://login.microsoftonline.com/{TENANT_ID}"
 SCOPE = ["User.Read"]
 
-SUPERUSERS = ["sebin@hamdaz.com","jisha@hamdaz.com"]
-LIMITED_USERS = ["hello@hamdaz.com"]
+SUPERUSERS = ["sebin@hamdaz.com","jisha@hamdaz.com","hello@hamdaz.com"]
+LIMITED_USERS = []
 
 # Initialize MSAL
 msal_app = ConfidentialClientApplication(
@@ -34,46 +38,28 @@ msal_app = ConfidentialClientApplication(
 )
 GRAPH_API_ENDPOINT = "https://graph.microsoft.com/v1.0"
 
-# ==============================================================================
-
-# Template helper functions
-def is_admin(email):
-    return email.lower() in SUPERUSERS if email else False
-
-# ==============================================================================
-
-
-app.jinja_env.globals.update(is_admin=is_admin)
-
+# ---------------- SharePoint Config ----------------
 SITE_DOMAIN = "hamdaz1.sharepoint.com"
 SITE_PATH = "/sites/ProposalTeam"
 LIST_NAME = "Proposals"
 EXCLUDED_USERS = ["Sebin", "Shamshad", "Jaymon", "Hisham Arackal", "Althaf", "Nidal", "Nayif Muhammed S", "Afthab"]
 
+# ==============================================================
+# Initialize global data (first load)
+print("[INIT] Fetching initial SharePoint data...")
+tasks = fetch_sharepoint_list(SITE_DOMAIN, SITE_PATH, LIST_NAME)
+df = items_to_dataframe(tasks)
+user_analytics = generate_user_analytics(df, exclude_users=EXCLUDED_USERS)
+print("[INIT] Data loaded successfully.")
 
+# ==============================================================
+# HELPER FUNCTIONS
+# ==============================================================
 
+def is_admin(email):
+    return email.lower() in SUPERUSERS if email else False
 
-# ---------------- Helper Function ----------------
-# def fetch_user_photo(access_token):
-#     """
-#     Fetches the user's profile photo from Microsoft Graph.
-#     Returns a base64-encoded string or None if not available.
-#     """
-#     try:
-#         photo_resp = requests.get(
-#             "https://graph.microsoft.com/v1.0/me/photo/$value",
-#             headers={"Authorization": f"Bearer {access_token}"},
-#             stream=True
-#         )
-#         if photo_resp.status_code == 200:
-#             return "data:image/jpeg;base64," + base64.b64encode(photo_resp.content).decode()
-#         else:
-#             return None
-#     except Exception as e:
-#         print("Error fetching profile photo:", e)
-#         return None
-
-# ==============================================================================
+app.jinja_env.globals.update(is_admin=is_admin)
 
 def greetings():
     now = datetime.now()
@@ -86,48 +72,70 @@ def greetings():
         return "Good Evening"
     else:
         return "Hello"
-    
-# ---------------- Routes ----------------
+
 def get_analytics_data(df, period_type='month', year=None, month=None):
-    """Helper function to compute analytics data"""
     if year is None:
         year = datetime.now().year
     if month is None:
         month = datetime.now().month
-
     period = {
         'type': period_type,
         'year': year,
         'month': month
     } if period_type != 'all' else None
-
     analytics = compute_overall_analytics(df, period)
     per_user = compute_user_analytics_with_last_date(df, EXCLUDED_USERS, period)
-    
     return analytics, per_user
-# ==============================================================================
+
+# ==============================================================
+# BACKGROUND DATA UPDATER
+# ==============================================================
+
+def background_updater():
+    """Runs in background to refresh SharePoint data periodically."""
+    global tasks, df, user_analytics
+    while True:
+        try:
+            print("[BG] Updating SharePoint data...")
+            tasks = fetch_sharepoint_list(SITE_DOMAIN, SITE_PATH, LIST_NAME)
+            df = items_to_dataframe(tasks)
+            user_analytics = generate_user_analytics(df, exclude_users=EXCLUDED_USERS)
+            print(f"[BG] Data updated successfully at {datetime.now()}")   
+            
+            # Loop over DataFrame rows to match key names
+            for _, data in user_analytics.iterrows():
+                add_or_update_user_analytics(
+                    username=data["User"],
+                    total_tasks=data["TotalTasks"],
+                    tasks_completed=data["CompletedTasksCount"],
+                    tasks_pending=data["OngoingTasksCount"],
+                    tasks_missed=data["MissedTasksCount"],
+                    orders_received=data.get("OrdersReceived", 0),  # default 0
+                    last_assigned_date=data.get("LastAssignedDate")
+                    )
+
+        except Exception as e:
+            print("[BG] Error during update:", e)
+        time.sleep(500)  # every 500 seconds
+
+# ==============================================================
+# ROUTES
+# ==============================================================
 
 @app.route("/update_analytics")
 def update_analytics():
-    """AJAX endpoint for updating analytics data"""
     if "user" not in session:
         return jsonify({"error": "Unauthorized"}), 401
-    
     period_type = request.args.get('period', 'month')
     year = int(request.args.get('year', datetime.now().year))
     month = int(request.args.get('month', datetime.now().month))
-    
     tasks = fetch_sharepoint_list(SITE_DOMAIN, SITE_PATH, LIST_NAME)
     df = items_to_dataframe(tasks)
-    
     analytics, per_user = get_analytics_data(df, period_type, year, month)
-    
     return jsonify({
         "analytics": analytics,
         "per_user": per_user
     })
-
-# ==============================================================================
 
 @app.route("/")
 def index():
@@ -135,31 +143,18 @@ def index():
         user = session["user"]
         email = user.get("mail") or user.get("userPrincipalName")
         user_id = user.get("id")
-        access_token = session.get("access_token")
 
-        # Fetch user photo if not in session
-        # if access_token and "photo" not in user:
-        #     photo = fetch_user_photo(access_token)
-        #     user["photo"] = photo
-        #     session["user"] = user
-
-        # Load Excel data
         user_flag_data = get_user_details_from_excell()
-
-        # Find current user in Excel
         current_user = next((u for u in user_flag_data if u.get("email", "").lower() == email.lower()), None)
-
-        # --- SAFELY CHECK FLAG ---
         flag_value = current_user.get("flag") if current_user else 0
         try:
             flag = int(flag_value) if str(flag_value).strip() else 0
         except (ValueError, TypeError):
             flag = 0
 
-        # Redirect to form if flag != 1 or user not found
         if not current_user or flag != 1:
             return redirect(url_for("user_form"))
-# --- Determine dashboard based on SUPERUSERS first ---
+
         if email.lower() in SUPERUSERS:
             dashboard_role = "admin_dashboard"
             excel_role = "admin"
@@ -172,29 +167,23 @@ def index():
             elif excel_role == "customer success":
                 dashboard_role = "customer_success_dashboard"
             else:
-                dashboard_role = "user_dashboard"  # default
+                dashboard_role = "user_dashboard"
 
-        # --- Dashboard logic ---
         period_type = request.args.get('period', 'month')
         year = int(request.args.get('year') or datetime.now().year)
         month = int(request.args.get('month') or datetime.now().month)
 
         greeting = greetings()
-        tasks = fetch_sharepoint_list(SITE_DOMAIN, SITE_PATH, LIST_NAME)
-        df = items_to_dataframe(tasks)
-
         analytics, per_user = get_analytics_data(df, period_type, year, month)
         username = user.get("displayName", "").replace(" ", "")
-        user_analytics = get_user_analytics_specific(df, username)
+        user_analytics_specific = get_user_analytics_specific(df, username)
         now_utc = pd.Timestamp.utcnow()
-
         ongoing_filtered = [
-            t for t in user_analytics['OngoingTasks']
+            t for t in user_analytics_specific['OngoingTasks']
             if pd.to_datetime(t['BCD']) > now_utc and t.get('SubmissionStatus','') != 'Submitted'
         ]
-        user_analytics['OngoingTasks'] = ongoing_filtered
+        user_analytics_specific['OngoingTasks'] = ongoing_filtered
         ongoing_tasks_count = len(ongoing_filtered)
-
         if 'Created' in df.columns:
             df['Created'] = pd.to_datetime(df['Created'])
             available_years = sorted(df['Created'].dt.year.unique().tolist())
@@ -202,71 +191,53 @@ def index():
             available_years = [datetime.now().year]
 
         return render_template(
-            f"{dashboard_role}.html",  # dynamic template based on Excel role
+            f"{dashboard_role}.html",
             role=excel_role,
             user=user,
             greeting=greeting,
             tasks=tasks,
-            # photo=user.get("photo"),
             analytics=analytics,
             per_user=per_user,
             current_period=period_type,
             current_year=year,
             current_month=month,
             available_years=available_years,
-            user_analytics=user_analytics,
+            user_analytics=user_analytics_specific,
             email=email,
             ongoing_tasks_count=ongoing_tasks_count,
             due_today_tasks_count=len([
-                t for t in user_analytics['OngoingTasks']
+                t for t in user_analytics_specific['OngoingTasks']
                 if pd.to_datetime(t['BCD']).date() == now_utc.date()
             ]),
             user_flag_data=user_flag_data
         )
-
     return render_template("login.html")
-
-# ==============================================================================
 
 @app.route("/user_form", methods=["GET", "POST"])
 def user_form():
     if "user" not in session:
         return redirect(url_for("login"))
-
     user = session["user"]
     email = user.get("mail") or user.get("userPrincipalName")
     user_id = user.get("id")
-
     if request.method == "POST":
         role = request.form.get("role")
-        # photo_file = request.files.get("photo")
-
-        # Save or update user in Excel
         success = add_or_update_user_in_excel(email, user_id, user.get("displayName"), role)
         if success:
             return redirect(url_for("index"))
         else:
             return "Error saving user data. Please try again."
-
     return render_template("user_form.html", user=user)
-
-# ==============================================================================
 
 @app.route("/dashboard")
 def dashboard():
     return redirect("/")
 
-# ==============================================================================
-
 @app.route("/teams")
 def teams():
-    tasks = fetch_sharepoint_list(SITE_DOMAIN, SITE_PATH, LIST_NAME)
-    df=items_to_dataframe(tasks)
-    access_token=session.get("access_token")
-    user_analytics=generate_user_analytics(df,exclude_users= EXCLUDED_USERS)
     user = session["user"]
     email = user.get("mail") or user.get("userPrincipalName")
-    return render_template("teams.html" ,user=user , email=email ,user_analytics=user_analytics )
+    return render_template("teams.html", user=user, email=email, user_analytics=user_analytics)
 
 @app.route("/bd")
 def bd():
@@ -276,44 +247,23 @@ def bd():
 def cs():
     return render_template("customer_success_team.html")
 
-# ==============================================================================
-
 @app.route("/user/<username>")
 def user_profile(username):
-    # Fetch SharePoint tasks
     tasks = fetch_sharepoint_list(SITE_DOMAIN, SITE_PATH, LIST_NAME)
     df = items_to_dataframe(tasks)
-
-    # Get analytics for specific user
-    user_analytics = get_user_analytics_specific(df, username)  # returns dict
-
-    # Filter ongoing tasks: BCD in future & not submitted
+    user_analytics_specific = get_user_analytics_specific(df, username)
     now_utc = pd.Timestamp.utcnow()
     ongoing_filtered = [
-        t for t in user_analytics['OngoingTasks']
+        t for t in user_analytics_specific['OngoingTasks']
         if pd.to_datetime(t['BCD']) > now_utc and t.get('SubmissionStatus','') != 'Submitted'
     ]
-    user_analytics['OngoingTasks'] = ongoing_filtered
-    user_analytics['OngoingTasksCount'] = len(ongoing_filtered)
+    user_analytics_specific['OngoingTasks'] = ongoing_filtered
+    user_analytics_specific['OngoingTasksCount'] = len(ongoing_filtered)
     user = session["user"]
     email = user.get("mail") or user.get("userPrincipalName")
-    
-    if username=="dashboard":
-        return redirect("/")
-    elif username== "customer":
-        return redirect("/customer")
-    elif username=="businesscard":
-        return redirect("/businesscard")
-    elif username == "orders":
-        return redirect("/orders")
-    elif username == "payments":
-        return redirect("/payments")
-    elif username == "reports":
-        return redirect("/reports")
-    
-    return render_template("profile.html",user=user,email=email,user_analytics=user_analytics)
-
-# ==============================================================================
+    if username in ["dashboard", "customer", "businesscard", "orders", "payments", "reports"]:
+        return redirect(f"/{username}")
+    return render_template("profile.html", user=user, email=email, user_analytics=user_analytics_specific)
 
 @app.route("/login")
 def login():
@@ -323,13 +273,10 @@ def login():
     )
     return redirect(auth_url)
 
-# ==============================================================================
-
 @app.route("/getAToken")
 def authorized():
     code = request.args.get("code")
     if code:
-        # Use the same REDIRECT_URI as registered in Azure
         result = msal_app.acquire_token_by_authorization_code(
             code,
             scopes=SCOPE,
@@ -337,61 +284,36 @@ def authorized():
         )
         if "access_token" in result:
             access_token = result["access_token"]
-
-            # Get user info
             graph_data = requests.get(
                 "https://graph.microsoft.com/v1.0/me",
                 headers={"Authorization": f"Bearer {access_token}"}
             ).json()
-
-            # Save user info and token in session
             session["user"] = graph_data
             session["access_token"] = access_token
-
             return redirect("/")
-
     return "Login failed"
-
-# ==============================================================================
-
 
 @app.route("/logout")
 def logout():
     session.clear()
     return redirect("/")
 
-# ==============================================================================
-
 @app.route("/task_details/<title>")
 def task_details(title):
     if "user" not in session:
         return redirect(url_for('login'))
     user = session.get("user")
-    # photo = session.get("user", {}).get("photo")
     df = items_to_dataframe(fetch_sharepoint_list(SITE_DOMAIN, SITE_PATH, LIST_NAME))
     task = get_task_details(df, title)
     return render_template("pages/task_details.html", task=task, user=user)
-
-# ==============================================================================
-# == BUSINESS CARDS ROUTES ==
-# ==============================================================================
 
 @app.route("/businesscard")
 def business_cards():
     if "user" not in session:
         return redirect(url_for('login'))
-    
-    # THE FIX IS HERE: We now get the user and photo from the session
     user = session.get("user")
-    # Safely get photo, providing a default empty dict if user is not found
-    # photo = session.get("user", {}).get("photo")
-
     contacts = get_all_contacts_from_onedrive()
-
-    # THE FIX IS HERE: We now pass the user and photo to the template
     return render_template("pages/business_cards.html", contacts=contacts, user=user)
-
-# ==============================================================================
 
 @app.route("/api/update-contact", methods=['POST'])
 def api_update_contact():
@@ -400,32 +322,39 @@ def api_update_contact():
     data = request.get_json()
     row_id = data.get('row_id')
     contact_data = data.get('contact_data')
-    
     if not row_id or not contact_data:
         return jsonify({"success": False, "error": "Missing data"}), 400
-
     success = update_contact_in_onedrive_excel(row_id, contact_data)
-
     if success:
         return jsonify({"success": True})
     else:
         return jsonify({"success": False, "error": "Failed to update Excel file"}), 500
-
-
-# ==============================================================================
 
 @app.route("/customers")
 def customer():
     if "user" not in session:
         return redirect(url_for('login'))
     user = session.get("user")
-    # photo = session.get("user", {}).get("photo")
     raw_customers = fetch_customers()
     structured_customers = structure_customers_data(raw_customers)
     return render_template("pages/customers.html", customers=structured_customers, user=user)
 
+@app.route("/quote")
+def quote():
+    if "user" not in session:
+        return redirect(url_for('login'))
+    user = session.get("user")
+    raw_customers = fetch_customers()
+    structured_customers = structure_customers_data(raw_customers)
+    
+    return render_template("pages/quote.html", user=user, customers=structured_customers)
 
 
+
+# ==============================================================
+# START FLASK + BACKGROUND UPDATER
+# ==============================================================
 
 if __name__ == "__main__":
+    threading.Thread(target=background_updater, daemon=True).start()
     app.run(debug=True)

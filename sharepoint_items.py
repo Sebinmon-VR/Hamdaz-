@@ -1,4 +1,5 @@
 # sharepoint_helper.py
+from asyncio import tasks
 import os
 import requests
 from msal import ConfidentialClientApplication
@@ -421,10 +422,11 @@ def get_user_details(access_token, usernames):
 
 
 def generate_user_analytics(df, user_column='AssignedTo', status_column='Status', 
-                            title_column='Title', due_column='DueDate', exclude_users=None):
+                            title_column='Title', due_column='DueDate', orders_column='OrdersReceived',
+                            exclude_users=None):
     """
-    Generate per-user analytics with lists of completed, ongoing, and missed tasks,
-    excluding specific users.
+    Generate per-user analytics with counts, lists of tasks, last assigned date,
+    and orders received, excluding specific users.
 
     Args:
         df (pd.DataFrame): DataFrame containing SharePoint items.
@@ -432,10 +434,11 @@ def generate_user_analytics(df, user_column='AssignedTo', status_column='Status'
         status_column (str): Column name for task status.
         title_column (str): Column name for task title.
         due_column (str): Column name for task due date.
+        orders_column (str): Column name for orders received.
         exclude_users (list): List of users to exclude from analytics.
 
     Returns:
-        pd.DataFrame: Analytics per user with counts and lists of tasks.
+        pd.DataFrame: Analytics per user with counts, task lists, last assigned date, and orders received.
     """
     if exclude_users is None:
         exclude_users = []
@@ -448,7 +451,6 @@ def generate_user_analytics(df, user_column='AssignedTo', status_column='Status'
     # Ensure DueDate is datetime with UTC timezone
     df[due_column] = pd.to_datetime(df[due_column], utc=True, errors='coerce')
 
-    # Always get a tz-aware UTC timestamp safely
     now_utc = pd.Timestamp.now(tz='UTC')
 
     # Filter out excluded users
@@ -475,6 +477,15 @@ def generate_user_analytics(df, user_column='AssignedTo', status_column='Status'
             (group[due_column] < now_utc)
         ]
 
+        # Last assigned date: latest DueDate in user's tasks
+        last_assigned_date = group[due_column].max() if not group[due_column].dropna().empty else None
+
+        # Orders received: sum of orders_column if exists, else 0
+        if orders_column in group.columns:
+            orders_received = group[orders_column].sum()
+        else:
+            orders_received = 0
+
         analytics.append({
             'User': user,
             'TotalTasks': total_tasks,
@@ -483,11 +494,15 @@ def generate_user_analytics(df, user_column='AssignedTo', status_column='Status'
             'MissedTasksCount': len(missed_tasks_df),
             'CompletedTasks': completed_tasks_df[title_column].tolist(),
             'OngoingTasks': ongoing_tasks_df[title_column].tolist(),
-            'MissedTasks': missed_tasks_df[title_column].tolist()
-        })
+            'MissedTasks': missed_tasks_df[title_column].tolist(),
+            'LastAssignedDate': last_assigned_date.isoformat() if last_assigned_date is not None else None,
+            'OrdersReceived': orders_received
+            })
+
 
     analytics_df = pd.DataFrame(analytics)
     return analytics_df
+
 
 
 def get_user_analytics_specific(df: pd.DataFrame, username: str) -> dict:
@@ -682,6 +697,37 @@ def get_user_details_from_excell():
         print(f"Error fetching customers from OneDrive: {e}")
         return []
     
+
+    
+def get_user_tasks_details_from_excell():
+    try:
+        access_token = get_onedrive_access_token()
+        headers = {"Authorization": f"Bearer {access_token}"}
+        
+        url = (
+            f"{GRAPH_API_ENDPOINT}/users/{ONEDRIVE_PRIMARY_USER_ID}/drive/root:/"
+            f"Sharepoint Datas.xlsx:/workbook/worksheets('Sheet1')/usedRange"
+        )
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+        data = response.json()
+        
+        rows = data.get('values', [])
+        if not rows or len(rows) < 2:
+            return [] 
+
+        header = rows[0]
+        customers = []
+        for i, row_data in enumerate(rows[1:]):
+            customer_dict = {header[j]: row_data[j] if j < len(row_data) else "" for j in range(len(header))}
+            customer_dict['row_id'] = i + 2  # Excel rows are 1-based, data starts on row 2
+            customers.append(customer_dict)
+        return customers
+    except Exception as e:
+        print(f"Error fetching customers from OneDrive: {e}")
+        return []
+    
+    
 def upload_photo_to_onedrive(photo_file, user_id, email):
     """
     Uploads a user profile photo to OneDrive and returns the shared link.
@@ -762,6 +808,63 @@ def add_or_update_user_in_excel(email, user_id, name, role, photo_file=None):
     except Exception as e:
         print(f"Error adding/updating user in Excel: {e}")
         return False
+
+
+
+def add_or_update_user_analytics(username, total_tasks, tasks_completed, tasks_pending, tasks_missed, orders_received, last_assigned_date):
+    """
+    Adds or updates analytics for a user in UserAnalytics.xlsx on OneDrive.
+    Uses username as the unique identifier.
+    """
+    try:
+        access_token = get_onedrive_access_token()
+        headers = {"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"}
+
+        # Fetch existing data
+        users_analytics = get_user_details_from_excell()  # assumes UserAnalytics.xlsx is same as Userdatas.xlsx function
+        user = next((u for u in users_analytics if u.get("username") == username), None)
+
+        if user:
+            # Update existing row
+            row_id = user["row_id"]
+            update_values = [[
+                username,
+                total_tasks,
+                tasks_completed,
+                tasks_pending,
+                tasks_missed,
+                orders_received,
+                last_assigned_date
+            ]]
+            last_col = chr(ord('A') + len(update_values[0]) - 1)
+            range_address = f"A{row_id}:{last_col}{row_id}"
+            update_url = f"{GRAPH_API_ENDPOINT}/users/{ONEDRIVE_PRIMARY_USER_ID}/drive/root:/UserAnalytics.xlsx:/workbook/worksheets('UserAnalytics')/range(address='{range_address}')"
+            response = requests.patch(update_url, headers=headers, json={"values": update_values})
+            response.raise_for_status()
+        else:
+            # Append new row
+            append_values = [[
+                username,
+                total_tasks,
+                tasks_completed,
+                tasks_pending,
+                tasks_missed,
+                orders_received,
+                last_assigned_date
+            ]]
+            append_url = f"{GRAPH_API_ENDPOINT}/users/{ONEDRIVE_PRIMARY_USER_ID}/drive/root:/UserAnalytics.xlsx:/workbook/worksheets('UserAnalytics')/tables('Table1')/rows/add"
+            response = requests.post(append_url, headers=headers, json={"values": append_values})
+            response.raise_for_status()
+
+        return True
+
+    except Exception as e:
+        print(f"Error saving analytics to OneDrive: {e}")
+        return False
+
+
+
+
 
 # ==============================================================================
 # ==============================================================================

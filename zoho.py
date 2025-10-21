@@ -179,6 +179,43 @@ def structure_quotes_data(quotes):
         })
     return pd.DataFrame(structured_data)
 
+
+def create_quote(customer_id, items, reference_number=None, notes=None):
+    """
+    Create a new quote in Zoho Books.
+
+    :param customer_id: The Zoho Books customer ID.
+    :param items: List of dicts -> [{"item_id": "...", "rate": 100, "quantity": 2}, ...]
+    :param reference_number: Optional reference string.
+    :param notes: Optional notes for the quote.
+    """
+    access_token = get_access_token()
+    url = f"{BASE_URL}/quotes?organization_id={ORGANIZATION_ID}"
+
+    payload = {
+        "customer_id": customer_id,
+        "date": datetime.now().strftime("%Y-%m-%d"),
+        "reference_number": reference_number or f"REF-{int(datetime.now().timestamp())}",
+        "line_items": items,
+        "notes": notes or "Generated via API"
+    }
+
+    headers = {
+        "Authorization": f"Zoho-oauthtoken {access_token}",
+        "Content-Type": "application/json"
+    }
+
+    response = requests.post(url, headers=headers, json=payload)
+    data = response.json()
+
+    if response.status_code == 201 and "quote" in data:
+        print("✅ Quote created successfully!")
+        return data["quote"]
+    else:
+        raise Exception(f"❌ Failed to create quote: {data}")
+
+
+
 # =======================
 # MAIN
 # =======================
