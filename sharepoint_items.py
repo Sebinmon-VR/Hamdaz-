@@ -810,7 +810,6 @@ def add_or_update_user_in_excel(email, user_id, name, role, photo_file=None):
         return False
 
 
-
 def add_or_update_user_analytics(username, total_tasks, tasks_completed, tasks_pending, tasks_missed, orders_received, last_assigned_date):
     """
     Adds or updates analytics for a user in UserAnalytics.xlsx on OneDrive.
@@ -820,41 +819,47 @@ def add_or_update_user_analytics(username, total_tasks, tasks_completed, tasks_p
         access_token = get_onedrive_access_token()
         headers = {"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"}
 
-        # Fetch existing data
-        users_analytics = get_user_details_from_excell()  # assumes UserAnalytics.xlsx is same as Userdatas.xlsx function
-        user = next((u for u in users_analytics if u.get("username") == username), None)
+        # Ensure last_assigned_date is string for JSON
+        if isinstance(last_assigned_date, (pd.Timestamp, datetime)):
+            last_assigned_date = last_assigned_date.strftime("%Y-%m-%d %H:%M:%S")
 
-        if user:
+        # Fetch all existing users from Excel
+        users_analytics = get_user_details_from_excell()  # Should return list of dicts with 'username' and 'row_id'
+        username_lower = username.strip().lower()
+
+        # Find existing user
+        user = None
+        for u in users_analytics:
+            existing_username = u.get("username", "").strip().lower()
+            if existing_username == username_lower:
+                user = u
+                break
+
+        values = [[
+            username,
+            total_tasks,
+            tasks_completed,
+            tasks_pending,
+            tasks_missed,
+            orders_received,
+            last_assigned_date
+        ]]
+
+        if user and "row_id" in user:
             # Update existing row
             row_id = user["row_id"]
-            update_values = [[
-                username,
-                total_tasks,
-                tasks_completed,
-                tasks_pending,
-                tasks_missed,
-                orders_received,
-                last_assigned_date
-            ]]
-            last_col = chr(ord('A') + len(update_values[0]) - 1)
+            last_col = chr(ord('A') + len(values[0]) - 1)
             range_address = f"A{row_id}:{last_col}{row_id}"
             update_url = f"{GRAPH_API_ENDPOINT}/users/{ONEDRIVE_PRIMARY_USER_ID}/drive/root:/UserAnalytics.xlsx:/workbook/worksheets('UserAnalytics')/range(address='{range_address}')"
-            response = requests.patch(update_url, headers=headers, json={"values": update_values})
+            response = requests.patch(update_url, headers=headers, json={"values": values})
             response.raise_for_status()
+            print(f"[INFO] Updated analytics for user: {username}")
         else:
             # Append new row
-            append_values = [[
-                username,
-                total_tasks,
-                tasks_completed,
-                tasks_pending,
-                tasks_missed,
-                orders_received,
-                last_assigned_date
-            ]]
             append_url = f"{GRAPH_API_ENDPOINT}/users/{ONEDRIVE_PRIMARY_USER_ID}/drive/root:/UserAnalytics.xlsx:/workbook/worksheets('UserAnalytics')/tables('Table1')/rows/add"
-            response = requests.post(append_url, headers=headers, json={"values": append_values})
+            response = requests.post(append_url, headers=headers, json={"values": values})
             response.raise_for_status()
+            print(f"[INFO] Added new analytics for user: {username}")
 
         return True
 
