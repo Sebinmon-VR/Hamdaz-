@@ -1,0 +1,179 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<div class="container my-4">
+    <h2 class="mb-4">New Quote</h2>
+    <form id="quoteForm" method="POST" action="/send_quote_for_approval">
+
+        <!-- Customer Selection -->
+        <div class="mb-3">
+            <label for="customerSelect" class="form-label">Select Customer</label>
+            <select class="form-select" id="customerSelect" name="customer_id" required>
+                {% for cust in customers %}
+                <option value="{{ cust.contact_id }}" data-currency="{{ cust.currency_code }}"
+                    data-payment="{{ cust.payment_terms }}" data-email="{{ cust.email }}" data-phone="{{ cust.phone }}"
+                    data-mobile="{{ cust.mobile }}">
+                    {{ cust.customer_name }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <!-- Auto-filled Customer Details -->
+        <div class="row g-3 mb-4">
+            <div class="col-md-4">
+                <label class="form-label">Currency</label>
+                <input type="text" class="form-control" id="currency" name="currency" readonly>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Payment Terms</label>
+                <input type="text" class="form-control" id="payment_terms" name="payment_terms" readonly>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Email</label>
+                <input type="email" class="form-control" id="email" name="email" readonly>
+            </div>
+        </div>
+
+        <!-- Quote Details -->
+        <div class="card mb-4 p-3">
+            <h5>Quote Details</h5>
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label">Reference #</label>
+                    <input type="text" class="form-control" name="reference" placeholder="Reference #" required>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Quote Date</label>
+                    <input type="date" class="form-control" name="quote_date" required
+                        value="{{ current_date.strftime('%Y-%m-%d') }}">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Expiry Date</label>
+                    <input type="date" class="form-control" name="expiry_date" required>
+                </div>
+            </div>
+            <div class="row g-3 mt-3">
+                <div class="col-md-4">
+                    <label class="form-label">Portal</label>
+                    <input type="text" class="form-control" name="portal" placeholder="Portal" required>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">BCD</label>
+                    <input type="date" class="form-control" name="bcd" required>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Quote Creator</label>
+                    <input type="text" class="form-control" name="quote_creator" value="{{ session.user.displayName }}"
+                        required>
+                </div>
+            </div>
+        </div>
+
+        <!-- Items Table -->
+        <div class="card mb-4 p-3">
+            <h5>Items</h5>
+            <table class="table table-bordered" id="itemsTable">
+                <thead class="table-light">
+                    <tr>
+                        <th>Item Details</th>
+                        <th>Brand</th>
+                        <th>Quantity</th>
+                        <th>Rate</th>
+                        <th>Margin</th>
+                        <th>Item Type</th>
+                        <th>Discount</th>
+                        <th>Tax</th>
+                        <th>Amount</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><input type="text" class="form-control" name="item_details[]" required></td>
+                        <td><input type="text" class="form-control" name="brand[]" required></td>
+                        <td><input type="number" class="form-control" name="quantity[]" required></td>
+                        <td><input type="number" class="form-control" name="rate[]" required></td>
+                        <td><input type="number" class="form-control" name="discount[]" required value="0"></td>
+                        <td>
+                            <select class="form-select" name="tax[]">
+                                <option disabled class="option-header">Exempt</option>
+                                <option value="out_of_scope">Out of Scope</option>
+                                <option disabled value="tax">Tax</option>
+                                <option value="standard_rate">Standard Rate [5%]</option>
+                                <option value="zero_rate">Zero Rate [0%]</option>
+                            </select>
+                        </td>
+
+                        <td><input type="number" class="form-control" name="amount[]" required></td>
+                        <td><button type="button" class="btn btn-danger btn-sm remove-row"><img src="/static/icons/delete.png" alt=""></button></td>
+                    </tr>
+                </tbody>
+            </table>
+            <button type="button" class="btn btn-success" id="addItemBtn">Add Item</button>
+        </div>
+
+        <!-- Customer Notes & Terms -->
+        <div class="card mb-4 p-3">
+            <h5>Customer Notes</h5>
+            <textarea name="customer_notes" rows="3" class="form-control mb-3" required></textarea>
+
+            <h5>Terms & Conditions</h5>
+            <textarea name="terms_conditions" rows="3" class="form-control" required></textarea>
+        </div>
+
+        <!-- Price Summary -->
+        <div class="card mb-4 p-3">
+            <h5>Price Summary</h5>
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label">Subtotal</label>
+                    <input type="number" class="form-control" name="subtotal" required>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Total Discount</label>
+                    <input type="number" class="form-control" name="total_discount" required>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Grand Total</label>
+                    <input type="number" class="form-control" name="grand_total" required>
+                </div>
+            </div>
+        </div>
+
+        <button type="submit" class="btn btn-primary btn-lg">Submit Quote for Approval</button>
+    </form>
+</div>
+
+<script>
+    // --- Customer selection dynamic fill ---
+    const customerSelect = document.getElementById('customerSelect');
+    customerSelect.addEventListener('change', function () {
+        const selectedOption = this.options[this.selectedIndex];
+        document.getElementById('currency').value = selectedOption.getAttribute('data-currency');
+        document.getElementById('payment_terms').value = selectedOption.getAttribute('data-payment');
+        document.getElementById('email').value = selectedOption.getAttribute('data-email');
+    });
+    // Trigger initial fill
+    customerSelect.dispatchEvent(new Event('change'));
+
+    // --- Dynamic Items Table ---
+    const addItemBtn = document.getElementById('addItemBtn');
+    const itemsTable = document.getElementById('itemsTable').getElementsByTagName('tbody')[0];
+
+    addItemBtn.addEventListener('click', function () {
+        const newRow = itemsTable.rows[0].cloneNode(true);
+        Array.from(newRow.querySelectorAll('input')).forEach(input => input.value = '');
+        itemsTable.appendChild(newRow);
+    });
+
+    itemsTable.addEventListener('click', function (e) {
+        if (e.target.classList.contains('remove-row')) {
+            const row = e.target.closest('tr');
+            if (itemsTable.rows.length > 1) row.remove();
+        }
+    });
+</script>
+
+{% endblock %}

@@ -10,6 +10,7 @@ import pandas as pd
 from datetime import datetime
 import pytz
 from collections import defaultdict
+import re
 # ----------------------------
 # Load environment variables
 # ----------------------------
@@ -35,6 +36,7 @@ SCOPE_ONEDRIVE = ["https://graph.microsoft.com/.default"]
 ONEDRIVE_USER_ID = os.getenv("ONEDRIVE_USER_ID")
 FILE_PATH = os.getenv("ONEDRIVE_FILE_PATH", "Contacts.xlsx")
 WORKSHEET_NAME = os.getenv("ONEDRIVE_WORKSHEET_NAME", "Sheet1")
+CONTACT_WORKSHEET_NAME= "Sheet1"
 GRAPH_API_ENDPOINT = "https://graph.microsoft.com/v1.0"
 
 onedrive_msal_app = ConfidentialClientApplication(
@@ -583,7 +585,7 @@ def get_all_contacts_from_onedrive():
         
         url = (
             f"{GRAPH_API_ENDPOINT}/users/{ONEDRIVE_USER_ID}/drive/root:/"
-            f"{FILE_PATH}:/workbook/worksheets('{WORKSHEET_NAME}')/usedRange"
+            f"{FILE_PATH}:/workbook/worksheets('{CONTACT_WORKSHEET_NAME}')/usedRange"
         )
         response = requests.get(url, headers=headers)
         response.raise_for_status()
@@ -809,67 +811,96 @@ def add_or_update_user_in_excel(email, user_id, name, role, photo_file=None):
         print(f"Error adding/updating user in Excel: {e}")
         return False
 
-
-def add_or_update_user_analytics(username, total_tasks, tasks_completed, tasks_pending, tasks_missed, orders_received, last_assigned_date):
-    """
-    Adds or updates analytics for a user in UserAnalytics.xlsx on OneDrive.
-    Uses username as the unique identifier.
-    """
-    try:
-        access_token = get_onedrive_access_token()
-        headers = {"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"}
-
-        # Ensure last_assigned_date is string for JSON
-        if isinstance(last_assigned_date, (pd.Timestamp, datetime)):
-            last_assigned_date = last_assigned_date.strftime("%Y-%m-%d %H:%M:%S")
-
-        # Fetch all existing users from Excel
-        users_analytics = get_user_details_from_excell()  # Should return list of dicts with 'username' and 'row_id'
-        username_lower = username.strip().lower()
-
-        # Find existing user
-        user = None
-        for u in users_analytics:
-            existing_username = u.get("username", "").strip().lower()
-            if existing_username == username_lower:
-                user = u
-                break
-
-        values = [[
-            username,
-            total_tasks,
-            tasks_completed,
-            tasks_pending,
-            tasks_missed,
-            orders_received,
-            last_assigned_date
-        ]]
-
-        if user and "row_id" in user:
-            # Update existing row
-            row_id = user["row_id"]
-            last_col = chr(ord('A') + len(values[0]) - 1)
-            range_address = f"A{row_id}:{last_col}{row_id}"
-            update_url = f"{GRAPH_API_ENDPOINT}/users/{ONEDRIVE_PRIMARY_USER_ID}/drive/root:/UserAnalytics.xlsx:/workbook/worksheets('UserAnalytics')/range(address='{range_address}')"
-            response = requests.patch(update_url, headers=headers, json={"values": values})
-            response.raise_for_status()
-            print(f"[INFO] Updated analytics for user: {username}")
-        else:
-            # Append new row
-            append_url = f"{GRAPH_API_ENDPOINT}/users/{ONEDRIVE_PRIMARY_USER_ID}/drive/root:/UserAnalytics.xlsx:/workbook/worksheets('UserAnalytics')/tables('Table1')/rows/add"
-            response = requests.post(append_url, headers=headers, json={"values": values})
-            response.raise_for_status()
-            print(f"[INFO] Added new analytics for user: {username}")
-
-        return True
-
-    except Exception as e:
-        print(f"Error saving analytics to OneDrive: {e}")
-        return False
+EXCEL_FILE_PATH = "UserAnalytics.xlsx"
+WORKSHEET_NAME = "UserAnalytics"
+TABLE_NAME = "Table1"  # Excel Table must exist, will create if missing
 
 
 
+def create_table_if_missing(headers):
+    """Create table in Excel if it doesn't exist yet."""
+    # Check existing tables
+    tables_url = f"{GRAPH_API_ENDPOINT}/users/{ONEDRIVE_PRIMARY_USER_ID}/drive/root:/{EXCEL_FILE_PATH}:/workbook/worksheets('{WORKSHEET_NAME}')/tables"
+    resp = requests.get(tables_url, headers=headers)
+    resp.raise_for_status()
+    existing_tables = [t['name'] for t in resp.json().get('value', [])]
 
+    if TABLE_NAME not in existing_tables:
+        # Create table starting at A1 with 7 columns
+        table_payload = {
+            "address": "A1:G1",
+            "hasHeaders": True,
+            "name": TABLE_NAME
+        }
+        create_url = f"{GRAPH_API_ENDPOINT}/users/{ONEDRIVE_PRIMARY_USER_ID}/drive/root:/{EXCEL_FILE_PATH}:/workbook/worksheets('{WORKSHEET_NAME}')/tables/add"
+        resp2 = requests.post(create_url, headers=headers, json=table_payload)
+        resp2.raise_for_status()
+        print(f"[INFO] Created table '{TABLE_NAME}' in worksheet '{WORKSHEET_NAME}'")
+        
+        
+        
+# def add_or_update_user_analytics(username, total_tasks, tasks_completed, tasks_pending, tasks_missed, orders_received, last_assigned_date):
+#     """
+#     Adds or updates analytics for a user in UserAnalytics.xlsx on OneDrive.
+#     Uses username as the unique identifier.
+#     """
+#     try:
+#         access_token = get_onedrive_access_token()
+#         headers = {"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"}
+
+#         # Ensure last_assigned_date is string for JSON
+#         if isinstance(last_assigned_date, (pd.Timestamp, datetime)):
+#             last_assigned_date = last_assigned_date.strftime("%Y-%m-%d %H:%M:%S")
+#         if last_assigned_date is None:
+#             last_assigned_date = ""
+
+#         # Ensure numeric fields are not None
+#         total_tasks = total_tasks or 0
+#         tasks_completed = tasks_completed or 0
+#         tasks_pending = tasks_pending or 0
+#         tasks_missed = tasks_missed or 0
+#         orders_received = orders_received or 0
+
+#         # Create table if missing
+#         create_table_if_missing(headers)
+
+#         # Fetch all existing users from table
+#         table_range_url = f"{GRAPH_API_ENDPOINT}/users/{ONEDRIVE_PRIMARY_USER_ID}/drive/root:/{EXCEL_FILE_PATH}:/workbook/tables('{TABLE_NAME}')/rows"
+#         resp = requests.get(table_range_url, headers=headers)
+#         resp.raise_for_status()
+#         rows = resp.json().get("value", [])
+
+#         # Check if user exists
+#         existing_row_id = None
+#         for row in rows:
+#             values = row.get("values", [[]])[0]
+#             if len(values) > 0 and str(values[0]).strip().lower() == username.strip().lower():
+#                 existing_row_id = row.get("index") + 1  # Graph API index starts at 0
+#                 break
+
+#         # Prepare values
+#         values = [[username, total_tasks, tasks_completed, tasks_pending, tasks_missed, orders_received, last_assigned_date]]
+
+#         if existing_row_id is not None:
+#             # Update existing row
+#             last_col = chr(ord('A') + len(values[0]) - 1)
+#             range_address = f"A{existing_row_id}:{last_col}{existing_row_id}"
+#             update_url = f"{GRAPH_API_ENDPOINT}/users/{ONEDRIVE_PRIMARY_USER_ID}/drive/root:/{EXCEL_FILE_PATH}:/workbook/worksheets('{WORKSHEET_NAME}')/range(address='{range_address}')"
+#             response = requests.patch(update_url, headers=headers, json={"values": values})
+#             response.raise_for_status()
+#             print(f"[INFO] Updated analytics for user: {username}")
+#         else:
+#             # Append new row
+#             append_url = f"{GRAPH_API_ENDPOINT}/users/{ONEDRIVE_PRIMARY_USER_ID}/drive/root:/{EXCEL_FILE_PATH}:/workbook/tables('{TABLE_NAME}')/rows/add"
+#             response = requests.post(append_url, headers=headers, json={"values": values})
+#             response.raise_for_status()
+#             print(f"[INFO] Added new analytics for user: {username}")
+
+#         return True
+
+#     except Exception as e:
+#         print(f"Error saving analytics to OneDrive for user {username}: {e}")
+#         return False
 
 # ==============================================================================
 # ==============================================================================
@@ -887,3 +918,5 @@ def get_task_details(df: pd.DataFrame, task_title: str) -> dict:
         return {}
 
     return task_row.iloc[0].to_dict()
+
+

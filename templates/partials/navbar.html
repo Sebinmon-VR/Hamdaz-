@@ -20,7 +20,7 @@
 
             <!-- Profile Picture -->
             <div class="profile-container" style="position: relative;">
-               <!-- <img src="{{ photo }}" alt="Profile Picture" class="profile-pic" width="50" height="50" style="border-radius:50%; cursor: pointer; margin-right: 10px; background:#fa8383;"> -->
+                <!-- <img src="{{ photo }}" alt="Profile Picture" class="profile-pic" width="50" height="50" style="border-radius:50%; cursor: pointer; margin-right: 10px; background:#fa8383;"> -->
 
                 <!-- Dropdown Card -->
                 <div id="profile-card" class="profile-card hidden">
@@ -59,6 +59,12 @@
             <li><a href="payments"><img src="/static/icons/payments.png" alt=""> Payments</a></li>
             {% endif %}
 
+            {% if excel_role == "pre-sales" %}
+            <div class="line"><span>Pre-sales</span></div>
+            <li><a href="/quote"><img src="/static/icons/quote.png" alt="">New Quote</a></li>
+            {% endif %}
+
+          
             <li><a href="customers"><img src="/static/icons/customer.png" alt=""> Customer</a></li>
             <li><a href="businesscard"><img src="/static/icons/businesscard.png" alt=""> Business Cards</a></li>
             <div class="line"><span>Reports</span></div>

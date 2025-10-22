@@ -12,6 +12,7 @@ import pandas as pd  # Required for timestamp conversion
 from sharepoint_data import *
 from sharepoint_items import *
 from zoho import *
+from auto_assign import *
 
 # ================== LOAD ENVIRONMENT ==================
 load_dotenv(override=True)
@@ -27,8 +28,8 @@ REDIRECT_URI = os.getenv("REDIRECT_URI")
 AUTHORITY = f"https://login.microsoftonline.com/{TENANT_ID}"
 SCOPE = ["User.Read"]
 
-SUPERUSERS = ["sebin@hamdaz.com","jisha@hamdaz.com","hello@hamdaz.com"]
-LIMITED_USERS = []
+SUPERUSERS = ["jisha@hamdaz.com","hello@hamdaz.com"]
+LIMITED_USERS = [""]
 
 # Initialize MSAL
 msal_app = ConfidentialClientApplication(
@@ -49,6 +50,7 @@ EXCLUDED_USERS = ["Sebin", "Shamshad", "Jaymon", "Hisham Arackal", "Althaf", "Ni
 print("[INIT] Fetching initial SharePoint data...")
 tasks = fetch_sharepoint_list(SITE_DOMAIN, SITE_PATH, LIST_NAME)
 df = items_to_dataframe(tasks)
+
 user_analytics = generate_user_analytics(df, exclude_users=EXCLUDED_USERS)
 print("[INIT] Data loaded successfully.")
 
@@ -59,7 +61,7 @@ print("[INIT] Data loaded successfully.")
 def is_admin(email):
     return email.lower() in SUPERUSERS if email else False
 
-app.jinja_env.globals.update(is_admin=is_admin)
+app.jinja_env.globals.update(is_admin=is_admin , current_date=datetime.now() )
 
 def greetings():
     now = datetime.now()
@@ -100,24 +102,14 @@ def background_updater():
             tasks = fetch_sharepoint_list(SITE_DOMAIN, SITE_PATH, LIST_NAME)
             df = items_to_dataframe(tasks)
             user_analytics = generate_user_analytics(df, exclude_users=EXCLUDED_USERS)
-            print(f"[BG] Data updated successfully at {datetime.now()}")   
-            
-            # Loop over DataFrame rows to match key names
-            for _, data in user_analytics.iterrows():
-                add_or_update_user_analytics(
-                    username=data["User"],
-                    total_tasks=data["TotalTasks"],
-                    tasks_completed=data["CompletedTasksCount"],
-                    tasks_pending=data["OngoingTasksCount"],
-                    tasks_missed=data["MissedTasksCount"],
-                    orders_received=data.get("OrdersReceived", 0),  # default 0
-                    last_assigned_date=data.get("LastAssignedDate")
-                    )
+
+            print(f"[BG] Data updated successfully at {datetime.now()}")
+
 
         except Exception as e:
             print("[BG] Error during update:", e)
-        time.sleep(500)  # every 500 seconds
 
+        time.sleep(500)
 # ==============================================================
 # ROUTES
 # ==============================================================
@@ -161,12 +153,16 @@ def index():
         else:
             excel_role = current_user.get("role", "").strip().lower() if current_user else ""
             if excel_role == "pre-sales":
+                app.jinja_env.globals.update(excel_role="pre-sales")
                 dashboard_role = "pre_sales_dashboard"
             elif excel_role == "business development":
+                app.jinja_env.globals.update(excel_role="bd")
                 dashboard_role = "business_dev_dashboard"
             elif excel_role == "customer success":
+                app.jinja_env.globals.update(excel_role="cs")
                 dashboard_role = "customer_success_dashboard"
             else:
+                
                 dashboard_role = "user_dashboard"
 
         period_type = request.args.get('period', 'month')
@@ -252,6 +248,7 @@ def user_profile(username):
     tasks = fetch_sharepoint_list(SITE_DOMAIN, SITE_PATH, LIST_NAME)
     df = items_to_dataframe(tasks)
     user_analytics_specific = get_user_analytics_specific(df, username)
+    
     now_utc = pd.Timestamp.utcnow()
     ongoing_filtered = [
         t for t in user_analytics_specific['OngoingTasks']
