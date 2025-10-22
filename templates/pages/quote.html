@@ -34,6 +34,10 @@
                 <label class="form-label">Email</label>
                 <input type="email" class="form-control" id="email" name="email" readonly>
             </div>
+            <div class="col-md-4">
+                <label class="form-label">tax_treatment</label>
+                <input type="text" class="form-control" id="tax_treatment" name="tax_treatment" readonly>
+            </div>
         </div>
 
         <!-- Quote Details -->
@@ -95,6 +99,8 @@
                         <td><input type="text" class="form-control" name="brand[]" required></td>
                         <td><input type="number" class="form-control" name="quantity[]" required></td>
                         <td><input type="number" class="form-control" name="rate[]" required></td>
+                        <td><input type="number" class="form-control" name="margin[]" required value="0"></td>
+                        <td><input type="text" class="form-control" name="item_type[]" required></td>
                         <td><input type="number" class="form-control" name="discount[]" required value="0"></td>
                         <td>
                             <select class="form-select" name="tax[]">
@@ -142,7 +148,7 @@
             </div>
         </div>
 
-        <button type="submit" class="btn btn-primary btn-lg">Submit Quote for Approval</button>
+        <button type="submit" class="btn btn-primary btn-md">Submit Quote for Approval</button>
     </form>
 </div>
 

@@ -11,6 +11,8 @@ from datetime import datetime
 import pytz
 from collections import defaultdict
 import re
+import base64
+import json
 # ----------------------------
 # Load environment variables
 # ----------------------------
@@ -920,3 +922,69 @@ def get_task_details(df: pd.DataFrame, task_title: str) -> dict:
     return task_row.iloc[0].to_dict()
 
 
+
+
+def send_quote_approval_email(quote_data, submitter_email, admin_emails):
+    token = get_access_token()
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json"
+    }
+
+    # Adaptive Card as Actionable Message
+    adaptive_card = {
+        "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+        "type": "AdaptiveCard",
+        "version": "1.2",
+        "body": [
+            {"type": "TextBlock", "text": "New Quote Submission", "weight": "Bolder", "size": "Medium"},
+            {"type": "TextBlock", "text": f"Submitted by: {submitter_email}", "wrap": True},
+            {"type": "TextBlock", "text": f"Quote Details: {quote_data}", "wrap": True}
+        ],
+        "actions": [
+            {
+                "type": "Action.Http",
+                "title": "Approve",
+                "method": "POST",
+                "url": "https://yourdomain.com/quote_decision",
+                "body": json.dumps({"decision": "approve", "quote_data": quote_data}),
+                "headers": [{"name": "Content-Type", "value": "application/json"}]
+            },
+            {
+                "type": "Action.Http",
+                "title": "Reject",
+                "method": "POST",
+                "url": "https://yourdomain.com/quote_decision",
+                "body": json.dumps({"decision": "reject", "quote_data": quote_data}),
+                "headers": [{"name": "Content-Type", "value": "application/json"}]
+            }
+        ]
+    }
+
+    # Email payload
+    message = {
+        "message": {
+            "subject": "Quote Approval Required",
+            "body": {
+                "contentType": "html",
+                "content": f"""
+                <html>
+                <body>
+                <p>New quote submitted by {submitter_email}</p>
+                <p>Quote Details: {quote_data}</p>
+                <!-- Embed the Adaptive Card directly for actionable buttons -->
+                <script type="application/adaptivecard+json">
+                {json.dumps(adaptive_card)}
+                </script>
+                </body>
+                </html>
+                """
+            },
+            "toRecipients": [{"emailAddress": {"address": admin}} for admin in admin_emails]
+        }
+    }
+
+    url = f"{GRAPH_API_ENDPOINT}/users/{submitter_email}/sendMail"
+    response = requests.post(url, headers=headers, json=message)
+    response.raise_for_status()
+    print("Email sent successfully with buttons.")

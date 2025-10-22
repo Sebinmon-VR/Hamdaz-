@@ -28,7 +28,7 @@ REDIRECT_URI = os.getenv("REDIRECT_URI")
 AUTHORITY = f"https://login.microsoftonline.com/{TENANT_ID}"
 SCOPE = ["User.Read"]
 
-SUPERUSERS = ["jisha@hamdaz.com","hello@hamdaz.com"]
+SUPERUSERS = ["sebin@hamdaz.com"]
 LIMITED_USERS = [""]
 
 # Initialize MSAL
@@ -345,8 +345,33 @@ def quote():
     structured_customers = structure_customers_data(raw_customers)
     
     return render_template("pages/quote.html", user=user, customers=structured_customers)
+# ==============================================================
+# ==============================================================
 
+@app.route("/send_quote_for_approval", methods=["POST"])
+def send_for_approval():
+    if "user" not in session:
+        return redirect(url_for('login'))
+    user = session.get("user")
+    email = user.get("mail") or user.get("userPrincipalName")
 
+    quote_data = request.form.to_dict(flat=False)
+    success = send_quote_approval_email(quote_data, submitter_email=email, admin_emails=SUPERUSERS)
+    if success:
+        return render_template("pages/quote_success.html", user=user)
+    else:
+        return "Error submitting quote. Please try again."
+    
+    
+@app.route("/quote_decision", methods=["POST"])
+def quote_decision():
+    data = request.json
+    decision = data.get("decision")
+    quote_data = data.get("quote_data")
+    
+    # Save decision in database or SharePoint
+    print(f"Quote decision: {decision} for {quote_data}")
+    return {"status": "success"}
 
 # ==============================================================
 # START FLASK + BACKGROUND UPDATER
