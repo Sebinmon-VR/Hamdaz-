@@ -924,6 +924,7 @@ def get_task_details(df: pd.DataFrame, task_title: str) -> dict:
 
 DOMAIN=os.getenv("DOMAIN")
 
+
 def send_quote_approval_email(quote_data, submitter_email, admin_emails):
     token = get_access_token()
     headers = {
@@ -931,104 +932,44 @@ def send_quote_approval_email(quote_data, submitter_email, admin_emails):
         "Content-Type": "application/json"
     }
 
-    # Adaptive Card as Actionable Message
-    adaptive_card = {
-        "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
-        "type": "AdaptiveCard",
-        "version": "1.2",
-        "body": [
-            {"type": "TextBlock", "text": "New Quote Submission", "weight": "Bolder", "size": "Medium"},
-            {"type": "TextBlock", "text": f"Submitted by: {submitter_email}", "wrap": True},
-            {"type": "TextBlock", "text": f"Quote Details: {quote_data}", "wrap": True}
-        ],
-        "actions": [
-    {
-        "type": "Action.Http",
-        "title": "Approve",
-        "method": "POST",
-        "url": f"https://{DOMAIN}/quote_decision",
-        "body": json.dumps({
-            "decision": "approve",
-            "quote_data": quote_data,
-            "submitter_email": submitter_email
-        }),
-        "headers": [{"name": "Content-Type", "value": "application/json"}],
-        "authentication": {
-            "type": "ActiveDirectoryOAuth"
+    for admin in admin_emails:
+        approve_url = f"https://{DOMAIN}/quote_decision?decision=approve&quote_data={quote_data}&submitter_email={submitter_email}&admin_email={admin}"
+        reject_url = f"https://{DOMAIN}/quote_decision?decision=reject&quote_data={quote_data}&submitter_email={submitter_email}&admin_email={admin}"
+
+        body_html = f"""
+        <html>
+        <body>
+            <p>New quote submitted by <b>{submitter_email}</b></p>
+            <p>Quote Details: {quote_data}</p>
+            <p>Please review the quote:</p>
+            <a href="{approve_url}" 
+               style="background-color: #4CAF50; color: white; padding: 10px 20px;
+                      text-decoration: none; border-radius: 5px;">✅ Approve</a>
+            &nbsp;
+            <a href="{reject_url}" 
+               style="background-color: #f44336; color: white; padding: 10px 20px;
+                      text-decoration: none; border-radius: 5px;">❌ Reject</a>
+        </body>
+        </html>
+        """
+
+        message = {
+            "message": {
+                "subject": "Quote Approval Required",
+                "body": {
+                    "contentType": "HTML",
+                    "content": body_html
+                },
+                "toRecipients": [{"emailAddress": {"address": admin}}]
+            }
         }
-    },
-    {
-        "type": "Action.Http",
-        "title": "Reject",
-        "method": "POST",
-        "url": f"https://{DOMAIN}/quote_decision",
-        "body": json.dumps({
-            "decision": "reject",
-            "quote_data": quote_data,
-            "submitter_email": submitter_email
-        }),
-        "headers": [{"name": "Content-Type", "value": "application/json"}],
-        "authentication": {
-            "type": "ActiveDirectoryOAuth"
-        }
-    }
-]
 
-    }
+        url = f"{GRAPH_API_ENDPOINT}/users/{submitter_email}/sendMail"
+        response = requests.post(url, headers=headers, json=message)
+        response.raise_for_status()
 
-    # Email payload
-    message = {
-        "message": {
-            "subject": "Quote Approval Required",
-            "body": {
-                "contentType": "html",
-                "content": f"""
-                <html>
-                <body>
-                <p>New quote submitted by {submitter_email}</p>
-                <p>Quote Details: {quote_data}</p>
-                <!-- Embed the Adaptive Card directly for actionable buttons -->
-                <script type="application/adaptivecard+json">
-                {json.dumps(adaptive_card)}
-                </script>
-                </body>
-                </html>
-                """
-            },
-            "toRecipients": [{"emailAddress": {"address": admin}} for admin in admin_emails]
-        }
-    }
+    print("✅ Approval emails sent successfully.")
 
-    url = f"{GRAPH_API_ENDPOINT}/users/{submitter_email}/sendMail"
-    response = requests.post(url, headers=headers, json=message)
-    response.raise_for_status()
-    print("Email sent successfully ")
-    
-    
-    
-
-# def send_email(to_email, subject, body_html , token):
-#     """Send a simple email via Graph API from approvals mailbox"""
-#     headers = {
-#         "Authorization": f"Bearer {token}",
-#         "Content-Type": "application/json"
-#     }
-
-#     message = {
-#         "message": {
-#             "subject": subject,
-#             "body": {
-#                 "contentType": "HTML",
-#                 "content": body_html
-#             },
-#             "toRecipients": [{"emailAddress": {"address": to_email}}]
-#         }
-#     }
-
-#     url = f"{GRAPH_API_ENDPOINT}/users/{}/sendMail"
-#     response = requests.post(url, headers=headers, json=message)
-#     response.raise_for_status()
-#     print(f"Confirmation email sent to {to_email}")
 
 
 
