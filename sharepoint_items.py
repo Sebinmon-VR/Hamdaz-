@@ -926,94 +926,104 @@ DOMAIN=os.getenv("DOMAIN")
 
 
 def send_quote_approval_email(quote_data, submitter_email, admin_emails):
-    token = get_access_token()
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "Content-Type": "application/json"
+    """
+    Send a quote approval email with actionable Approve/Reject buttons to admins.
+    Only the quote reference is sent back to the server.
+    """
+    token = get_access_token()  # function to get MS Graph token
+
+    reference = quote_data.get("reference")[0]  # assuming reference field is unique
+
+    # Build Adaptive Card
+    adaptive_card = {
+        "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+        "type": "AdaptiveCard",
+        "version": "1.2",
+        "body": [
+            {"type": "TextBlock", "text": "New Quote Submission", "weight": "Bolder", "size": "Medium"},
+            {"type": "TextBlock", "text": f"Submitted by: {submitter_email}", "wrap": True},
+            {"type": "TextBlock", "text": f"Quote Reference: {reference}", "wrap": True}
+        ],
+        "actions": [
+            {
+                "type": "Action.Http",
+                "title": "Approve",
+                "method": "POST",
+                "url": f"https://{DOMAIN}/quote_decision",
+                "body": json.dumps({
+                    "decision": "approve",
+                    "reference": reference,
+                    "submitter_email": submitter_email
+                }),
+                "headers": [{"name": "Content-Type", "value": "application/json"}],
+                "authentication": {"type": "ActiveDirectoryOAuth"}
+            },
+            {
+                "type": "Action.Http",
+                "title": "Reject",
+                "method": "POST",
+                "url": f"https://{DOMAIN}/quote_decision",
+                "body": json.dumps({
+                    "decision": "reject",
+                    "reference": reference,
+                    "submitter_email": submitter_email
+                }),
+                "headers": [{"name": "Content-Type", "value": "application/json"}],
+                "authentication": {"type": "ActiveDirectoryOAuth"}
+            }
+        ]
     }
 
-    for admin in admin_emails:
-        approve_url = f"https://{DOMAIN}/quote_decision?decision=approve&quote_data={quote_data}&submitter_email={submitter_email}&admin_email={admin}"
-        reject_url = f"https://{DOMAIN}/quote_decision?decision=reject&quote_data={quote_data}&submitter_email={submitter_email}&admin_email={admin}"
+    # Email content
+    body_html = f"""
+    <html>
+    <body>
+        <p>New quote submitted by {submitter_email}</p>
+        <p>Quote Reference: {reference}</p>
+        <script type="application/adaptivecard+json">
+        {json.dumps(adaptive_card)}
+        </script>
+    </body>
+    </html>
+    """
 
-        body_html = f"""
-        <html>
-        <body>
-            <p>New quote submitted by <b>{submitter_email}</b></p>
-            <p>Quote Details: {quote_data}</p>
-            <p>Please review the quote:</p>
-            <a href="{approve_url}" 
-               style="background-color: #4CAF50; color: white; padding: 10px 20px;
-                      text-decoration: none; border-radius: 5px;">✅ Approve</a>
-            &nbsp;
-            <a href="{reject_url}" 
-               style="background-color: #f44336; color: white; padding: 10px 20px;
-                      text-decoration: none; border-radius: 5px;">❌ Reject</a>
-        </body>
-        </html>
-        """
-
-        message = {
-            "message": {
-                "subject": "Quote Approval Required",
-                "body": {
-                    "contentType": "HTML",
-                    "content": body_html
-                },
-                "toRecipients": [{"emailAddress": {"address": admin}}]
-            }
+    # Build message for MS Graph
+    message = {
+        "message": {
+            "subject": "Quote Approval Required",
+            "body": {"contentType": "HTML", "content": body_html},
+            "toRecipients": [{"emailAddress": {"address": admin}} for admin in admin_emails]
         }
+    }
 
-        url = f"{GRAPH_API_ENDPOINT}/users/{submitter_email}/sendMail"
-        response = requests.post(url, headers=headers, json=message)
-        response.raise_for_status()
-
-    print("✅ Approval emails sent successfully.")
-
-
+    url = f"{GRAPH_API_ENDPOINT}/users/{submitter_email}/sendMail"
+    response = requests.post(url, headers={
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json"
+    }, json=message)
+    
+    response.raise_for_status()
+    print("✅ Quote approval email sent successfully")
+    return True
 
 
 def send_email(to_email, subject, body_html, token, sender_email, sender_name=None):
-    """
-    Send an HTML email using Microsoft Graph API.
-    
-    Parameters:
-        to_email (str): Recipient email address.
-        subject (str): Email subject.
-        body_html (str): HTML content of the email body.
-        token (str): Microsoft Graph access token.
-        sender_email (str): The email address of the sender (admin).
-        sender_name (str): Optional display name of the sender.
-    """
     headers = {
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json"
     }
 
-    # Build the message
     message = {
         "message": {
             "subject": subject,
-            "body": {
-                "contentType": "HTML",
-                "content": body_html
-            },
-            "toRecipients": [
-                {"emailAddress": {"address": to_email}}
-            ],
-            "from": {
-                "emailAddress": {
-                    "address": sender_email,
-                    "name": sender_name or sender_email
-                }
-            }
+            "body": {"contentType": "HTML", "content": body_html},
+            "toRecipients": [{"emailAddress": {"address": to_email}}],
+            "from": {"emailAddress": {"address": sender_email, "name": sender_name or sender_email}}
         },
         "saveToSentItems": "true"
     }
 
-    # Send email as the admin (sender)
-    url = f"{GRAPH_API_ENDPOINT}/users/{sender_email}/sendMail"
-
+    url = f"https://graph.microsoft.com/v1.0/users/{sender_email}/sendMail"
     response = requests.post(url, headers=headers, json=message)
 
     if response.status_code in (200, 202):

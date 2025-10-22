@@ -357,25 +357,33 @@ def send_for_approval():
 
     quote_data = request.form.to_dict(flat=False)
     success = send_quote_approval_email(quote_data, submitter_email=email, admin_emails=SUPERUSERS)
-    if success == True:
+    if success:
         return render_template("pages/quote_success.html", user=user)
     else:
         return "Error submitting quote. Please try again."
     
     
     
-    
-@app.route("/quote_decision", methods=["GET"])
+@app.route("/quote_decision", methods=["POST"])
 def quote_decision():
-    decision = request.args.get("decision")
-    quote_data = request.args.get("quote_data")
-    submitter_email = request.args.get("submitter_email")
-    admin_email = request.args.get("admin_email")
+    data = request.json
+    decision = data.get("decision")  # "approve" or "reject"
+    reference = data.get("reference")
+    submitter_email = data.get("submitter_email")
 
-    if not all([decision, quote_data, submitter_email, admin_email]):
-        return "❌ Missing parameters", 400
+    # Extract admin identity from Authorization header
+    auth_header = request.headers.get("Authorization")
+    if not auth_header:
+        return jsonify({"error": "No authorization token"}), 401
 
-    print(f"✅ Quote {decision.upper()} by {admin_email} for {quote_data}")
+    token = auth_header.split(" ")[1]
+    decoded = jwt.decode(token, options={"verify_signature": False})
+    admin_email = decoded.get("preferred_username") or decoded.get("upn")
+
+    print(f"✅ Quote {decision.upper()} by {admin_email} for reference {reference}")
+
+    # Lookup full quote by reference if needed (from SharePoint / DB)
+    # quote_data = get_quote_by_reference(reference)
 
     # Send confirmation email to submitter
     subject = f"Your quote has been {decision.upper()}"
@@ -383,7 +391,7 @@ def quote_decision():
     <html>
     <body>
         <p>Hi,</p>
-        <p>Your quote has been <b>{decision}</b> by <b>{admin_email}</b>.</p>
+        <p>Your quote with reference <b>{reference}</b> has been <b>{decision}</b> by <b>{admin_email}</b>.</p>
         <p>Thank you.</p>
     </body>
     </html>
@@ -398,8 +406,7 @@ def quote_decision():
         sender_name=admin_email
     )
 
-    return f"<h3>✅ Quote {decision.upper()} recorded successfully!</h3>"
-
+    return jsonify({"status": "success", "admin_email": admin_email})
 # ==============================================================
 # START FLASK + BACKGROUND UPDATER
 # ==============================================================
