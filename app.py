@@ -366,33 +366,25 @@ def send_for_approval():
 def quote_decision():
     data = request.json
     decision = data.get("decision")
-    quote_reference = data.get("quote_reference")
+    reference = data.get("quote_reference")
     submitter_email = data.get("submitter_email")
-    admin_display_name = data.get("admin_email", "Admin")  # from payload
+    admin_email = data.get("admin_email")
 
-    print(f"Quote {decision.upper()} by {admin_display_name} for reference {quote_reference}")
+    # Prepare message
+    message = f"Hi,<br>Your quote <b>{reference}</b> has been <b>{decision.upper()}</b> by <b>{admin_email or 'Admin'}</b>."
 
-    # Send confirmation email back to submitter
-    subject = f"Your quote {quote_reference} has been {decision.upper()}"
-    body_html = f"""
-    <html>
-    <body>
-        <p>Hi,</p>
-        <p>Your quote <b>{quote_reference}</b> has been <b>{decision}</b> by <b>{admin_display_name}</b>.</p>
-        <p>Thank you.</p>
-    </body>
-    </html>
-    """
+    # Send via Teams
+    send_teams_chat(to_user_email=submitter_email, message=message, token=get_access_token())
 
-    # Send using a fixed approvals mailbox
-    send_email(
-        to_email=submitter_email,
-        subject=subject,
-        body_html=body_html,
-        token=get_access_token(),
-        sender_email="approvals@hamdaz.com",
-        sender_name=admin_display_name
-    )
+    # # Optional: Also send email notification
+    # send_email(
+    #     to_email=submitter_email,
+    #     subject=f"Quote {reference} {decision.upper()}",
+    #     body_html=f"<html><body>{message}</body></html>",
+    #     token=get_access_token(),
+    #     sender_email="notifications@hamdaz.com",
+    #     sender_name="Quote Approval System"
+    # )
 
     return jsonify({"status": "success"})
 

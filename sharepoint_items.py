@@ -1030,3 +1030,38 @@ def send_email(to_email, subject, body_html, token, sender_email, sender_name=No
     print(f"✅ Email sent from {sender_email} to {to_email}")
 
 # --- Send quote approval em
+
+
+def send_teams_chat(to_user_email, message, token):
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json"
+    }
+
+    # Step 1: Create or get 1:1 chat with the user
+    chat_payload = {
+        "chatType": "oneOnOne",
+        "members": [
+            {
+                "@odata.type": "#microsoft.graph.aadUserConversationMember",
+                "roles": ["owner"],
+                "user@odata.bind": f"https://graph.microsoft.com/v1.0/users/{to_user_email}"
+            }
+        ]
+    }
+    chat_url = "https://graph.microsoft.com/v1.0/chats"
+    chat_response = requests.post(chat_url, headers=headers, json=chat_payload)
+    chat_response.raise_for_status()
+    chat_id = chat_response.json()["id"]
+
+    # Step 2: Send message to that chat
+    message_payload = {
+        "body": {
+            "contentType": "html",
+            "content": message
+        }
+    }
+    message_url = f"https://graph.microsoft.com/v1.0/chats/{chat_id}/messages"
+    msg_response = requests.post(message_url, headers=headers, json=message_payload)
+    msg_response.raise_for_status()
+    print(f"✅ Teams message sent to {to_user_email}")
