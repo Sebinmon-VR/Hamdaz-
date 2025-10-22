@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container my-4">
+    <h2 class="mb-4">Quote Submitted Successfully</h2>
+    <div class="alert alert-success" role="alert">
+        Your quote has been submitted for approval. You will be notified once it has been reviewed.
+    </div>
+    <a href="/quote" class="btn btn-primary">Create Another Quote</a>
+    <a href="/" class="btn btn-secondary">Return to Dashboard</a>
+</div>
+{% endblock %}

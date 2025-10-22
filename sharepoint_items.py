@@ -946,7 +946,7 @@ def send_quote_approval_email(quote_data, submitter_email, admin_emails):
                 "type": "Action.Http",
                 "title": "Approve",
                 "method": "POST",
-                "url": "https://yourdomain.com/quote_decision",
+                "url": f"https://{DOMAIN}.com/quote_decision",
                 "body": json.dumps({"decision": "approve", "quote_data": quote_data}),
                 "headers": [{"name": "Content-Type", "value": "application/json"}]
             },

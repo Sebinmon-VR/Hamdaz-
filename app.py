@@ -348,7 +348,7 @@ def quote():
 # ==============================================================
 # ==============================================================
 
-@app.route("/send_quote_for_approval", methods=["POST"])
+@app.route("/send_quote_for_approval", methods=["POST", "GET"])
 def send_for_approval():
     if "user" not in session:
         return redirect(url_for('login'))
@@ -362,6 +362,7 @@ def send_for_approval():
     else:
         return "Error submitting quote. Please try again."
     
+
     
 @app.route("/quote_decision", methods=["POST"])
 def quote_decision():
