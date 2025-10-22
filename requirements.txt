@@ -18,3 +18,5 @@ pytz==2023.3
 
 # Database (if needed)
 SQLAlchemy==1.4.41
+
+openai==0.28.0
