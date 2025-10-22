@@ -923,18 +923,10 @@ def get_task_details(df: pd.DataFrame, task_title: str) -> dict:
 
 
 DOMAIN=os.getenv("DOMAIN")
+# --- Send quote approval email ---
+def send_quote_approval_email(reference, submitter_email, admin_emails):
+    token = get_access_token()
 
-
-def send_quote_approval_email(quote_data, submitter_email, admin_emails):
-    """
-    Send a quote approval email with actionable Approve/Reject buttons to admins.
-    Only the quote reference is sent back to the server.
-    """
-    token = get_access_token()  # function to get MS Graph token
-
-    reference = quote_data.get("reference")[0]  # assuming reference field is unique
-
-    # Build Adaptive Card
     adaptive_card = {
         "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
         "type": "AdaptiveCard",
@@ -955,8 +947,7 @@ def send_quote_approval_email(quote_data, submitter_email, admin_emails):
                     "reference": reference,
                     "submitter_email": submitter_email
                 }),
-                "headers": [{"name": "Content-Type", "value": "application/json"}],
-                "authentication": {"type": "ActiveDirectoryOAuth"}
+                "headers": [{"name": "Content-Type", "value": "application/json"}]
             },
             {
                 "type": "Action.Http",
@@ -968,42 +959,33 @@ def send_quote_approval_email(quote_data, submitter_email, admin_emails):
                     "reference": reference,
                     "submitter_email": submitter_email
                 }),
-                "headers": [{"name": "Content-Type", "value": "application/json"}],
-                "authentication": {"type": "ActiveDirectoryOAuth"}
+                "headers": [{"name": "Content-Type", "value": "application/json"}]
             }
         ]
     }
 
-    # Email content
     body_html = f"""
     <html>
     <body>
         <p>New quote submitted by {submitter_email}</p>
         <p>Quote Reference: {reference}</p>
         <script type="application/adaptivecard+json">
-        {json.dumps(adaptive_card)}
+            {json.dumps(adaptive_card)}
         </script>
     </body>
     </html>
     """
 
-    # Build message for MS Graph
-    message = {
-        "message": {
-            "subject": "Quote Approval Required",
-            "body": {"contentType": "HTML", "content": body_html},
-            "toRecipients": [{"emailAddress": {"address": admin}} for admin in admin_emails]
-        }
-    }
+    for admin_email in admin_emails:
+        send_email(
+            to_email=admin_email,
+            subject="Quote Approval Required",
+            body_html=body_html,
+            token=token,
+            sender_email=submitter_email,
+            sender_name=submitter_email
+        )
 
-    url = f"{GRAPH_API_ENDPOINT}/users/{submitter_email}/sendMail"
-    response = requests.post(url, headers={
-        "Authorization": f"Bearer {token}",
-        "Content-Type": "application/json"
-    }, json=message)
-    
-    response.raise_for_status()
-    print("✅ Quote approval email sent successfully")
     return True
 
 
@@ -1016,18 +998,21 @@ def send_email(to_email, subject, body_html, token, sender_email, sender_name=No
     message = {
         "message": {
             "subject": subject,
-            "body": {"contentType": "HTML", "content": body_html},
+            "body": {
+                "contentType": "HTML",
+                "content": body_html
+            },
             "toRecipients": [{"emailAddress": {"address": to_email}}],
-            "from": {"emailAddress": {"address": sender_email, "name": sender_name or sender_email}}
+            "from": {
+                "emailAddress": {"address": sender_email, "name": sender_name or sender_email}
+            }
         },
         "saveToSentItems": "true"
     }
 
-    url = f"https://graph.microsoft.com/v1.0/users/{sender_email}/sendMail"
+    url = f"{GRAPH_API_ENDPOINT}/users/{sender_email}/sendMail"
     response = requests.post(url, headers=headers, json=message)
+    response.raise_for_status()
+    print(f"✅ Email sent from {sender_email} to {to_email}")
 
-    if response.status_code in (200, 202):
-        print(f"✅ Email sent successfully from {sender_email} to {to_email}")
-    else:
-        print(f"❌ Failed to send email: {response.status_code} - {response.text}")
-        response.raise_for_status()
+# --- Send quote approval em
