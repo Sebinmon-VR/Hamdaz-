@@ -362,41 +362,39 @@ def send_for_approval():
     else:
         return "Error submitting quote. Please try again."
     
-   
-# --- Route to handle approval/rejection ---
 @app.route("/quote_decision", methods=["POST"])
 def quote_decision():
     data = request.json
     decision = data.get("decision")
-    reference = data.get("reference")
+    quote_reference = data.get("quote_reference")
     submitter_email = data.get("submitter_email")
-    admin_email = data.get("admin_email") or "Unknown Admin"
+    admin_display_name = data.get("admin_email", "Admin")  # from payload
 
-    print(f"✅ Quote {decision.upper()} by {admin_email} for {reference}")
+    print(f"Quote {decision.upper()} by {admin_display_name} for reference {quote_reference}")
 
     # Send confirmation email back to submitter
-    subject = f"Your quote {reference} has been {decision.upper()}"
+    subject = f"Your quote {quote_reference} has been {decision.upper()}"
     body_html = f"""
     <html>
     <body>
         <p>Hi,</p>
-        <p>Your quote <b>{reference}</b> has been <b>{decision}</b> by <b>{admin_email}</b>.</p>
+        <p>Your quote <b>{quote_reference}</b> has been <b>{decision}</b> by <b>{admin_display_name}</b>.</p>
         <p>Thank you.</p>
     </body>
     </html>
     """
 
+    # Send using a fixed approvals mailbox
     send_email(
         to_email=submitter_email,
         subject=subject,
         body_html=body_html,
         token=get_access_token(),
-        sender_email=admin_email,
-        sender_name=admin_email
+        sender_email="approvals@hamdaz.com",
+        sender_name=admin_display_name
     )
 
-    return jsonify({"status": "success", "admin_email": admin_email})
-
+    return jsonify({"status": "success"})
 
 
 # ==============================================================

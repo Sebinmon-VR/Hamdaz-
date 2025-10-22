@@ -924,17 +924,23 @@ def get_task_details(df: pd.DataFrame, task_title: str) -> dict:
 
 DOMAIN=os.getenv("DOMAIN")
 # --- Send quote approval email ---
-def send_quote_approval_email(reference, submitter_email, admin_emails):
-    token = get_access_token()
 
+
+def send_quote_approval_email(quote_data, submitter_email, admin_emails):
+    token = get_access_token()
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json"
+    }
+
+    # ✅ 1️⃣ Create Adaptive Card (goes HERE)
     adaptive_card = {
         "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
         "type": "AdaptiveCard",
         "version": "1.2",
         "body": [
             {"type": "TextBlock", "text": "New Quote Submission", "weight": "Bolder", "size": "Medium"},
-            {"type": "TextBlock", "text": f"Submitted by: {submitter_email}", "wrap": True},
-            {"type": "TextBlock", "text": f"Quote Reference: {reference}", "wrap": True}
+            {"type": "TextBlock", "text": f"Quote Reference: {quote_data['reference'][0]}", "wrap": True},
         ],
         "actions": [
             {
@@ -944,10 +950,11 @@ def send_quote_approval_email(reference, submitter_email, admin_emails):
                 "url": f"https://{DOMAIN}/quote_decision",
                 "body": json.dumps({
                     "decision": "approve",
-                    "reference": reference,
+                    "quote_reference": quote_data['reference'][0],
                     "submitter_email": submitter_email
                 }),
-                "headers": [{"name": "Content-Type", "value": "application/json"}]
+                "headers": [{"name": "Content-Type", "value": "application/json"}],
+                "authentication": {"type": "None"}
             },
             {
                 "type": "Action.Http",
@@ -956,36 +963,43 @@ def send_quote_approval_email(reference, submitter_email, admin_emails):
                 "url": f"https://{DOMAIN}/quote_decision",
                 "body": json.dumps({
                     "decision": "reject",
-                    "reference": reference,
+                    "quote_reference": quote_data['reference'][0],
                     "submitter_email": submitter_email
                 }),
-                "headers": [{"name": "Content-Type", "value": "application/json"}]
+                "headers": [{"name": "Content-Type", "value": "application/json"}],
+                "authentication": {"type": "None"}
             }
         ]
     }
 
-    body_html = f"""
-    <html>
-    <body>
-        <p>New quote submitted by {submitter_email}</p>
-        <p>Quote Reference: {reference}</p>
-        <script type="application/adaptivecard+json">
-            {json.dumps(adaptive_card)}
-        </script>
-    </body>
-    </html>
-    """
+    # ✅ 2️⃣ Email payload (comes after adaptive_card)
+    message = {
+        "message": {
+            "subject": f"Quote Approval Required - {quote_data['reference'][0]}",
+            "body": {
+                "contentType": "html",
+                "content": f"""
+                <html>
+                <body>
+                    <p>New quote submitted by {submitter_email}</p>
+                    <p>Quote Reference: {quote_data['reference'][0]}</p>
+                    <script type="application/adaptivecard+json">
+                        {json.dumps(adaptive_card)}
+                    </script>
+                </body>
+                </html>
+                """
+            },
+            "toRecipients": [{"emailAddress": {"address": admin}} for admin in admin_emails]
+        }
+    }
 
-    for admin_email in admin_emails:
-        send_email(
-            to_email=admin_email,
-            subject="Quote Approval Required",
-            body_html=body_html,
-            token=token,
-            sender_email=submitter_email,
-            sender_name=submitter_email
-        )
+    # ✅ 3️⃣ Send the mail
+    url = f"{GRAPH_API_ENDPOINT}/users/{submitter_email}/sendMail"
+    response = requests.post(url, headers=headers, json=message)
+    response.raise_for_status()
 
+    print("Approval email sent successfully")
     return True
 
 
