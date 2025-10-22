@@ -922,7 +922,7 @@ def get_task_details(df: pd.DataFrame, task_title: str) -> dict:
     return task_row.iloc[0].to_dict()
 
 
-
+DOMAIN=os.getenv("DOMAIN")
 
 def send_quote_approval_email(quote_data, submitter_email, admin_emails):
     token = get_access_token()
@@ -954,7 +954,7 @@ def send_quote_approval_email(quote_data, submitter_email, admin_emails):
                 "type": "Action.Http",
                 "title": "Reject",
                 "method": "POST",
-                "url": "https://yourdomain.com/quote_decision",
+                "url": f"https://{DOMAIN}.com/quote_decision",
                 "body": json.dumps({"decision": "reject", "quote_data": quote_data}),
                 "headers": [{"name": "Content-Type", "value": "application/json"}]
             }
