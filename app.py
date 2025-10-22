@@ -13,7 +13,7 @@ from sharepoint_data import *
 from sharepoint_items import *
 from zoho import *
 from auto_assign import *
-
+import jwt
 # ================== LOAD ENVIRONMENT ==================
 load_dotenv(override=True)
 
@@ -363,16 +363,47 @@ def send_for_approval():
         return "Error submitting quote. Please try again."
     
 
-    
+
 @app.route("/quote_decision", methods=["POST"])
 def quote_decision():
     data = request.json
     decision = data.get("decision")
     quote_data = data.get("quote_data")
-    
-    # Save decision in database or SharePoint
-    print(f"Quote decision: {decision} for {quote_data}")
-    return {"status": "success"}
+    submitter_email = data.get("submitter_email")
+
+    # Extract admin identity from Authorization header
+    auth_header = request.headers.get("Authorization")
+    if not auth_header:
+        return jsonify({"error": "No authorization token"}), 401
+
+    token = auth_header.split(" ")[1]
+    decoded = jwt.decode(token, options={"verify_signature": False})
+    admin_email = decoded.get("preferred_username") or decoded.get("upn")
+
+    print(f"✅ Quote {decision.upper()} by {admin_email} for {quote_data}")
+
+    # Send confirmation email back to submitter
+    subject = f"Your quote has been {decision.upper()}"
+    body_html = f"""
+    <html>
+    <body>
+        <p>Hi,</p>
+        <p>Your quote has been <b>{decision}</b> by <b>{admin_email}</b>.</p>
+        <p>Thank you.</p>
+    </body>
+    </html>
+    """
+
+    send_email(
+        to_email=submitter_email,
+        subject=subject,
+        body_html=body_html,
+        token=get_access_token(),
+        sender_email=admin_email,
+        sender_name=admin_email
+    )
+
+    return jsonify({"status": "success", "admin_email": admin_email})
 
 # ==============================================================
 # START FLASK + BACKGROUND UPDATER

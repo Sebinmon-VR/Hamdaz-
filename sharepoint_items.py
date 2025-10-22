@@ -942,23 +942,38 @@ def send_quote_approval_email(quote_data, submitter_email, admin_emails):
             {"type": "TextBlock", "text": f"Quote Details: {quote_data}", "wrap": True}
         ],
         "actions": [
-            {
-                "type": "Action.Http",
-                "title": "Approve",
-                "method": "POST",
-                "url": f"https://{DOMAIN}.com/quote_decision",
-                "body": json.dumps({"decision": "approve", "quote_data": quote_data}),
-                "headers": [{"name": "Content-Type", "value": "application/json"}]
-            },
-            {
-                "type": "Action.Http",
-                "title": "Reject",
-                "method": "POST",
-                "url": f"https://{DOMAIN}.com/quote_decision",
-                "body": json.dumps({"decision": "reject", "quote_data": quote_data}),
-                "headers": [{"name": "Content-Type", "value": "application/json"}]
-            }
-        ]
+    {
+        "type": "Action.Http",
+        "title": "Approve",
+        "method": "POST",
+        "url": f"https://{DOMAIN}/quote_decision",
+        "body": json.dumps({
+            "decision": "approve",
+            "quote_data": quote_data,
+            "submitter_email": submitter_email
+        }),
+        "headers": [{"name": "Content-Type", "value": "application/json"}],
+        "authentication": {
+            "type": "ActiveDirectoryOAuth"
+        }
+    },
+    {
+        "type": "Action.Http",
+        "title": "Reject",
+        "method": "POST",
+        "url": f"https://{DOMAIN}/quote_decision",
+        "body": json.dumps({
+            "decision": "reject",
+            "quote_data": quote_data,
+            "submitter_email": submitter_email
+        }),
+        "headers": [{"name": "Content-Type", "value": "application/json"}],
+        "authentication": {
+            "type": "ActiveDirectoryOAuth"
+        }
+    }
+]
+
     }
 
     # Email payload
@@ -987,4 +1002,81 @@ def send_quote_approval_email(quote_data, submitter_email, admin_emails):
     url = f"{GRAPH_API_ENDPOINT}/users/{submitter_email}/sendMail"
     response = requests.post(url, headers=headers, json=message)
     response.raise_for_status()
-    print("Email sent successfully with buttons.")
+    print("Email sent successfully ")
+    
+    
+    
+
+# def send_email(to_email, subject, body_html , token):
+#     """Send a simple email via Graph API from approvals mailbox"""
+#     headers = {
+#         "Authorization": f"Bearer {token}",
+#         "Content-Type": "application/json"
+#     }
+
+#     message = {
+#         "message": {
+#             "subject": subject,
+#             "body": {
+#                 "contentType": "HTML",
+#                 "content": body_html
+#             },
+#             "toRecipients": [{"emailAddress": {"address": to_email}}]
+#         }
+#     }
+
+#     url = f"{GRAPH_API_ENDPOINT}/users/{}/sendMail"
+#     response = requests.post(url, headers=headers, json=message)
+#     response.raise_for_status()
+#     print(f"Confirmation email sent to {to_email}")
+
+
+
+def send_email(to_email, subject, body_html, token, sender_email, sender_name=None):
+    """
+    Send an HTML email using Microsoft Graph API.
+    
+    Parameters:
+        to_email (str): Recipient email address.
+        subject (str): Email subject.
+        body_html (str): HTML content of the email body.
+        token (str): Microsoft Graph access token.
+        sender_email (str): The email address of the sender (admin).
+        sender_name (str): Optional display name of the sender.
+    """
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json"
+    }
+
+    # Build the message
+    message = {
+        "message": {
+            "subject": subject,
+            "body": {
+                "contentType": "HTML",
+                "content": body_html
+            },
+            "toRecipients": [
+                {"emailAddress": {"address": to_email}}
+            ],
+            "from": {
+                "emailAddress": {
+                    "address": sender_email,
+                    "name": sender_name or sender_email
+                }
+            }
+        },
+        "saveToSentItems": "true"
+    }
+
+    # Send email as the admin (sender)
+    url = f"{GRAPH_API_ENDPOINT}/users/{sender_email}/sendMail"
+
+    response = requests.post(url, headers=headers, json=message)
+
+    if response.status_code in (200, 202):
+        print(f"✅ Email sent successfully from {sender_email} to {to_email}")
+    else:
+        print(f"❌ Failed to send email: {response.status_code} - {response.text}")
+        response.raise_for_status()
