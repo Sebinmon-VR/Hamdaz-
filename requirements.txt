@@ -22,3 +22,7 @@ SQLAlchemy==1.4.41
 openai==0.28.0
 
 PyJWT==2.6.0
+
+
+# Excel File Handling
+openpyxl==3.1.2

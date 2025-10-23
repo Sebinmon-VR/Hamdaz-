@@ -1,0 +1,19 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="container mt-5">
+  <div class="card shadow p-4">
+    <h3 class="text-center">Quote Decision</h3>
+    <hr>
+    <p><strong>Quote ID:</strong> {{ quote_id }}</p>
+    <p><strong>Decision:</strong> 
+      {% if decision == 'approve' %}
+        <span class="text-success">Approved ✅</span>
+      {% else %}
+        <span class="text-danger">Rejected ❌</span>
+      {% endif %}
+    </p>
+    <p><strong>Comments:</strong> {{ comments }}</p>
+    <p><strong>Approved By:</strong> {{ approver }}</p>
+  </div>
+</div>
+{% endblock %}

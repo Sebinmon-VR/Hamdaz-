@@ -28,8 +28,8 @@ REDIRECT_URI = os.getenv("REDIRECT_URI")
 AUTHORITY = f"https://login.microsoftonline.com/{TENANT_ID}"
 SCOPE = ["User.Read"]
 
-SUPERUSERS = ["sebin@hamdaz.com"]
-LIMITED_USERS = [""]
+SUPERUSERS = [""]
+LIMITED_USERS = ["sebin@hamdaz.com"]
 
 # Initialize MSAL
 msal_app = ConfidentialClientApplication(
@@ -424,6 +424,42 @@ def send_for_approval():
 
 
 
+@app.route("/quote_decision", methods=["GET", "POST"])
+def quote_decision():
+    if request.method == "POST":
+        # Request from Power Automate
+        data = request.get_json()
+        quote_id = data.get("quote_id")
+        decision = data.get("decision")
+        comments = data.get("comments", "")
+        approver = data.get("approver", "Unknown")
+
+        # Render a page to show approval details
+        return render_template(
+            "pages/quote_decision.html",
+            quote_id=quote_id,
+            decision=decision,
+            comments=comments,
+            approver=approver
+        )
+
+    else:
+        # When user opens directly (GET)
+        quote_id = request.args.get("quote_id")
+        decision = request.args.get("decision")
+        comments = request.args.get("comments", "")
+        approver = request.args.get("approver", "")
+
+        if not quote_id:
+            return "Quote ID is missing.", 400
+
+        return render_template(
+            "pages/quote_decision.html",
+            quote_id=quote_id,
+            decision=decision,
+            comments=comments,
+            approver=approver
+        )
 
 
 # ==============================================================

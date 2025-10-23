@@ -13,6 +13,8 @@ from collections import defaultdict
 import re
 import base64
 import json
+import openpyxl
+from openpyxl.utils import get_column_letter
 # ----------------------------
 # Load environment variables
 # ----------------------------
@@ -840,70 +842,6 @@ def create_table_if_missing(headers):
         print(f"[INFO] Created table '{TABLE_NAME}' in worksheet '{WORKSHEET_NAME}'")
         
         
-        
-# def add_or_update_user_analytics(username, total_tasks, tasks_completed, tasks_pending, tasks_missed, orders_received, last_assigned_date):
-#     """
-#     Adds or updates analytics for a user in UserAnalytics.xlsx on OneDrive.
-#     Uses username as the unique identifier.
-#     """
-#     try:
-#         access_token = get_onedrive_access_token()
-#         headers = {"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"}
-
-#         # Ensure last_assigned_date is string for JSON
-#         if isinstance(last_assigned_date, (pd.Timestamp, datetime)):
-#             last_assigned_date = last_assigned_date.strftime("%Y-%m-%d %H:%M:%S")
-#         if last_assigned_date is None:
-#             last_assigned_date = ""
-
-#         # Ensure numeric fields are not None
-#         total_tasks = total_tasks or 0
-#         tasks_completed = tasks_completed or 0
-#         tasks_pending = tasks_pending or 0
-#         tasks_missed = tasks_missed or 0
-#         orders_received = orders_received or 0
-
-#         # Create table if missing
-#         create_table_if_missing(headers)
-
-#         # Fetch all existing users from table
-#         table_range_url = f"{GRAPH_API_ENDPOINT}/users/{ONEDRIVE_PRIMARY_USER_ID}/drive/root:/{EXCEL_FILE_PATH}:/workbook/tables('{TABLE_NAME}')/rows"
-#         resp = requests.get(table_range_url, headers=headers)
-#         resp.raise_for_status()
-#         rows = resp.json().get("value", [])
-
-#         # Check if user exists
-#         existing_row_id = None
-#         for row in rows:
-#             values = row.get("values", [[]])[0]
-#             if len(values) > 0 and str(values[0]).strip().lower() == username.strip().lower():
-#                 existing_row_id = row.get("index") + 1  # Graph API index starts at 0
-#                 break
-
-#         # Prepare values
-#         values = [[username, total_tasks, tasks_completed, tasks_pending, tasks_missed, orders_received, last_assigned_date]]
-
-#         if existing_row_id is not None:
-#             # Update existing row
-#             last_col = chr(ord('A') + len(values[0]) - 1)
-#             range_address = f"A{existing_row_id}:{last_col}{existing_row_id}"
-#             update_url = f"{GRAPH_API_ENDPOINT}/users/{ONEDRIVE_PRIMARY_USER_ID}/drive/root:/{EXCEL_FILE_PATH}:/workbook/worksheets('{WORKSHEET_NAME}')/range(address='{range_address}')"
-#             response = requests.patch(update_url, headers=headers, json={"values": values})
-#             response.raise_for_status()
-#             print(f"[INFO] Updated analytics for user: {username}")
-#         else:
-#             # Append new row
-#             append_url = f"{GRAPH_API_ENDPOINT}/users/{ONEDRIVE_PRIMARY_USER_ID}/drive/root:/{EXCEL_FILE_PATH}:/workbook/tables('{TABLE_NAME}')/rows/add"
-#             response = requests.post(append_url, headers=headers, json={"values": values})
-#             response.raise_for_status()
-#             print(f"[INFO] Added new analytics for user: {username}")
-
-#         return True
-
-#     except Exception as e:
-#         print(f"Error saving analytics to OneDrive for user {username}: {e}")
-#         return False
-
 # ==============================================================================
 # ==============================================================================
 
@@ -1003,71 +941,6 @@ def send_quote_approval_email(quote_data, submitter_email, admin_emails):
     return True
 
 
-# def send_email(to_email, subject, body_html, token, sender_email, sender_name=None):
-#     headers = {
-#         "Authorization": f"Bearer {token}",
-#         "Content-Type": "application/json"
-#     }
-
-#     message = {
-#         "message": {
-#             "subject": subject,
-#             "body": {
-#                 "contentType": "HTML",
-#                 "content": body_html
-#             },
-#             "toRecipients": [{"emailAddress": {"address": to_email}}],
-#             "from": {
-#                 "emailAddress": {"address": sender_email, "name": sender_name or sender_email}
-#             }
-#         },
-#         "saveToSentItems": "true"
-#     }
-
-#     url = f"{GRAPH_API_ENDPOINT}/users/{sender_email}/sendMail"
-#     response = requests.post(url, headers=headers, json=message)
-#     response.raise_for_status()
-#     print(f"✅ Email sent from {sender_email} to {to_email}")
-
-# --- Send quote approval em
-
-
-# def send_teams_chat(to_user_email, message, token):
-#     headers = {
-#         "Authorization": f"Bearer {token}",
-#         "Content-Type": "application/json"
-#     }
-
-#     # Step 1: Create or get 1:1 chat with the user
-#     chat_payload = {
-#         "chatType": "oneOnOne",
-#         "members": [
-#             {
-#                 "@odata.type": "#microsoft.graph.aadUserConversationMember",
-#                 "roles": ["owner"],
-#                 "user@odata.bind": f"https://graph.microsoft.com/v1.0/users/{to_user_email}"
-#             }
-#         ]
-#     }
-#     chat_url = "https://graph.microsoft.com/v1.0/chats"
-#     chat_response = requests.post(chat_url, headers=headers, json=chat_payload)
-#     chat_response.raise_for_status()
-#     chat_id = chat_response.json()["id"]
-
-#     # Step 2: Send message to that chat
-#     message_payload = {
-#         "body": {
-#             "contentType": "html",
-#             "content": message
-#         }
-#     }
-#     message_url = f"https://graph.microsoft.com/v1.0/chats/{chat_id}/messages"
-#     msg_response = requests.post(message_url, headers=headers, json=message_payload)
-#     msg_response.raise_for_status()
-#     print(f"✅ Teams message sent to {to_user_email}")
-
-
-
 def add_sharepoint_list_item(item_fields):
     token = get_access_token()
     site_id = get_site_id(token, "hamdaz1.sharepoint.com", "/sites/Test")
@@ -1085,10 +958,6 @@ def add_sharepoint_list_item(item_fields):
     except requests.exceptions.RequestException as e:
         print(f"❌ Error adding item {item_fields.get('Reference')} to SharePoint: {e}")
         return None
-
-
-
-
 
 
 
@@ -1115,8 +984,6 @@ def update_sharepoint_item(reference, update_fields):
 
 
 
-
-
 import requests
 
 def get_list_columns(site_domain, site_path, list_name):
@@ -1132,11 +999,6 @@ def get_list_columns(site_domain, site_path, list_name):
     for col in columns:
         print(f"Display Name: {col['displayName']}, Internal Name: {col['name']}")
     return columns
-
-
-
-
-
 
 
 
@@ -1175,3 +1037,78 @@ def upload_file_to_sharepoint(access_token, site_id, folder_path, file_name, fil
     resp = requests.put(url, headers=headers, data=file_bytes)
     resp.raise_for_status()
     return resp.json()["webUrl"]  # Download link
+
+
+
+def generate_quote_excel(quote):
+    """
+    Generates an Excel file for a single quote with all items and metadata.
+    Saves to QuoteCostingSheets folder.
+    """
+    folder_path = os.path.join("QuoteCostingSheets")
+    os.makedirs(folder_path, exist_ok=True)
+    reference = quote.get("Reference", f"Quote_{datetime.now().strftime('%Y%m%d%H%M%S')}")
+    file_path = os.path.join(folder_path, f"{reference}.xlsx")
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Quote Items"
+
+    # Columns to include (rows = items)
+    columns = [
+        "Quote Date","Expiry Date","Quote Number","Quote Status","Customer Name",
+        "VAT Treatment","Place Of Supply","Is Inclusive Tax","Project Name","Project ID",
+        "PurchaseOrder","Currency Code","Exchange Rate","Discount Type","Is Discount Before Tax",
+        "Entity Discount Percent","Entity Discount Amount","Item Name","SKU","Account",
+        "Item Desc","Tax Registration Number","Quantity","Usage unit","Item Price",
+        "Discount","Discount Amount","Item Tax","Item Tax %","Item Tax Type",
+        "Out of Scope Reason","Item Tax Exemption Reason","Item Type","Template Name",
+        "Sales person","Notes","Terms & Conditions"
+    ]
+
+    ws.append(columns)
+
+    # Load items
+    items = json.loads(quote.get("AllItems","[]"))
+
+    for item in items:
+        row = [
+            quote.get("QuoteDate"),
+            quote.get("ExpiryDate"),
+            quote.get("Reference"),
+            quote.get("ApprovalStatus"),
+            quote.get("CustomerID"),
+            quote.get("TaxTreatment"),
+            "", "", "", "",
+            "", quote.get("Currency"), "", "", "",
+            "", "",
+            item.get("ItemDetails"),
+            item.get("Brand"),
+            "",
+            "", item.get("Quantity"), "",
+            item.get("Rate"),
+            "", "", item.get("Tax"),
+            "", "", "",
+            "", item.get("ItemType",""),
+            "", quote.get("QuoteCreator"),
+            quote.get("CustomerNotes",""),
+            quote.get("TermsConditions","")
+        ]
+        ws.append(row)
+
+    # Adjust column widths
+    for col in ws.columns:
+        max_length = 0
+        col_letter = get_column_letter(col[0].column)
+        for cell in col:
+            if cell.value:
+                max_length = max(max_length, len(str(cell.value)))
+        ws.column_dimensions[col_letter].width = max_length + 2
+
+    wb.save(file_path)
+    return file_path
+
+
+
+
+
