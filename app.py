@@ -408,7 +408,9 @@ def send_for_approval():
         "QuoteCreator": get_first(quote_data, "quote_creator", 0),
         "BCD": get_first(quote_data, "bcd", 0),
         "ApprovalStatus": "Pending",
-        
+        "Amount": sum(item["Amount"] for item in combined_items),
+        "Margin": sum(item["Margin"] for item in combined_items),
+        "Rate": sum(item["Rate"] for item in combined_items) / len(combined_items) if combined_items else 0,
         # ✅ Convert list of items to a readable string (or JSON)
         "AllItems": json.dumps(combined_items, indent=2)
         
@@ -421,69 +423,6 @@ def send_for_approval():
         return f"❌ Error adding quote to SharePoint: {str(e)}", 500
 
 
-
-
-@app.route("/quote_decision", methods=["POST"])
-def quote_decision():
-    """
-    Receives the admin's decision via a POST request (from Power Automate or other system).
-    """
-    data = request.json
-    decision = data.get("decision")
-    reference = data.get("reference")
-    admin_email = data.get("admin_email")  # Admin performing the action
-
-    if not decision or not reference:
-        return jsonify({"error": "Missing decision or reference"}), 400
-
-    # Update SharePoint item
-    try:
-        update_fields = {
-            "ApprovalStatus": decision,
-            "ApprovedBy": admin_email
-        }
-        updated_item = update_sharepoint_item(reference, update_fields)
-        print(f"Quote {reference} updated with decision {decision} by {admin_email}")
-    except Exception as e:
-        print("Error updating SharePoint item:", e)
-        return jsonify({"error": str(e)}), 500
-
-    return jsonify({"status": "success", "reference": reference, "decision": decision})
-
-
-
-# @app.route("/quote_decision", methods=["POST"])
-# def quote_decision():
-#     data = request.json
-#     decision = data.get("decision")
-#     reference = data.get("reference")
-#     submitter_email = data.get("submitter_email")
-#     admin_email = data.get("admin_email") or "Unknown Admin"
-
-#     print(f"✅ Quote {decision.upper()} by {admin_email} for {reference}")
-    
-#     # Send confirmation email back to submitter
-#     subject = f"Your quote {reference} has been {decision.upper()}"
-#     body_html = f"""
-#     <html>
-#     <body>
-#         <p>Hi,</p>
-#         <p>Your quote <b>{reference}</b> has been <b>{decision}</b> by <b>{admin_email}</b>.</p>
-#         <p>Thank you.</p>
-#     </body>
-#     </html>
-#     """
-
-#     send_email(
-#         to_email=submitter_email,
-#         subject=subject,
-#         body_html=body_html,
-#         token=get_access_token(),
-#         sender_email=admin_email,
-#         sender_name=admin_email
-#     )
-
-#     return jsonify({"status": "success", "admin_email": admin_email})
 
 
 

@@ -119,7 +119,7 @@
                     <tr>
                         <th colspan="2">Totals / Avg</th>
                         <th id="totalQuantity">0</th>
-                        <th id="avgRate">0</th>
+                        <th id="Rate">0</th>
                         <th id="avgMargin">0</th>
                         <th></th>
                         <th id="totalDiscount">0</th>
@@ -207,7 +207,7 @@
         });
 
         document.getElementById('totalQuantity').innerText = totalQty.toFixed(2);
-        document.getElementById('avgRate').innerText = (totalRate / count).toFixed(2);
+        document.getElementById('Rate').innerText = totalRate.toFixed(2);
         document.getElementById('avgMargin').innerText = (totalMargin / count).toFixed(2);
         document.getElementById('totalDiscount').innerText = totalDiscount.toFixed(2);
         document.getElementById('avgTax').innerText = (totalTax / count).toFixed(2);
