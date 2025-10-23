@@ -28,7 +28,7 @@ REDIRECT_URI = os.getenv("REDIRECT_URI")
 AUTHORITY = f"https://login.microsoftonline.com/{TENANT_ID}"
 SCOPE = ["User.Read"]
 
-SUPERUSERS = [""]
+SUPERUSERS = ["althaf@hamdaz.com", "jishad@hamdaz.com", "sebin@hamdaz.com"]
 LIMITED_USERS = ["sebin@hamdaz.com"]
 
 # Initialize MSAL
