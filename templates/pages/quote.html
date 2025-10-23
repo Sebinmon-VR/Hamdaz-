@@ -22,20 +22,20 @@
 
         <!-- Auto-filled Customer Details -->
         <div class="row g-3 mb-4">
-            <div class="col-md-4">
+            <div class="col-md-3">
                 <label class="form-label">Currency</label>
                 <input type="text" class="form-control" id="currency" name="currency" readonly>
             </div>
-            <div class="col-md-4">
+            <div class="col-md-3">
                 <label class="form-label">Payment Terms</label>
                 <input type="text" class="form-control" id="payment_terms" name="payment_terms" readonly>
             </div>
-            <div class="col-md-4">
+            <div class="col-md-3">
                 <label class="form-label">Email</label>
                 <input type="email" class="form-control" id="email" name="email" readonly>
             </div>
-            <div class="col-md-4">
-                <label class="form-label">tax_treatment</label>
+            <div class="col-md-3">
+                <label class="form-label">Tax Treatment</label>
                 <input type="text" class="form-control" id="tax_treatment" name="tax_treatment" readonly>
             </div>
         </div>
@@ -85,11 +85,12 @@
                         <th>Brand</th>
                         <th>Quantity</th>
                         <th>Rate</th>
-                        <th>Margin</th>
+                        <th>Margin (%)</th>
                         <th>Item Type</th>
                         <th>Discount</th>
                         <th>Tax</th>
                         <th>Amount</th>
+                        <th>Selling Price</th>
                         <th>Action</th>
                     </tr>
                 </thead>
@@ -97,25 +98,37 @@
                     <tr>
                         <td><input type="text" class="form-control" name="item_details[]" required></td>
                         <td><input type="text" class="form-control" name="brand[]" required></td>
-                        <td><input type="number" class="form-control" name="quantity[]" required></td>
-                        <td><input type="number" class="form-control" name="rate[]" required></td>
-                        <td><input type="number" class="form-control" name="margin[]" required value="0"></td>
+                        <td><input type="number" class="form-control quantity" name="quantity[]" value="1" required></td>
+                        <td><input type="number" class="form-control rate" name="rate[]" value="0" required></td>
+                        <td><input type="number" class="form-control margin" name="margin[]" value="0" required></td>
                         <td><input type="text" class="form-control" name="item_type[]" required></td>
-                        <td><input type="number" class="form-control" name="discount[]" required value="0"></td>
+                        <td><input type="number" class="form-control discount" name="discount[]" value="0" required></td>
                         <td>
-                            <select class="form-select" name="tax[]">
-                                <option disabled class="option-header">Exempt</option>
-                                <option value="out_of_scope">Out of Scope</option>
-                                <option disabled value="tax">Tax</option>
-                                <option value="standard_rate">Standard Rate [5%]</option>
-                                <option value="zero_rate">Zero Rate [0%]</option>
+                            <select class="form-select tax" name="tax[]">
+                                <option value="0">Out of Scope</option>
+                                <option value="0.05">Standard Rate [5%]</option>
+                                <option value="0">Zero Rate [0%]</option>
                             </select>
                         </td>
-
-                        <td><input type="number" class="form-control" name="amount[]" required></td>
+                        <td><input type="number" class="form-control amount" name="amount[]" value="0" readonly></td>
+                        <td><input type="number" class="form-control selling_price" name="selling_price[]" value="0" readonly></td>
                         <td><button type="button" class="btn btn-danger btn-sm remove-row"><img src="/static/icons/delete.png" alt=""></button></td>
                     </tr>
                 </tbody>
+                <tfoot>
+                    <tr>
+                        <th colspan="2">Totals / Avg</th>
+                        <th id="totalQuantity">0</th>
+                        <th id="avgRate">0</th>
+                        <th id="avgMargin">0</th>
+                        <th></th>
+                        <th id="totalDiscount">0</th>
+                        <th id="avgTax">0</th>
+                        <th id="totalAmount">0</th>
+                        <th id="totalSellingPrice">0</th>
+                        <th></th>
+                    </tr>
+                </tfoot>
             </table>
             <button type="button" class="btn btn-success" id="addItemBtn">Add Item</button>
         </div>
@@ -135,15 +148,15 @@
             <div class="row g-3">
                 <div class="col-md-4">
                     <label class="form-label">Subtotal</label>
-                    <input type="number" class="form-control" name="subtotal" required>
+                    <input type="number" class="form-control" name="subtotal" id="subtotal" readonly>
                 </div>
                 <div class="col-md-4">
                     <label class="form-label">Total Discount</label>
-                    <input type="number" class="form-control" name="total_discount" required>
+                    <input type="number" class="form-control" name="total_discount" id="total_discount" readonly>
                 </div>
                 <div class="col-md-4">
                     <label class="form-label">Grand Total</label>
-                    <input type="number" class="form-control" name="grand_total" required>
+                    <input type="number" class="form-control" name="grand_total" id="grand_total" readonly>
                 </div>
             </div>
         </div>
@@ -153,33 +166,80 @@
 </div>
 
 <script>
-    // --- Customer selection dynamic fill ---
     const customerSelect = document.getElementById('customerSelect');
     customerSelect.addEventListener('change', function () {
         const selectedOption = this.options[this.selectedIndex];
         document.getElementById('currency').value = selectedOption.getAttribute('data-currency');
         document.getElementById('payment_terms').value = selectedOption.getAttribute('data-payment');
         document.getElementById('email').value = selectedOption.getAttribute('data-email');
+        document.getElementById('tax_treatment').value = selectedOption.getAttribute('data-tax');
     });
-    // Trigger initial fill
     customerSelect.dispatchEvent(new Event('change'));
 
-    // --- Dynamic Items Table ---
     const addItemBtn = document.getElementById('addItemBtn');
-    const itemsTable = document.getElementById('itemsTable').getElementsByTagName('tbody')[0];
+    const itemsTableBody = document.getElementById('itemsTable').getElementsByTagName('tbody')[0];
+
+    function updateCalculations() {
+        let totalQty = 0, totalDiscount = 0, totalAmount = 0, totalSelling = 0;
+        let totalRate = 0, totalMargin = 0, totalTax = 0, count = 0;
+
+        Array.from(itemsTableBody.rows).forEach(row => {
+            const qty = parseFloat(row.querySelector('.quantity').value) || 0;
+            const rate = parseFloat(row.querySelector('.rate').value) || 0;
+            const margin = parseFloat(row.querySelector('.margin').value) || 0;
+            const discount = parseFloat(row.querySelector('.discount').value) || 0;
+            const tax = parseFloat(row.querySelector('.tax').value) || 0;
+
+            const amount = qty * rate;
+            const selling = amount * (1 + margin / 100) - discount + (amount * tax);
+
+            row.querySelector('.amount').value = amount.toFixed(2);
+            row.querySelector('.selling_price').value = selling.toFixed(2);
+
+            totalQty += qty;
+            totalDiscount += discount;
+            totalAmount += amount;
+            totalSelling += selling;
+            totalRate += rate;
+            totalMargin += margin;
+            totalTax += tax;
+            count++;
+        });
+
+        document.getElementById('totalQuantity').innerText = totalQty.toFixed(2);
+        document.getElementById('avgRate').innerText = (totalRate / count).toFixed(2);
+        document.getElementById('avgMargin').innerText = (totalMargin / count).toFixed(2);
+        document.getElementById('totalDiscount').innerText = totalDiscount.toFixed(2);
+        document.getElementById('avgTax').innerText = (totalTax / count).toFixed(2);
+        document.getElementById('totalAmount').innerText = totalAmount.toFixed(2);
+        document.getElementById('totalSellingPrice').innerText = totalSelling.toFixed(2);
+
+        document.getElementById('subtotal').value = totalAmount.toFixed(2);
+        document.getElementById('total_discount').value = totalDiscount.toFixed(2);
+        document.getElementById('grand_total').value = totalSelling.toFixed(2);
+    }
 
     addItemBtn.addEventListener('click', function () {
-        const newRow = itemsTable.rows[0].cloneNode(true);
-        Array.from(newRow.querySelectorAll('input')).forEach(input => input.value = '');
-        itemsTable.appendChild(newRow);
+        const newRow = itemsTableBody.rows[0].cloneNode(true);
+        Array.from(newRow.querySelectorAll('input')).forEach(input => input.value = input.classList.contains('quantity') ? 1 : 0);
+        itemsTableBody.appendChild(newRow);
+        updateCalculations();
     });
 
-    itemsTable.addEventListener('click', function (e) {
+    itemsTableBody.addEventListener('input', updateCalculations);
+    itemsTableBody.addEventListener('change', updateCalculations);
+
+    itemsTableBody.addEventListener('click', function (e) {
         if (e.target.classList.contains('remove-row')) {
-            const row = e.target.closest('tr');
-            if (itemsTable.rows.length > 1) row.remove();
+            if (itemsTableBody.rows.length > 1) {
+                e.target.closest('tr').remove();
+                updateCalculations();
+            }
         }
     });
+
+    // initial calculation
+    updateCalculations();
 </script>
 
 {% endblock %}

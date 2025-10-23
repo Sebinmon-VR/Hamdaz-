@@ -347,46 +347,140 @@ def quote():
     return render_template("pages/quote.html", user=user, customers=structured_customers)
 # ==============================================================
 # ==============================================================
+def get_first(quote_data, key, index=0, default=""):
+    """
+    Safely get the first or indexed value from a list in quote_data.
+    """
+    values = quote_data.get(key, [default])
+    if isinstance(values, list):
+        if len(values) > index:
+            return values[index]
+        else:
+            return default
+    return values or default
 
-@app.route("/send_quote_for_approval", methods=["POST", "GET"])
+@app.route("/send_quote_for_approval", methods=["POST"])
 def send_for_approval():
     if "user" not in session:
-        return redirect(url_for('login'))
+        return redirect(url_for("login"))
+
     user = session.get("user")
-    email = user.get("mail") or user.get("userPrincipalName")
+    submitter_email = user.get("mail") or user.get("userPrincipalName")
 
     quote_data = request.form.to_dict(flat=False)
-    success = send_quote_approval_email(quote_data, submitter_email=email, admin_emails=SUPERUSERS)
-    if success:
-        return render_template("pages/quote_success.html", user=user)
-    else:
-        return "Error submitting quote. Please try again."
+
+    # ✅ Combine all items into a single list
+    num_items = len(quote_data.get("item_details[]", []))
+    combined_items = []
+
+    for i in range(num_items):
+        try:
+            tax_val = get_first(quote_data, "tax[]", i, 0)
+            try:
+                tax_val = float(tax_val)
+            except ValueError:
+                tax_val = 0
+
+            combined_items.append({
+                "ItemDetails": get_first(quote_data, "item_details[]", i),
+                "Brand": get_first(quote_data, "brand[]", i),
+                "Quantity": int(get_first(quote_data, "quantity[]", i, 0)),
+                "Rate": float(get_first(quote_data, "rate[]", i, 0)),
+                "Margin": float(get_first(quote_data, "margin[]", i, 0)),
+                "Tax": tax_val,
+                "Amount": float(get_first(quote_data, "amount[]", i, 0)),
+                "SellingPrice": float(get_first(quote_data, "selling_price[]", i, 0))
+            })
+        except Exception as e:
+            print(f"Error parsing item {i}: {e}")
+
+    # ✅ Store all items together in one SharePoint row
+    item_fields = {
+        "Title": get_first(quote_data, "reference", 0, "No Title"),
+        "CustomerID": get_first(quote_data, "customer_id", 0),
+        "Currency": get_first(quote_data, "currency", 0),
+        "PaymentTerms": get_first(quote_data, "payment_terms", 0),
+        "Email": get_first(quote_data, "email", 0),
+        "TaxTreatment": get_first(quote_data, "tax_treatment", 0),
+        "Reference": get_first(quote_data, "reference", 0),
+        "QuoteDate": get_first(quote_data, "quote_date", 0),
+        "ExpiryDate": get_first(quote_data, "expiry_date", 0),
+        "Portal": get_first(quote_data, "portal", 0),
+        "QuoteCreator": get_first(quote_data, "quote_creator", 0),
+        "BCD": get_first(quote_data, "bcd", 0),
+        "ApprovalStatus": "Pending",
+        
+        "Amount": get_first(quote_data, "total_amount", 0),
+        "Discount": get_first(quote_data, "total_discount", 0),
+        "TotalTax": get_first(quote_data, "total_tax", 0),
+        "TotalSellingPrice": get_first(quote_data, "total_selling_price", 0),
+        "Margin": get_first(quote_data, "avgMargin", 0),
+        
+        # ✅ Convert list of items to a readable string (or JSON)
+        "AllItems": json.dumps(combined_items, indent=2)
+    }
+
+    try:
+        add_sharepoint_list_item(item_fields)
+        return render_template("pages/quote_success.html", user=user, added_items=1)
+    except Exception as e:
+        return f"❌ Error adding quote to SharePoint: {str(e)}", 500
+
+
+
+
+# @app.route("/quote_decision", methods=["POST"])
+# def quote_decision():
+#     """
+#     Receives the admin's decision via a POST request (from Power Automate or other system).
+#     """
+#     data = request.json
+#     decision = data.get("decision")
+#     reference = data.get("reference")
+#     admin_email = data.get("admin_email")  # Admin performing the action
+
+#     if not decision or not reference:
+#         return jsonify({"error": "Missing decision or reference"}), 400
+
+  
     
-@app.route("/quote_decision", methods=["POST"])
-def quote_decision():
-    data = request.json
-    decision = data.get("decision")
-    reference = data.get("quote_reference")
-    submitter_email = data.get("submitter_email")
-    admin_email = data.get("admin_email")
+#     return jsonify({"status": "success", "reference": reference, "decision": decision})
 
-    # Prepare message
-    message = f"Hi,<br>Your quote <b>{reference}</b> has been <b>{decision.upper()}</b> by <b>{admin_email or 'Admin'}</b>."
 
-    # Send via Teams
-    send_teams_chat(to_user_email=submitter_email, message=message, token=get_access_token())
 
-    # # Optional: Also send email notification
-    # send_email(
-    #     to_email=submitter_email,
-    #     subject=f"Quote {reference} {decision.upper()}",
-    #     body_html=f"<html><body>{message}</body></html>",
-    #     token=get_access_token(),
-    #     sender_email="notifications@hamdaz.com",
-    #     sender_name="Quote Approval System"
-    # )
+# @app.route("/quote_decision", methods=["POST"])
+# def quote_decision():
+#     data = request.json
+#     decision = data.get("decision")
+#     reference = data.get("reference")
+#     submitter_email = data.get("submitter_email")
+#     admin_email = data.get("admin_email") or "Unknown Admin"
 
-    return jsonify({"status": "success"})
+#     print(f"✅ Quote {decision.upper()} by {admin_email} for {reference}")
+    
+#     # Send confirmation email back to submitter
+#     subject = f"Your quote {reference} has been {decision.upper()}"
+#     body_html = f"""
+#     <html>
+#     <body>
+#         <p>Hi,</p>
+#         <p>Your quote <b>{reference}</b> has been <b>{decision}</b> by <b>{admin_email}</b>.</p>
+#         <p>Thank you.</p>
+#     </body>
+#     </html>
+#     """
+
+#     send_email(
+#         to_email=submitter_email,
+#         subject=subject,
+#         body_html=body_html,
+#         token=get_access_token(),
+#         sender_email=admin_email,
+#         sender_name=admin_email
+#     )
+
+#     return jsonify({"status": "success", "admin_email": admin_email})
+
 
 
 # ==============================================================

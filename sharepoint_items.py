@@ -1003,65 +1003,175 @@ def send_quote_approval_email(quote_data, submitter_email, admin_emails):
     return True
 
 
-def send_email(to_email, subject, body_html, token, sender_email, sender_name=None):
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "Content-Type": "application/json"
-    }
+# def send_email(to_email, subject, body_html, token, sender_email, sender_name=None):
+#     headers = {
+#         "Authorization": f"Bearer {token}",
+#         "Content-Type": "application/json"
+#     }
 
-    message = {
-        "message": {
-            "subject": subject,
-            "body": {
-                "contentType": "HTML",
-                "content": body_html
-            },
-            "toRecipients": [{"emailAddress": {"address": to_email}}],
-            "from": {
-                "emailAddress": {"address": sender_email, "name": sender_name or sender_email}
-            }
-        },
-        "saveToSentItems": "true"
-    }
+#     message = {
+#         "message": {
+#             "subject": subject,
+#             "body": {
+#                 "contentType": "HTML",
+#                 "content": body_html
+#             },
+#             "toRecipients": [{"emailAddress": {"address": to_email}}],
+#             "from": {
+#                 "emailAddress": {"address": sender_email, "name": sender_name or sender_email}
+#             }
+#         },
+#         "saveToSentItems": "true"
+#     }
 
-    url = f"{GRAPH_API_ENDPOINT}/users/{sender_email}/sendMail"
-    response = requests.post(url, headers=headers, json=message)
-    response.raise_for_status()
-    print(f"✅ Email sent from {sender_email} to {to_email}")
+#     url = f"{GRAPH_API_ENDPOINT}/users/{sender_email}/sendMail"
+#     response = requests.post(url, headers=headers, json=message)
+#     response.raise_for_status()
+#     print(f"✅ Email sent from {sender_email} to {to_email}")
 
 # --- Send quote approval em
 
 
-def send_teams_chat(to_user_email, message, token):
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "Content-Type": "application/json"
-    }
+# def send_teams_chat(to_user_email, message, token):
+#     headers = {
+#         "Authorization": f"Bearer {token}",
+#         "Content-Type": "application/json"
+#     }
 
-    # Step 1: Create or get 1:1 chat with the user
-    chat_payload = {
-        "chatType": "oneOnOne",
-        "members": [
-            {
-                "@odata.type": "#microsoft.graph.aadUserConversationMember",
-                "roles": ["owner"],
-                "user@odata.bind": f"https://graph.microsoft.com/v1.0/users/{to_user_email}"
-            }
-        ]
-    }
-    chat_url = "https://graph.microsoft.com/v1.0/chats"
-    chat_response = requests.post(chat_url, headers=headers, json=chat_payload)
-    chat_response.raise_for_status()
-    chat_id = chat_response.json()["id"]
+#     # Step 1: Create or get 1:1 chat with the user
+#     chat_payload = {
+#         "chatType": "oneOnOne",
+#         "members": [
+#             {
+#                 "@odata.type": "#microsoft.graph.aadUserConversationMember",
+#                 "roles": ["owner"],
+#                 "user@odata.bind": f"https://graph.microsoft.com/v1.0/users/{to_user_email}"
+#             }
+#         ]
+#     }
+#     chat_url = "https://graph.microsoft.com/v1.0/chats"
+#     chat_response = requests.post(chat_url, headers=headers, json=chat_payload)
+#     chat_response.raise_for_status()
+#     chat_id = chat_response.json()["id"]
 
-    # Step 2: Send message to that chat
-    message_payload = {
-        "body": {
-            "contentType": "html",
-            "content": message
+#     # Step 2: Send message to that chat
+#     message_payload = {
+#         "body": {
+#             "contentType": "html",
+#             "content": message
+#         }
+#     }
+#     message_url = f"https://graph.microsoft.com/v1.0/chats/{chat_id}/messages"
+#     msg_response = requests.post(message_url, headers=headers, json=message_payload)
+#     msg_response.raise_for_status()
+#     print(f"✅ Teams message sent to {to_user_email}")
+
+
+
+def add_sharepoint_list_item(item_fields):
+    token = get_access_token()
+    site_id = get_site_id(token, "hamdaz1.sharepoint.com", "/sites/Test")
+    list_id = get_list_id(token, site_id, "Quotes")
+
+    url = f"{GRAPH_API_ENDPOINT}/sites/{site_id}/lists/{list_id}/items"
+    payload = {"fields": item_fields}
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+
+    try:
+        resp = requests.post(url, headers=headers, json=payload)
+        resp.raise_for_status()
+        print(f"✅ Item {item_fields.get('Reference')} added successfully")
+        return resp.json()
+    except requests.exceptions.RequestException as e:
+        print(f"❌ Error adding item {item_fields.get('Reference')} to SharePoint: {e}")
+        return None
+
+
+
+
+
+
+
+def update_sharepoint_item(reference, update_fields):
+    """Update SharePoint item based on unique reference field."""
+    token = get_access_token()
+    site_id = get_site_id(token, "hamdaz1.sharepoint.com", "/sites/Test")
+    list_id = get_list_id(token, site_id, "Quotes")
+
+    # Search for item with the reference
+    url = f"{GRAPH_API_ENDPOINT}/sites/{site_id}/lists/{list_id}/items?filter=fields/Reference eq '{reference}'"
+    headers = {"Authorization": f"Bearer {token}"}
+    resp = requests.get(url, headers=headers)
+    resp.raise_for_status()
+    items = resp.json().get("value", [])
+    if not items:
+        raise ValueError(f"No SharePoint item found with Reference {reference}")
+
+    item_id = items[0]["id"]
+    update_url = f"{GRAPH_API_ENDPOINT}/sites/{site_id}/lists/{list_id}/items/{item_id}/fields"
+    resp = requests.patch(update_url, headers=headers, json=update_fields)
+    resp.raise_for_status()
+    return resp.json()
+
+
+
+
+
+import requests
+
+def get_list_columns(site_domain, site_path, list_name):
+    token = get_access_token()
+    site_id = get_site_id(token, site_domain, site_path)
+    list_id = get_list_id(token, site_id, list_name)
+    
+    url = f"https://graph.microsoft.com/v1.0/sites/{site_id}/lists/{list_id}/columns"
+    headers = {"Authorization": f"Bearer {token}"}
+    response = requests.get(url, headers=headers)
+    response.raise_for_status()
+    columns = response.json().get("value", [])
+    for col in columns:
+        print(f"Display Name: {col['displayName']}, Internal Name: {col['name']}")
+    return columns
+
+
+
+
+
+
+
+
+def ensure_sharepoint_folder(access_token, site_id, library_name, folder_path):
+    """
+    Ensure a folder exists in a SharePoint document library.
+    folder_path example: 'QuoteCostingSheets/QT-1001'
+    Returns the folder ID.
+    """
+    headers = {"Authorization": f"Bearer {access_token}"}
+    url = f"{GRAPH_API_ENDPOINT}/sites/{site_id}/drive/root:/{folder_path}"
+    resp = requests.get(url, headers=headers)
+    
+    if resp.status_code == 404:
+        # Folder does not exist, create it
+        parent_path, folder_name = folder_path.rsplit('/', 1)
+        create_url = f"{GRAPH_API_ENDPOINT}/sites/{site_id}/drive/root:/{parent_path}:/children"
+        payload = {
+            "name": folder_name,
+            "folder": {},
+            "@microsoft.graph.conflictBehavior": "rename"
         }
-    }
-    message_url = f"https://graph.microsoft.com/v1.0/chats/{chat_id}/messages"
-    msg_response = requests.post(message_url, headers=headers, json=message_payload)
-    msg_response.raise_for_status()
-    print(f"✅ Teams message sent to {to_user_email}")
+        resp = requests.post(create_url, headers={**headers, "Content-Type": "application/json"}, json=payload)
+        resp.raise_for_status()
+        return resp.json()["id"]
+    else:
+        resp.raise_for_status()
+        return resp.json()["id"]
+
+def upload_file_to_sharepoint(access_token, site_id, folder_path, file_name, file_bytes):
+    """
+    Upload file to SharePoint folder.
+    """
+    url = f"{GRAPH_API_ENDPOINT}/sites/{site_id}/drive/root:/{folder_path}/{file_name}:/content"
+    headers = {"Authorization": f"Bearer {access_token}"}
+    resp = requests.put(url, headers=headers, data=file_bytes)
+    resp.raise_for_status()
+    return resp.json()["webUrl"]  # Download link
