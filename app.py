@@ -388,8 +388,7 @@ def send_for_approval():
                 "Rate": float(get_first(quote_data, "rate[]", i, 0)),
                 "Margin": float(get_first(quote_data, "margin[]", i, 0)),
                 "Tax": tax_val,
-                "Amount": float(get_first(quote_data, "amount[]", i, 0)),
-                "SellingPrice": float(get_first(quote_data, "selling_price[]", i, 0))
+                "Amount": float(get_first(quote_data, "amount[]", i, 0))
             })
         except Exception as e:
             print(f"Error parsing item {i}: {e}")
@@ -410,14 +409,9 @@ def send_for_approval():
         "BCD": get_first(quote_data, "bcd", 0),
         "ApprovalStatus": "Pending",
         
-        "Amount": get_first(quote_data, "total_amount", 0),
-        "Discount": get_first(quote_data, "total_discount", 0),
-        "TotalTax": get_first(quote_data, "total_tax", 0),
-        "TotalSellingPrice": get_first(quote_data, "total_selling_price", 0),
-        "Margin": get_first(quote_data, "avgMargin", 0),
-        
         # ✅ Convert list of items to a readable string (or JSON)
         "AllItems": json.dumps(combined_items, indent=2)
+        
     }
 
     try:
@@ -429,22 +423,32 @@ def send_for_approval():
 
 
 
-# @app.route("/quote_decision", methods=["POST"])
-# def quote_decision():
-#     """
-#     Receives the admin's decision via a POST request (from Power Automate or other system).
-#     """
-#     data = request.json
-#     decision = data.get("decision")
-#     reference = data.get("reference")
-#     admin_email = data.get("admin_email")  # Admin performing the action
+@app.route("/quote_decision", methods=["POST"])
+def quote_decision():
+    """
+    Receives the admin's decision via a POST request (from Power Automate or other system).
+    """
+    data = request.json
+    decision = data.get("decision")
+    reference = data.get("reference")
+    admin_email = data.get("admin_email")  # Admin performing the action
 
-#     if not decision or not reference:
-#         return jsonify({"error": "Missing decision or reference"}), 400
+    if not decision or not reference:
+        return jsonify({"error": "Missing decision or reference"}), 400
 
-  
-    
-#     return jsonify({"status": "success", "reference": reference, "decision": decision})
+    # Update SharePoint item
+    try:
+        update_fields = {
+            "ApprovalStatus": decision,
+            "ApprovedBy": admin_email
+        }
+        updated_item = update_sharepoint_item(reference, update_fields)
+        print(f"Quote {reference} updated with decision {decision} by {admin_email}")
+    except Exception as e:
+        print("Error updating SharePoint item:", e)
+        return jsonify({"error": str(e)}), 500
+
+    return jsonify({"status": "success", "reference": reference, "decision": decision})
 
 
 
