@@ -423,43 +423,78 @@ def send_for_approval():
         return f"❌ Error adding quote to SharePoint: {str(e)}", 500
 
 
-
-@app.route("/quote_decision", methods=["GET", "POST"])
+@app.route("/quote_decision")
 def quote_decision():
-    if request.method == "POST":
-        # Request from Power Automate
-        data = request.get_json()
-        quote_id = data.get("quote_id")
-        decision = data.get("decision")
-        comments = data.get("comments", "")
-        approver = data.get("approver", "Unknown")
+    if "user" not in session:
+        return redirect(url_for("login"))
 
-        # Render a page to show approval details
-        return render_template(
-            "pages/quote_decision.html",
-            quote_id=quote_id,
-            decision=decision,
-            comments=comments,
-            approver=approver
-        )
+    user = session.get("user")
+    user_name = user.get("displayName")  # user's name in session
 
-    else:
-        # When user opens directly (GET)
-        quote_id = request.args.get("quote_id")
-        decision = request.args.get("decision")
-        comments = request.args.get("comments", "")
-        approver = request.args.get("approver", "")
+    try:
+        site_domain = "hamdaz1.sharepoint.com"
+        site_path = "/sites/Test"
+        list_name = "Quotes"
 
-        if not quote_id:
-            return "Quote ID is missing.", 400
+        quote_items = fetch_sharepoint_list(site_domain, site_path, list_name)
+        # Filter only quotes created by this user
+        quote_items = [q for q in quote_items if q.get("QuoteCreator") == user_name]
+    except Exception as e:
+        print(f"Error fetching SharePoint list items: {e}")
+        quote_items = []
 
-        return render_template(
-            "pages/quote_decision.html",
-            quote_id=quote_id,
-            decision=decision,
-            comments=comments,
-            approver=approver
-        )
+    return render_template("pages/quote_decision.html", user=user, quote_items=quote_items)
+
+import re
+import json
+import html
+
+@app.route("/quote_details/<quote_id>")
+def quote_details(quote_id):
+    if "user" not in session:
+        return redirect(url_for("login"))
+
+    user = session.get("user")
+
+    # Fetch quote by ID
+    site_domain = "hamdaz1.sharepoint.com"
+    site_path = "/sites/Test"
+    list_name = "Quotes"
+    quote_items = fetch_sharepoint_list(site_domain, site_path, list_name)
+
+    quote = next((q for q in quote_items if q.get("id") == quote_id), None)
+    if not quote:
+        return "Quote not found", 404
+
+    # Extract AllItems JSON from HTML
+    all_items_raw = quote.get("AllItems", "")
+    try:
+        match = re.search(r'\[.*\]', html.unescape(all_items_raw), re.DOTALL)
+        if match:
+            items = json.loads(match.group(0))
+            quote['AllItems_parsed'] = items
+
+            # Compute totals
+            total_rate = sum(float(item.get('Rate', 0)) for item in items)
+            total_margin = sum(float(item.get('Margin', 0)) for item in items)
+            total_tax = sum(float(item.get('Tax', 0)) for item in items)
+            total_amount = sum(float(item.get('Amount', 0)) for item in items)
+
+            quote['Totals'] = {
+                "Rate": total_rate,
+                "Margin": total_margin,
+                "Tax": total_tax,
+                "Amount": total_amount
+            }
+        else:
+            quote['AllItems_parsed'] = []
+            quote['Totals'] = {}
+    except Exception as e:
+        print("Error parsing AllItems:", e)
+        quote['AllItems_parsed'] = []
+        quote['Totals'] = {}
+
+    return render_template("pages/quote_details.html", quote=quote, user=user)
 
 
 # ==============================================================

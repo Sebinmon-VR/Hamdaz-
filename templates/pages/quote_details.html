@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container mx-auto p-6">
+    <h1 class="text-2xl font-bold mb-4">Quote Details: {{ quote.Title }}</h1>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+        <div><strong>Customer ID:</strong> {{ quote.CustomerID }}</div>
+        <div><strong>Currency:</strong> {{ quote.Currency }}</div>
+        <div><strong>Payment Terms:</strong> {{ quote.PaymentTerms }}</div>
+        <div><strong>Reference:</strong> {{ quote.Reference }}</div>
+        <div><strong>Quote Date:</strong> {{ quote.QuoteDate[:10] }}</div>
+        <div><strong>Expiry Date:</strong> {{ quote.ExpiryDate[:10] }}</div>
+        <div><strong>Portal:</strong> {{ quote.Portal }}</div>
+        <div><strong>Quote Creator:</strong> {{ quote.QuoteCreator }}</div>
+        <div>
+            <strong>Approval Status:</strong>
+            <span class="px-2 py-1 rounded"
+                style="background-color: {% if quote.ApprovalStatus == 'Approved' %}#d1fae5{% elif quote.ApprovalStatus == 'Rejected' %}#fee2e2{% else %}#fef3c7{% endif %};">
+                {{ quote.ApprovalStatus }}
+            </span>
+        </div>
+    </div>
+
+    <h2 class="text-xl font-semibold mb-2">Items</h2>
+    <div class="overflow-x-auto">
+        <table class="min-w-full bg-white shadow rounded-lg">
+            <thead>
+                <tr class="bg-gray-100 text-left">
+                    <th class="px-4 py-2">Item Details</th>
+                    <th class="px-4 py-2">Brand</th>
+                    <th class="px-4 py-2">Quantity</th>
+                    <th class="px-4 py-2">Rate</th>
+                    <th class="px-4 py-2">Margin</th>
+                    <th class="px-4 py-2">Tax</th>
+                    <th class="px-4 py-2">Amount</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in quote.AllItems_parsed %}
+                <tr class="hover:bg-gray-50">
+                    <td class="border px-4 py-2">{{ item.ItemDetails }}</td>
+                    <td class="border px-4 py-2">{{ item.Brand }}</td>
+                    <td class="border px-4 py-2">{{ item.Quantity }}</td>
+                    <td class="border px-4 py-2">{{ item.Rate }}</td>
+                    <td class="border px-4 py-2">{{ item.Margin }}</td>
+                    <td class="border px-4 py-2">{{ item.Tax }}</td>
+                    <td class="border px-4 py-2">{{ item.Amount }}</td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="7" class="text-center py-4">No items found.</td>
+                </tr>
+                {% endfor %}
+
+
+            </tbody>
+        </table>
+        <h2 class="text-xl font-semibold mt-6 mb-2">Pricing Summary</h2>
+<table class="min-w-full bg-white shadow rounded-lg mb-6">
+    <thead>
+        <tr class="bg-gray-100 text-left">
+            <th class="px-4 py-2">Total Rate</th>
+            <th class="px-4 py-2">Total Margin</th>
+            <th class="px-4 py-2">Total Tax</th>
+            <th class="px-4 py-2">Total Amount</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td class="border px-4 py-2">{{ quote.Totals.Rate }}</td>
+            <td class="border px-4 py-2">{{ quote.Totals.Margin }}</td>
+            <td class="border px-4 py-2">{{ quote.Totals.Tax }}</td>
+            <td class="border px-4 py-2">{{ quote.Totals.Amount }}</td>
+        </tr>
+    </tbody>
+</table>
+
+    </div>
+</div>
+{% endblock %}
