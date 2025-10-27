@@ -20,7 +20,7 @@
         <h2 class="text-lg font-semibold mb-2">Partnership Progress</h2>
         <div class="flex items-center space-x-4">
             {% set statuses = ['Initiated', 'Active', 'Complete'] %}
-            {% set current_index = statuses.index(vendor.Col4) if vendor.Col4 in statuses else -1 %}
+            {% set current_index = statuses.index(vendor.Status) if vendor.Status in statuses else -1 %}
             {% for s in statuses %}
             <div class="flex-1 text-center">
                 <div class="relative mb-2">
@@ -31,40 +31,63 @@
                     </div>
                     {% if not loop.last %}
                     <div class="absolute top-4 left-1/2 w-full h-1 -translate-x-1/2
-                        {% if current_index >= loop.index0 %}bg-blue-500{% else %}bg-gray-300{% endif %}">
-                    </div>
+                        {% if current_index >= loop.index0 %}bg-blue-500{% else %}bg-gray-300{% endif %}"></div>
                     {% endif %}
                 </div>
-                <span class="text-sm font-medium {% if vendor.Col4 == s %}text-blue-600{% else %}text-gray-500{% endif %}">{{ s }}</span>
+                <span class="text-sm font-medium {% if vendor.Status == s %}text-blue-600{% else %}text-gray-500{% endif %}">{{ s }}</span>
             </div>
             {% endfor %}
         </div>
-        {% if vendor.Col4 not in statuses %}
-            <p class="mt-2 text-red-500 text-sm">Current Status: {{ vendor.Col4 }}</p>
+        {% if vendor.Status not in statuses %}
+            <p class="mt-2 text-red-500 text-sm">Current Status: {{ vendor.Status }}</p>
         {% endif %}
     </div>
 
     <!-- Vendor Details Card -->
     <form id="vendorForm" method="POST" class="bg-white rounded shadow p-6 space-y-3">
-        {% for col, label in [('Col5','Next Action'),('Col6','Comments'),
-                              ('URL','Portal'),('Email','Email'),('Password','Password'),
-                              ('Col10','Col10'),('Col11','Col11'),('Col12','Col12'),
-                              ('Col13','Col13'),('Col14','Col14')] %}
+        {% for col, label in [('Col5','Next Action'),('Comments','Comments'),
+                              ('URL','Portal'),('Admin User','Admin User'),
+                              ('Password','Password'),('Col10','Col10'),
+                              ('Contact','Contact'),('Col12','Col12')] %}
         <div class="flex items-center justify-between">
             <span class="font-bold text-gray-700">{{ label }}:</span>
-            <span class="field-display">{{ vendor[col] or '-' }}</span>
-            <input type="text" name="{{ col }}" value="{{ vendor[col] }}" class="field-input border p-1 rounded hidden w-full ml-2">
+
+            {% if col == 'Password' %}
+                <div class="flex items-center space-x-2">
+                    {% if is_admin(user.mail or user.userPrincipalName) %}
+                        <span class="field-display">{{ vendor[col] or '-' }}</span>
+                        <input type="password" name="{{ col }}" value="{{ vendor[col] }}" class="field-input border p-1 rounded hidden w-full">
+                        <button type="button" class="toggle-password text-gray-500 hover:text-gray-700">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.477 0 8.268 2.943 9.542 7-1.274 4.057-5.065 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                            </svg>
+                        </button>
+                    {% else %}
+                        <span class="field-display">******</span>
+                        <button type="button" class="eye-popup text-gray-500 hover:text-gray-700">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.477 0 8.268 2.943 9.542 7-1.274 4.057-5.065 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                            </svg>
+                        </button>
+                    {% endif %}
+                </div>
+            {% else %}
+                <span class="field-display">{{ vendor[col] or '-' }}</span>
+                <input type="text" name="{{ col }}" value="{{ vendor[col] }}" class="field-input border p-1 rounded hidden w-full ml-2">
+            {% endif %}
         </div>
         {% endfor %}
 
         <!-- Status dropdown inline -->
         <div class="flex items-center justify-between">
             <span class="font-bold text-gray-700">Status:</span>
-            <span class="field-display">{{ vendor.Col4 }}</span>
-            <select name="Col4" class="field-input border p-1 rounded hidden ml-2">
-                <option value="{{ vendor.Col4 }}" selected>{{ vendor.Col4 }}</option>
+            <span class="field-display">{{ vendor.Status }}</span>
+            <select name="Status" class="field-input border p-1 rounded hidden ml-2">
+                <option value="{{ vendor.Status }}" selected>{{ vendor.Status }}</option>
                 {% for s in statuses %}
-                    {% if s != vendor.Col4 %}
+                    {% if s != vendor.Status %}
                         <option value="{{ s }}">{{ s }}</option>
                     {% endif %}
                 {% endfor %}
@@ -88,6 +111,7 @@
     const formButtons = document.getElementById('formButtons');
     const cancelEdit = document.getElementById('cancelEdit');
 
+    // Toggle edit form
     editToggle.addEventListener('click', () => {
         fieldDisplays.forEach(f => f.classList.toggle('hidden'));
         fieldInputs.forEach(f => f.classList.toggle('hidden'));
@@ -95,10 +119,28 @@
     });
 
     cancelEdit.addEventListener('click', () => {
-        // Hide inputs and show original display
         fieldDisplays.forEach(f => f.classList.remove('hidden'));
         fieldInputs.forEach(f => f.classList.add('hidden'));
         formButtons.classList.add('hidden');
+    });
+
+    // Admin password toggle
+    document.querySelectorAll('.toggle-password').forEach(btn => {
+        btn.addEventListener('click', e => {
+            const input = e.target.closest('div').querySelector('input');
+            if (input.type === 'password') {
+                input.type = 'text';
+            } else {
+                input.type = 'password';
+            }
+        });
+    });
+
+    // Non-admin eye popup
+    document.querySelectorAll('.eye-popup').forEach(btn => {
+        btn.addEventListener('click', () => {
+            alert('You do not have permission to view this password, Please contact an administrator for assistance.');
+        });
     });
 </script>
 
