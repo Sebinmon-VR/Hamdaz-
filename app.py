@@ -396,7 +396,8 @@ def send_for_approval():
                 "Rate": float(get_first(quote_data, "rate[]", i, 0)),
                 "Margin": float(get_first(quote_data, "margin[]", i, 0)),
                 "Tax": tax_val,
-                "Amount": float(get_first(quote_data, "amount[]", i, 0))
+                "Amount": float(get_first(quote_data, "amount[]", i, 0)),
+                
             })
         except Exception as e:
             print(f"Error parsing item {i}: {e}")
@@ -420,7 +421,10 @@ def send_for_approval():
         "Margin": sum(item["Margin"] for item in combined_items),
         "Rate": sum(item["Rate"] for item in combined_items) / len(combined_items) if combined_items else 0,
         # ✅ Convert list of items to a readable string (or JSON)
-        "AllItems": json.dumps(combined_items, indent=2)
+        "AllItems": json.dumps(combined_items, indent=2),
+        
+        "SellingPrice": float(get_first(quote_data, "amount[]", i, 0)) * (1 + float(get_first(quote_data, "margin[]", i, 0)) / 100) + (float(get_first(quote_data, "amount[]", i, 0)) * tax_val)
+
         
     }
 
@@ -466,7 +470,7 @@ def quote_details(quote_id):
     list_name = "Quotes"
     quote_items = fetch_sharepoint_list(site_domain, site_path, list_name)
 
-    quote = next((q for q in quote_items if q.get("id") == quote_id), None)
+    quote = next((q for q in quote_items if str(q.get("id")) == str(quote_id)), None)
     if not quote:
         return "Quote not found", 404
 
@@ -478,17 +482,46 @@ def quote_details(quote_id):
             items = json.loads(match.group(0))
             quote['AllItems_parsed'] = items
 
-            # Compute totals
-            total_rate = sum(float(item.get('Rate', 0)) for item in items)
-            total_margin = sum(float(item.get('Margin', 0)) for item in items)
-            total_tax = sum(float(item.get('Tax', 0)) for item in items)
-            total_amount = sum(float(item.get('Amount', 0)) for item in items)
+            # Helper to safely convert values to float
+            def to_float(val):
+                try:
+                    if isinstance(val, str):
+                        val = val.replace("%", "").strip()
+                    return float(val)
+                except:
+                    return 0
 
+            # Initialize totals
+            total_rate = 0
+            total_margin = 0
+            total_tax = 0
+            total_amount = 0
+            total_selling_price = 0
+
+            for item in items:
+                rate = to_float(item.get('Rate', 0))
+                margin = to_float(item.get('Margin', 0))
+                tax = to_float(item.get('Tax', 0))
+                amount = to_float(item.get('Amount', 0))
+                discount = to_float(item.get('Discount', 0))  # default 0 if not present
+
+                # Add to line totals
+                total_rate += rate
+                total_margin += margin
+                total_tax += tax
+                total_amount += amount
+
+                # Calculate selling price per item
+                selling_price = amount * (1 + margin / 100) - discount + (amount * tax)
+                total_selling_price += selling_price
+
+            # Store totals
             quote['Totals'] = {
                 "Rate": total_rate,
                 "Margin": total_margin,
                 "Tax": total_tax,
-                "Amount": total_amount
+                "Amount": total_amount,
+                "SellingPrice": total_selling_price
             }
         else:
             quote['AllItems_parsed'] = []
