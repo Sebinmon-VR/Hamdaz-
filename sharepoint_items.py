@@ -618,7 +618,7 @@ def update_contact_in_onedrive_excel(row_id, updated_data_dict):
         
         header_url = (
             f"{GRAPH_API_ENDPOINT}/users/{ONEDRIVE_USER_ID}/drive/root:/"
-            f"{FILE_PATH}:/workbook/worksheets('{WORKSHEET_NAME}')/range(address='A1:Z1')"
+            f"{FILE_PATH}:/workbook/worksheets('{CONTACT_WORKSHEET_NAME}')/range(address='A1:Z1')"
         )
         header_res = requests.get(header_url, headers=headers)
         header_res.raise_for_status()
@@ -631,7 +631,7 @@ def update_contact_in_onedrive_excel(row_id, updated_data_dict):
         
         update_url = (
             f"{GRAPH_API_ENDPOINT}/users/{ONEDRIVE_USER_ID}/drive/root:/"
-            f"{FILE_PATH}:/workbook/worksheets('{WORKSHEET_NAME}')/range(address='{range_address}')"
+            f"{FILE_PATH}:/workbook/worksheets('{CONTACT_WORKSHEET_NAME}')/range(address='{range_address}')"
         )
         
         patch_res = requests.patch(update_url, headers=headers, json={"values": [values_to_update]})
@@ -815,32 +815,7 @@ def add_or_update_user_in_excel(email, user_id, name, role, photo_file=None):
         print(f"Error adding/updating user in Excel: {e}")
         return False
 
-EXCEL_FILE_PATH = "UserAnalytics.xlsx"
-WORKSHEET_NAME = "UserAnalytics"
-TABLE_NAME = "Table1"  # Excel Table must exist, will create if missing
 
-
-
-def create_table_if_missing(headers):
-    """Create table in Excel if it doesn't exist yet."""
-    # Check existing tables
-    tables_url = f"{GRAPH_API_ENDPOINT}/users/{ONEDRIVE_PRIMARY_USER_ID}/drive/root:/{EXCEL_FILE_PATH}:/workbook/worksheets('{WORKSHEET_NAME}')/tables"
-    resp = requests.get(tables_url, headers=headers)
-    resp.raise_for_status()
-    existing_tables = [t['name'] for t in resp.json().get('value', [])]
-
-    if TABLE_NAME not in existing_tables:
-        # Create table starting at A1 with 7 columns
-        table_payload = {
-            "address": "A1:G1",
-            "hasHeaders": True,
-            "name": TABLE_NAME
-        }
-        create_url = f"{GRAPH_API_ENDPOINT}/users/{ONEDRIVE_PRIMARY_USER_ID}/drive/root:/{EXCEL_FILE_PATH}:/workbook/worksheets('{WORKSHEET_NAME}')/tables/add"
-        resp2 = requests.post(create_url, headers=headers, json=table_payload)
-        resp2.raise_for_status()
-        print(f"[INFO] Created table '{TABLE_NAME}' in worksheet '{WORKSHEET_NAME}'")
-        
         
 # ==============================================================================
 # ==============================================================================
@@ -1107,9 +1082,6 @@ def generate_quote_excel(quote):
 
     wb.save(file_path)
     return file_path
-
-
-
 
 
 import requests

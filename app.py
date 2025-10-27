@@ -14,6 +14,10 @@ from sharepoint_items import *
 from zoho import *
 from auto_assign import *
 import jwt
+import re
+import json
+import html
+
 # ================== LOAD ENVIRONMENT ==================
 load_dotenv(override=True)
 
@@ -28,8 +32,8 @@ REDIRECT_URI = os.getenv("REDIRECT_URI")
 AUTHORITY = f"https://login.microsoftonline.com/{TENANT_ID}"
 SCOPE = ["User.Read"]
 
-SUPERUSERS = ["althaf@hamdaz.com", "jishad@hamdaz.com", ""]
-LIMITED_USERS = ["sebin@hamdaz.com"]
+SUPERUSERS = ["althaf@hamdaz.com", "jishad@hamdaz.com", "sebin@hamdaz.com"]
+LIMITED_USERS = [""]
 
 # Initialize MSAL
 msal_app = ConfidentialClientApplication(
@@ -445,10 +449,6 @@ def quote_decision():
 
     return render_template("pages/quote_decision.html", user=user, quote_items=quote_items)
 
-import re
-import json
-import html
-
 @app.route("/quote_details/<quote_id>")
 def quote_details(quote_id):
     if "user" not in session:
@@ -541,6 +541,14 @@ def vendor_detail(vendor_id):
         return "Vendor not found", 404
 
     return render_template("pages/vendor_detail.html", vendor=vendor[0], user=user)
+
+# ==============================================================
+
+
+
+
+
+
 
 # ==============================================================
 # START FLASK + BACKGROUND UPDATER
