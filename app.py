@@ -32,7 +32,8 @@ REDIRECT_URI = os.getenv("REDIRECT_URI")
 AUTHORITY = f"https://login.microsoftonline.com/{TENANT_ID}"
 SCOPE = ["User.Read"]
 
-SUPERUSERS = ["althaf@hamdaz.com", "jishad@hamdaz.com", "sebin@hamdaz.com"]
+SUPERUSERS = ["jishad@hamdaz.com", ""]
+approvers = ["shibit@hamdaz.com", "althaf@hamdaz.com" ,"sebin@hamdaz.com"]
 LIMITED_USERS = [""]
 
 # Initialize MSAL
@@ -65,7 +66,10 @@ print("[INIT] Data loaded successfully.")
 def is_admin(email):
     return email.lower() in SUPERUSERS if email else False
 
-app.jinja_env.globals.update(is_admin=is_admin , current_date=datetime.now() )
+def is_approver(email):
+    return email.lower() in approvers if email else False
+
+app.jinja_env.globals.update(is_admin=is_admin, is_approver=is_approver, current_date=datetime.now())
 
 def greetings():
     now = datetime.now()
@@ -544,10 +548,21 @@ def vendor_detail(vendor_id):
 
 # ==============================================================
 
+@app.route("/approvals")
+def approvals():
+    if "user" not in session:
+        return redirect(url_for('login'))
+    user = session.get("user")
+    site_domain = "hamdaz1.sharepoint.com"
+    site_path = "/sites/Test"
+    list_name = "Quotes"
+    quote_items = fetch_sharepoint_list(site_domain, site_path, list_name)
+    # Show all the quotes with ApprovalStatus as both 'Pending' and 'Approved'
+    quote_items = [q for q in quote_items if q.get("ApprovalStatus") in ["Pending", "Approved"]]
+    
+    return render_template("pages/quote_decision.html", user=user, quote_items=quote_items)
 
-
-
-
+    
 
 
 # ==============================================================
