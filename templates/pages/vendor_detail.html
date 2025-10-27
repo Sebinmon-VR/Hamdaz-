@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="p-6 bg-gray-100 min-h-screen">
+    <!-- Vendor Header -->
+    <div class="mb-6 flex items-center justify-between">
+        <h1 class="text-3xl font-bold" id="vendorName">{{ vendor.Vendor }}</h1>
+        <button id="editToggle" class="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 text-sm flex items-center space-x-1">
+            <span>Edit</span>
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5h2M12 5v14m-7-7h14" />
+            </svg>
+        </button>
+    </div>
+
+    <p class="text-gray-600 mt-1">Partner Level: <span id="partnerLevel" class="font-medium">{{ vendor.Col3 or '-' }}</span></p>
+
+    <!-- Timeline / Progress Bar -->
+    <div class="mb-8">
+        <h2 class="text-lg font-semibold mb-2">Partnership Progress</h2>
+        <div class="flex items-center space-x-4">
+            {% set statuses = ['Initiated', 'Active', 'Complete'] %}
+            {% set current_index = statuses.index(vendor.Col4) if vendor.Col4 in statuses else -1 %}
+            {% for s in statuses %}
+            <div class="flex-1 text-center">
+                <div class="relative mb-2">
+                    <div class="w-8 h-8 mx-auto rounded-full 
+                        {% if current_index >= loop.index0 %}bg-blue-500{% else %}bg-gray-300{% endif %} 
+                        flex items-center justify-center text-white font-bold">
+                        {{ loop.index }}
+                    </div>
+                    {% if not loop.last %}
+                    <div class="absolute top-4 left-1/2 w-full h-1 -translate-x-1/2
+                        {% if current_index >= loop.index0 %}bg-blue-500{% else %}bg-gray-300{% endif %}">
+                    </div>
+                    {% endif %}
+                </div>
+                <span class="text-sm font-medium {% if vendor.Col4 == s %}text-blue-600{% else %}text-gray-500{% endif %}">{{ s }}</span>
+            </div>
+            {% endfor %}
+        </div>
+        {% if vendor.Col4 not in statuses %}
+            <p class="mt-2 text-red-500 text-sm">Current Status: {{ vendor.Col4 }}</p>
+        {% endif %}
+    </div>
+
+    <!-- Vendor Details Card -->
+    <form id="vendorForm" method="POST" class="bg-white rounded shadow p-6 space-y-3">
+        {% for col, label in [('Col5','Next Action'),('Col6','Comments'),
+                              ('URL','Portal'),('Email','Email'),('Password','Password'),
+                              ('Col10','Col10'),('Col11','Col11'),('Col12','Col12'),
+                              ('Col13','Col13'),('Col14','Col14')] %}
+        <div class="flex items-center justify-between">
+            <span class="font-bold text-gray-700">{{ label }}:</span>
+            <span class="field-display">{{ vendor[col] or '-' }}</span>
+            <input type="text" name="{{ col }}" value="{{ vendor[col] }}" class="field-input border p-1 rounded hidden w-full ml-2">
+        </div>
+        {% endfor %}
+
+        <!-- Status dropdown inline -->
+        <div class="flex items-center justify-between">
+            <span class="font-bold text-gray-700">Status:</span>
+            <span class="field-display">{{ vendor.Col4 }}</span>
+            <select name="Col4" class="field-input border p-1 rounded hidden ml-2">
+                <option value="{{ vendor.Col4 }}" selected>{{ vendor.Col4 }}</option>
+                {% for s in statuses %}
+                    {% if s != vendor.Col4 %}
+                        <option value="{{ s }}">{{ s }}</option>
+                    {% endif %}
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="flex justify-end mt-4 hidden" id="formButtons">
+            <button type="submit" class="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 mr-2">Save</button>
+            <button type="button" id="cancelEdit" class="px-4 py-2 bg-gray-300 rounded hover:bg-gray-400">Cancel</button>
+        </div>
+    </form>
+
+    <a href="{{ url_for('vendors') }}" class="inline-block mt-6 text-blue-500 underline">← Back to Partners List</a>
+</div>
+
+<script>
+    const editToggle = document.getElementById('editToggle');
+    const vendorForm = document.getElementById('vendorForm');
+    const fieldDisplays = document.querySelectorAll('.field-display');
+    const fieldInputs = document.querySelectorAll('.field-input');
+    const formButtons = document.getElementById('formButtons');
+    const cancelEdit = document.getElementById('cancelEdit');
+
+    editToggle.addEventListener('click', () => {
+        fieldDisplays.forEach(f => f.classList.toggle('hidden'));
+        fieldInputs.forEach(f => f.classList.toggle('hidden'));
+        formButtons.classList.toggle('hidden');
+    });
+
+    cancelEdit.addEventListener('click', () => {
+        // Hide inputs and show original display
+        fieldDisplays.forEach(f => f.classList.remove('hidden'));
+        fieldInputs.forEach(f => f.classList.add('hidden'));
+        formButtons.classList.add('hidden');
+    });
+</script>
+
+{% endblock %}

@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="p-6 bg-gray-100 min-h-screen">
+    <h1 class="text-2xl font-bold mb-4">Partners List</h1>
+
+    <!-- Search and Filter -->
+    <div class="flex flex-col md:flex-row items-start md:items-center justify-between mb-4 space-y-2 md:space-y-0">
+        <input id="searchInput" type="text" placeholder="Search by Vendor..." 
+               class="p-2 rounded border border-gray-300 w-full md:w-1/3 focus:outline-none focus:ring-2 focus:ring-blue-400">
+
+        <select id="statusFilter" class="p-2 rounded border border-gray-300 w-full md:w-1/4 focus:outline-none focus:ring-2 focus:ring-blue-400">
+            <option value="">All Status</option>
+            {% set statuses = data | map(attribute='Col4') | unique | list %}
+            {% for status in statuses %}
+                {% if status %}<option value="{{ status }}">{{ status }}</option>{% endif %}
+            {% endfor %}
+        </select>
+    </div>
+
+    <!-- Cards -->
+    <div id="partnersContainer" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+        {% for item in data %}
+        <div class="partner-card p-4 bg-white rounded shadow cursor-pointer" 
+             data-vendor="{{ item.Vendor | lower }}" 
+             data-status="{{ item.Col4 }}"
+             onclick="window.location.href='{{ url_for('vendor_detail', vendor_id=item.ID) }}'">
+            <h2 class="text-lg font-bold">{{ item.Vendor or '-' }}</h2>
+            <p class="text-sm text-gray-600">Status: {{ item.Col4 or '-' }}</p>
+            {% if item.URL %}
+                <a href="{{ item.URL }}" target="_blank" class="text-blue-500 underline text-sm">Portal</a>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<script>
+    const searchInput = document.getElementById('searchInput');
+    const statusFilter = document.getElementById('statusFilter');
+    const partnerCards = document.querySelectorAll('.partner-card');
+
+    function filterPartners() {
+        const searchValue = searchInput.value.toLowerCase();
+        const statusValue = statusFilter.value;
+
+        partnerCards.forEach(card => {
+            const vendor = card.dataset.vendor;
+            const status = card.dataset.status;
+
+            const matchesSearch = vendor.includes(searchValue);
+            const matchesStatus = !statusValue || status === statusValue;
+
+            card.style.display = (matchesSearch && matchesStatus) ? '' : 'none';
+        });
+    }
+
+    searchInput.addEventListener('input', filterPartners);
+    statusFilter.addEventListener('change', filterPartners);
+</script>
+
+{% endblock %}

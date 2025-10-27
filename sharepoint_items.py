@@ -1112,3 +1112,39 @@ def generate_quote_excel(quote):
 
 
 
+import requests
+
+def get_excel_data_from_onedrive(file_name, sheet_name):
+    try:
+        access_token = get_onedrive_access_token()
+        headers = {"Authorization": f"Bearer {access_token}"}
+
+        url = (
+            f"{GRAPH_API_ENDPOINT}/users/{ONEDRIVE_PRIMARY_USER_ID}/drive/root:/"
+            f"{file_name}:/workbook/worksheets('{sheet_name}')/usedRange"
+        )
+
+        print(f"Fetching from: {url}")  # 👈 check exact path
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+        data = response.json()
+
+        print("Raw data from Graph API:\n", data)  # 👈 see what Excel actually returned
+
+        rows = data.get("values", [])
+        if not rows:
+            print("⚠️ No rows returned. Possibly wrong file or sheet name.")
+            return []
+
+        header = rows[0]
+        # customers = []
+        # for i, row_data in enumerate(rows[1:]):
+        #     row_dict = {header[j]: row_data[j] if j < len(row_data) else "" for j in range(len(header))}
+        #     row_dict["row_id"] = i + 2
+        #     customers.append(row_dict)
+
+        return data
+
+    except Exception as e:
+        print(f"❌ Error fetching Excel data: {e}")
+        return []

@@ -497,6 +497,60 @@ def quote_details(quote_id):
     return render_template("pages/quote_details.html", quote=quote, user=user)
 
 
+@app.route("/vendor/<vendor_id>", methods=["GET", "POST"])
+def vendor_detail(vendor_id):
+    if "user" not in session:
+        return redirect(url_for('login'))
+    user = session.get("user")
+
+    vendors = get_excel_data_from_onedrive("Partnership_Status.xlsx", "Vendor-Partnership")
+    df = pd.DataFrame(vendors)
+    df_expanded = pd.DataFrame(df['values'].tolist(), columns=[
+        'ID', 'Vendor', 'Col3', 'Col4', 'Col5', 'Col6', 'URL', 'Email', 'Password', 
+        'Col10', 'Col11', 'Col12', 'Col13', 'Col14'
+    ])
+
+    # Convert ID to string
+    vendor_index = df_expanded[df_expanded['ID'].astype(str) == str(vendor_id)].index
+    if vendor_index.empty:
+        return "Vendor not found", 404
+    vendor_index = vendor_index[0]
+
+    if request.method == "POST":
+        # Update the DataFrame with submitted form data
+        for col in ['Vendor','Col3','Col4','Col5','Col6','URL','Email','Password',
+                    'Col10','Col11','Col12','Col13','Col14']:
+            df_expanded.at[vendor_index, col] = request.form.get(col, df_expanded.at[vendor_index, col])
+        
+        # Save back to Excel
+        df['values'] = df_expanded.values.tolist()  # Convert back to list of lists
+        df.to_excel("Partnership_Status.xlsx", index=False)  # Or use OneDrive upload method
+
+        return redirect(url_for("vendor_detail", vendor_id=vendor_id))
+
+    vendor = df_expanded.loc[vendor_index].to_dict()
+    return render_template("pages/vendor_detail.html", vendor=vendor, user=user)
+
+
+@app.route("/vendor/<vendor_id>")
+def vendor_detail(vendor_id):
+    if "user" not in session:
+        return redirect(url_for('login'))
+    user = session.get("user")
+
+    vendors = get_excel_data_from_onedrive("Partnership_Status.xlsx", "Vendor-Partnership")
+    df = pd.DataFrame(vendors)
+    df_expanded = pd.DataFrame(df['values'].tolist(), columns=[
+        'ID', 'Vendor', 'Col3', 'Col4', 'Col5', 'Col6', 'URL', 'Email', 'Password', 'Col10', 'Col11', 'Col12', 'Col13', 'Col14'
+    ])
+
+    # Convert ID to string for comparison
+    vendor = df_expanded[df_expanded['ID'].astype(str) == str(vendor_id)].to_dict(orient="records")
+    if not vendor:
+        return "Vendor not found", 404
+
+    return render_template("pages/vendor_detail.html", vendor=vendor[0], user=user)
+
 # ==============================================================
 # START FLASK + BACKGROUND UPDATER
 # ==============================================================
