@@ -94,12 +94,13 @@ def get_analytics_data(df, period_type='month', year=None, month=None):
     return analytics, per_user
 
 # ==============================================================
-# BACKGROUND DATA UPDATER
+# BACKGROUND DATA UPDATER (FINAL DEBUGGING VERSION)
 # ==============================================================
 
 def background_updater():
     """Runs in background to refresh SharePoint data periodically."""
     global tasks, df, user_analytics
+
     while True:
         try:
             print("[BG] Updating SharePoint data...")
@@ -109,10 +110,37 @@ def background_updater():
 
             print(f"[BG] Data updated successfully at {datetime.now()}")
 
+            # --- Generate and Upload Dynamic User Priority Scores ---
+            try:
+                if not user_analytics.empty:
+                    # === DEBUG: Show column names for mapping ===
+                    print("[BG] DEBUG: Columns in user_analytics are:", user_analytics.columns)
+
+                    # Map your actual DataFrame columns to what the scoring function expects
+                    priority_input_data = user_analytics.rename(columns={
+                        'User': 'user_name',
+                        'OngoingTasksCount': 'active_task_count',        # ensure correct mapping
+                        'LastAssignedDate': 'last_task_assigned_date'
+                    })[['user_name', 'active_task_count', 'last_task_assigned_date']].to_dict('records')
+
+                    priority_scores_df = generate_dynamic_user_priority_scores(
+                        user_data=priority_input_data
+                    )
+
+                    print("[BG] Successfully completed the priority scoring and upload process. Top 5 users:")
+                    print(priority_scores_df.head())
+                else:
+                    print("[BG] No user data found, skipping priority scoring.")
+
+            except KeyError as ke:
+                print(f"[BG] KEY ERROR in priority scoring/upload process: {ke}")
+            except Exception as e:
+                print(f"[BG] CRITICAL ERROR in priority scoring/upload process: {e}")
 
         except Exception as e:
             print("[BG] Error during update:", e)
 
+        # Refresh interval
         time.sleep(500)
 # ==============================================================
 # ROUTES

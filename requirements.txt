@@ -12,9 +12,9 @@ requests==2.28.1
 python-dotenv==0.19.0
 
 # Data Processing and Analysis
-pandas==1.5.3
-numpy==1.24.3
-pytz==2023.3
+pandas
+numpy
+pytz
 
 # Database (if needed)
 SQLAlchemy==1.4.41
@@ -26,3 +26,8 @@ PyJWT==2.6.0
 
 # Excel File Handling
 openpyxl==3.1.2
+
+
+
+# Microsoft 365 Integration
+O365==2.0.28
