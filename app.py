@@ -32,7 +32,7 @@ REDIRECT_URI = os.getenv("REDIRECT_URI")
 AUTHORITY = f"https://login.microsoftonline.com/{TENANT_ID}"
 SCOPE = ["User.Read"]
 
-SUPERUSERS = ["jishad@hamdaz.com", "sebin@hamdaz.com"]
+SUPERUSERS = ["jishad@hamdaz.com", ""]
 approvers = ["shibit@hamdaz.com", "althaf@hamdaz.com" ,"sebin@hamdaz.com"]
 LIMITED_USERS = [""]
 
