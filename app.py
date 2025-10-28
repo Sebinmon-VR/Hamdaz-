@@ -32,7 +32,7 @@ REDIRECT_URI = os.getenv("REDIRECT_URI")
 AUTHORITY = f"https://login.microsoftonline.com/{TENANT_ID}"
 SCOPE = ["User.Read"]
 
-SUPERUSERS = ["jishad@hamdaz.com", ""]
+SUPERUSERS = ["jishad@hamdaz.com", "sebin@hamdaz.com"]
 approvers = ["shibit@hamdaz.com", "althaf@hamdaz.com" ,"sebin@hamdaz.com"]
 LIMITED_USERS = [""]
 
@@ -367,6 +367,7 @@ def get_first(quote_data, key, index=0, default=""):
             return default
     return values or default
 
+
 @app.route("/send_quote_for_approval", methods=["POST"])
 def send_for_approval():
     if "user" not in session:
@@ -377,7 +378,7 @@ def send_for_approval():
 
     quote_data = request.form.to_dict(flat=False)
 
-    # ✅ Combine all items into a single list
+    # Combine all items into a single list
     num_items = len(quote_data.get("item_details[]", []))
     combined_items = []
 
@@ -389,6 +390,12 @@ def send_for_approval():
             except ValueError:
                 tax_val = 0
 
+            discount_val = get_first(quote_data, "discount[]", i, 0)
+            try:
+                discount_val = float(discount_val)
+            except ValueError:
+                discount_val = 0
+
             combined_items.append({
                 "ItemDetails": get_first(quote_data, "item_details[]", i),
                 "Brand": get_first(quote_data, "brand[]", i),
@@ -396,13 +403,14 @@ def send_for_approval():
                 "Rate": float(get_first(quote_data, "rate[]", i, 0)),
                 "Margin": float(get_first(quote_data, "margin[]", i, 0)),
                 "Tax": tax_val,
+                "Discount": discount_val,
                 "Amount": float(get_first(quote_data, "amount[]", i, 0)),
-                
+                "SellingPrice": float(get_first(quote_data, "selling_price[]", i, 0))
             })
         except Exception as e:
             print(f"Error parsing item {i}: {e}")
 
-    # ✅ Store all items together in one SharePoint row
+    # Store all items together in one SharePoint row
     item_fields = {
         "Title": get_first(quote_data, "reference", 0, "No Title"),
         "CustomerID": get_first(quote_data, "customer_id", 0),
@@ -420,12 +428,8 @@ def send_for_approval():
         "Amount": sum(item["Amount"] for item in combined_items),
         "Margin": sum(item["Margin"] for item in combined_items),
         "Rate": sum(item["Rate"] for item in combined_items) / len(combined_items) if combined_items else 0,
-        # ✅ Convert list of items to a readable string (or JSON)
-        "AllItems": json.dumps(combined_items, indent=2),
-        
-        "SellingPrice": float(get_first(quote_data, "amount[]", i, 0)) * (1 + float(get_first(quote_data, "margin[]", i, 0)) / 100) + (float(get_first(quote_data, "amount[]", i, 0)) * tax_val)
-
-        
+        # Convert list of items to JSON
+        "AllItems": json.dumps(combined_items, indent=2)
     }
 
     try:
@@ -464,15 +468,22 @@ def quote_details(quote_id):
 
     user = session.get("user")
 
-    # Fetch quote by ID
+    # Fetch quote by ID from SharePoint
     site_domain = "hamdaz1.sharepoint.com"
     site_path = "/sites/Test"
     list_name = "Quotes"
     quote_items = fetch_sharepoint_list(site_domain, site_path, list_name)
-
+    
     quote = next((q for q in quote_items if str(q.get("id")) == str(quote_id)), None)
     if not quote:
         return "Quote not found", 404
+
+    # -------------------------------
+    # Get customer name from Zoho
+    # -------------------------------
+    customer_id = quote.get("CustomerID", "")
+    customer_name = get_customer_name_from_zoho(customer_id) or ""
+    quote["CustomerName"] = customer_name  # add to quote object
 
     # Extract AllItems JSON from HTML
     all_items_raw = quote.get("AllItems", "")
@@ -480,6 +491,11 @@ def quote_details(quote_id):
         match = re.search(r'\[.*\]', html.unescape(all_items_raw), re.DOTALL)
         if match:
             items = json.loads(match.group(0))
+
+            # Ensure all items have Discount key
+            for item in items:
+                item.setdefault('Discount', 0)
+
             quote['AllItems_parsed'] = items
 
             # Helper to safely convert values to float
@@ -493,35 +509,42 @@ def quote_details(quote_id):
 
             # Initialize totals
             total_rate = 0
-            total_margin = 0
-            total_tax = 0
             total_amount = 0
             total_selling_price = 0
+            total_tax = 0
+            total_margin_value = 0
+            margin_count = 0
+            total_discount = 0
 
             for item in items:
                 rate = to_float(item.get('Rate', 0))
                 margin = to_float(item.get('Margin', 0))
                 tax = to_float(item.get('Tax', 0))
                 amount = to_float(item.get('Amount', 0))
-                discount = to_float(item.get('Discount', 0))  # default 0 if not present
+                discount = to_float(item.get('Discount', 0))
 
-                # Add to line totals
                 total_rate += rate
-                total_margin += margin
-                total_tax += tax
                 total_amount += amount
+                total_tax += tax
+                total_discount += discount
 
-                # Calculate selling price per item
+                if margin > 0:
+                    total_margin_value += margin
+                    margin_count += 1
+
                 selling_price = amount * (1 + margin / 100) - discount + (amount * tax)
                 total_selling_price += selling_price
+
+            avg_margin = total_margin_value / margin_count if margin_count > 0 else 0
 
             # Store totals
             quote['Totals'] = {
                 "Rate": total_rate,
-                "Margin": total_margin,
+                "AvgMargin": avg_margin,
                 "Tax": total_tax,
                 "Amount": total_amount,
-                "SellingPrice": total_selling_price
+                "SellingPrice": total_selling_price,
+                "Discount": total_discount
             }
         else:
             quote['AllItems_parsed'] = []
@@ -532,6 +555,9 @@ def quote_details(quote_id):
         quote['Totals'] = {}
 
     return render_template("pages/quote_details.html", quote=quote, user=user)
+
+
+
 
 
 @app.route("/vendors")
@@ -597,6 +623,43 @@ def approvals():
 
     
 
+
+
+
+
+# ==============================================================
+
+@app.route("/chatbot")
+def chatbot():
+    if "user" not in session:
+        return redirect(url_for('login'))
+    user = session.get("user")
+    return render_template("pages/chatbot.html", user=user)
+
+
+# ==============================================================
+
+@app.route("/user_report")
+def user_report():
+    if "user" not in session:
+        return redirect(url_for('login'))
+    user = session.get("user")
+    user_name = user.get("displayName").replace(" ", "")
+    tasks = fetch_sharepoint_list(SITE_DOMAIN, SITE_PATH, LIST_NAME)
+    df = items_to_dataframe(tasks)
+    user_analytics_specific = get_user_analytics_specific(df, user_name)
+
+    return render_template("pages/user_report.html", user=user, user_analytics=user_analytics_specific)
+
+@app.route("/admin_report")
+def admin_report():
+    if "user" not in session:
+        return redirect(url_for('login'))
+    user = session.get("user")
+    tasks = fetch_sharepoint_list(SITE_DOMAIN, SITE_PATH, LIST_NAME)
+    df = items_to_dataframe(tasks)
+    overall_analytics, per_user_analytics = get_analytics_data(df, period_type='all')
+    return render_template("pages/admin_report.html", user=user, overall_analytics=overall_analytics, per_user_analytics=per_user_analytics)
 
 # ==============================================================
 # START FLASK + BACKGROUND UPDATER

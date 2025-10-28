@@ -215,6 +215,29 @@ def create_quote(customer_id, items, reference_number=None, notes=None):
         raise Exception(f"❌ Failed to create quote: {data}")
 
 
+def get_customer_name_from_zoho(customer_id):
+    """
+    Fetch all customers from Zoho and return the name of the customer
+    matching the given customer_id.
+    """
+    try:
+        customers = fetch_customers()
+        structured_customers = structure_customers_data(customers)
+
+        for cust in structured_customers:
+            if str(cust.get("contact_id")) == str(customer_id):
+                # Prefer company name or contact name if available
+                return (
+                    cust.get("company_name")
+                    or cust.get("contact_name")
+                    or cust.get("customer_name")
+                    or "Unknown Customer"
+                )
+        return "Unknown Customer"
+    except Exception as e:
+        print(f"⚠️ Error fetching customer name from Zoho: {e}")
+        return "Unknown Customer"
+
 
 # =======================
 # MAIN
