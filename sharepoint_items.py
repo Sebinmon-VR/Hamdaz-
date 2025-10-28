@@ -15,6 +15,8 @@ import base64
 import json
 import openpyxl
 from openpyxl.utils import get_column_letter
+import io
+from O365 import Account, MSGraphProtocol
 # ----------------------------
 # Load environment variables
 # ----------------------------
@@ -1120,3 +1122,160 @@ def get_excel_data_from_onedrive(file_name, sheet_name):
     except Exception as e:
         print(f"❌ Error fetching Excel data: {e}")
         return []
+
+
+# ===================================================================
+# == DYNAMIC USER PRIORITY SCORING 
+# ===================================================================
+import tempfile
+from pathlib import Path
+
+def generate_dynamic_user_priority_scores(user_data, weight_workload=0.5, weight_recency=0.5):
+    """
+    Calculates dynamic priority scores for users and uploads the result to OneDrive.
+
+    Args:
+        user_data (list): A list of dictionaries, where each dict contains user info.
+                          Expected keys: 'user_name', 'active_task_count', 'last_task_assigned_date'.
+        weight_workload (float): The weight for the workload factor (0.0 to 1.0).
+        weight_recency (float): The weight for the recency factor (0.0 to 1.0).
+
+    Returns:
+        pandas.DataFrame: A DataFrame with the calculated priority scores, sorted by priority.
+    """
+    print("Starting dynamic priority scoring process...")
+
+    if not user_data:
+        print("Warning: User data is empty. Cannot generate scores.")
+        return pd.DataFrame()
+
+    df = pd.DataFrame(user_data)
+    today = datetime.now()
+
+    # --- Step 0: Convert last_task_assigned_date to datetime & remove timezone ---
+    df['last_task_assigned_date'] = pd.to_datetime(df['last_task_assigned_date'], errors='coerce')
+    df['last_task_assigned_date'] = df['last_task_assigned_date'].dt.tz_localize(None)
+
+    # --- Step 1: Calculate Workload Score ---
+    max_tasks = df['active_task_count'].max()
+    df['Workload Score'] = max_tasks - df['active_task_count']
+
+    # --- Step 2: Calculate Recency Score ---
+    df['Recency Score'] = (today - df['last_task_assigned_date']).dt.days
+    df['Recency Score'] = df['Recency Score'].fillna(0)
+
+    # --- Step 3: Calculate Base Score ---
+    df['Base Score'] = (df['Workload Score'] * weight_workload) + (df['Recency Score'] * weight_recency)
+
+    # --- Handle Invalid Dates: Assign Minimum Base Score ---
+    valid_scores = df.dropna(subset=['last_task_assigned_date'])['Base Score']
+    if not valid_scores.empty:
+        min_valid_score = valid_scores.min()
+        df.loc[df['last_task_assigned_date'].isna(), 'Base Score'] = min_valid_score
+
+    # --- Step 4: Normalize to 1-10 Priority Score ---
+    min_score = df['Base Score'].min()
+    max_score = df['Base Score'].max()
+    if max_score == min_score:
+        df['Priority Score'] = 5
+    else:
+        df['Priority Score'] = 1 + 9 * (df['Base Score'] - min_score) / (max_score - min_score)
+    df['Priority Score'] = df['Priority Score'].round().astype(int)
+
+    # --- Final Formatting ---
+    df['Generated On'] = today.strftime("%Y-%m-%d %H:%M:%S")
+    df.rename(columns={
+        'user_name': 'User Name',
+        'active_task_count': 'Active Task Count',
+        'last_task_assigned_date': 'Last Task Assigned'
+    }, inplace=True)
+
+    final_columns = [
+        'User Name', 'Active Task Count', 'Last Task Assigned',
+        'Workload Score', 'Recency Score', 'Base Score',
+        'Priority Score', 'Generated On'
+    ]
+    df_sorted = df[final_columns].sort_values(by='Priority Score', ascending=False)
+    print("Successfully calculated all priority scores.")
+
+    # --- Step 5: Upload to OneDrive ---
+    try:
+        print("Starting OneDrive upload process...")
+        load_dotenv()
+
+        tenant_id = os.getenv("TENANT_ID")
+        client_id = os.getenv("CLIENT_ID")
+        client_secret = os.getenv("CLIENT_SECRET")
+        onedrive_user_id = os.getenv("ONEDRIVE_USER_ID")
+        target_file_name = "user_priority_scores.xlsx"
+        target_folder_path = "Priority_Reports"
+
+        if not all([tenant_id, client_id, client_secret, onedrive_user_id]):
+            raise ValueError("OneDrive credentials not found in .env file.")
+
+        protocol = MSGraphProtocol()
+        credentials = (client_id, client_secret)
+        account = Account(credentials, auth_flow_type='credentials', tenant_id=tenant_id, protocol=protocol)
+
+        if account.authenticate():
+            print("Successfully authenticated with Microsoft Graph.")
+            storage = account.storage()
+            user_drive = storage.get_drive(onedrive_user_id)
+            root_folder = user_drive.get_root_folder()
+
+            # Locate target folder
+            target_folder = None
+            for item in root_folder.get_items():
+                if item.name == target_folder_path:
+                    target_folder = item
+                    break
+            if target_folder is None:
+                raise FileNotFoundError(f"The folder '{target_folder_path}' was not found in OneDrive root.")
+
+            # Save Excel to a temporary file before upload
+            with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp_file:
+                df_sorted_copy = df_sorted.copy()
+                df_sorted_copy['Last Task Assigned'] = pd.to_datetime(
+                    df_sorted_copy['Last Task Assigned']
+                ).dt.date
+                df_sorted_copy.to_excel(tmp_file.name, index=False, sheet_name='Latest_Scores')
+                tmp_file_path = tmp_file.name
+
+            target_folder.upload_file(tmp_file_path, item_name=target_file_name)
+            print(f"Successfully uploaded✅ '{target_file_name}' to OneDrive folder '{target_folder_path}'.")
+
+            # Clean up temp file
+            os.remove(tmp_file_path)
+
+        else:
+            print("ERROR: Failed to authenticate with Microsoft Graph.")
+
+    except Exception as e:
+        print(f"An error occurred during the OneDrive upload process: {e}")
+
+    return df_sorted
+
+# ===================================================================
+# == END OF DYNAMIC USER PRIORITY SCORING SECTION
+# ===================================================================
+
+# This block is for testing. It only runs when you execute this file directly.
+if __name__ == "__main__":
+    print("--- RUNNING IN TEST MODE ---")
+
+    # Mock data to simulate the input from your app
+    MOCK_USER_DATA = [
+        {'user_name': 'Alice', 'active_task_count': 1, 'last_task_assigned_date': '2025-10-18'},
+        {'user_name': 'Bob', 'active_task_count': 4, 'last_task_assigned_date': '2025-10-26'},
+        {'user_name': 'Charlie', 'active_task_count': 6, 'last_task_assigned_date': '2025-10-21'},
+        {'user_name': 'Grace', 'active_task_count': 0, 'last_task_assigned_date': '2025-10-01'},
+        {'user_name': 'Hank', 'active_task_count': 6, 'last_task_assigned_date': '2025-10-27'},
+        {'user_name': 'Ivy', 'active_task_count': 3, 'last_task_assigned_date': 'Invalid Date'},
+    ]
+
+    # Call the main function
+    final_dataframe = generate_dynamic_user_priority_scores(MOCK_USER_DATA)
+
+    print("\n--- TEST COMPLETE ---")
+    print("Final DataFrame returned by the function:")
+    print(final_dataframe)
