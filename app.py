@@ -249,11 +249,13 @@ def teams():
 
 @app.route("/bd")
 def bd():
-    return render_template("business_dev_team.html")
+    user = session["user"]
+    return render_template("business_dev_team.html", user=user)
 
 @app.route("/cs")
 def cs():
-    return render_template("customer_success_team.html")
+    user = session["user"]
+    return render_template("customer_success_team.html", user =user)
 
 @app.route("/user/<username>")
 def user_profile(username):
@@ -527,12 +529,21 @@ def quote_details(quote_id):
     if not quote:
         return "Quote not found", 404
 
-    # -------------------------------
     # Get customer name from Zoho
-    # -------------------------------
     customer_id = quote.get("CustomerID", "")
     customer_name = get_customer_name_from_zoho(customer_id) or ""
-    quote["CustomerName"] = customer_name  # add to quote object
+    quote["CustomerName"] = customer_name
+
+    # Check Approval Status
+    approval_status = quote.get("ApprovalStatus", "")
+    is_approved = approval_status.lower() == "approved"
+    quote["IsApproved"] = is_approved
+
+    # If approved, call another function
+    if is_approved:
+       print("approved")
+       
+       
 
     # Extract AllItems JSON from HTML
     all_items_raw = quote.get("AllItems", "")
@@ -540,14 +551,10 @@ def quote_details(quote_id):
         match = re.search(r'\[.*\]', html.unescape(all_items_raw), re.DOTALL)
         if match:
             items = json.loads(match.group(0))
-
-            # Ensure all items have Discount key
             for item in items:
                 item.setdefault('Discount', 0)
-
             quote['AllItems_parsed'] = items
 
-            # Helper to safely convert values to float
             def to_float(val):
                 try:
                     if isinstance(val, str):
@@ -557,13 +564,8 @@ def quote_details(quote_id):
                     return 0
 
             # Initialize totals
-            total_rate = 0
-            total_amount = 0
-            total_selling_price = 0
-            total_tax = 0
-            total_margin_value = 0
+            total_rate = total_amount = total_selling_price = total_tax = total_margin_value = total_discount = 0
             margin_count = 0
-            total_discount = 0
 
             for item in items:
                 rate = to_float(item.get('Rate', 0))
@@ -586,7 +588,6 @@ def quote_details(quote_id):
 
             avg_margin = total_margin_value / margin_count if margin_count > 0 else 0
 
-            # Store totals
             quote['Totals'] = {
                 "Rate": total_rate,
                 "AvgMargin": avg_margin,
@@ -595,14 +596,6 @@ def quote_details(quote_id):
                 "SellingPrice": total_selling_price,
                 "Discount": total_discount
             }
-            try:
-                item_fields={
-                    "TotalSellingPrice":total_selling_price
-                }
-                print("TotalSellingPrice : " , total_selling_price )
-                
-            except:
-                print("selling price saving error ")
         else:
             quote['AllItems_parsed'] = []
             quote['Totals'] = {}
@@ -610,8 +603,9 @@ def quote_details(quote_id):
         print("Error parsing AllItems:", e)
         quote['AllItems_parsed'] = []
         quote['Totals'] = {}
-
+    
     return render_template("pages/quote_details.html", quote=quote, user=user)
+
 
 
 
