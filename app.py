@@ -32,7 +32,7 @@ REDIRECT_URI = os.getenv("REDIRECT_URI")
 AUTHORITY = f"https://login.microsoftonline.com/{TENANT_ID}"
 SCOPE = ["User.Read"]
 
-SUPERUSERS = ["jishad@hamdaz.com", ""]
+SUPERUSERS = ["jishad@hamdaz.com", "sebin@hamdaz.com"]
 approvers = ["shibit@hamdaz.com", "althaf@hamdaz.com" ,"sebin@hamdaz.com"]
 LIMITED_USERS = [""]
 
@@ -82,6 +82,8 @@ def greetings():
         return "Good Evening"
     else:
         return "Hello"
+
+
 
 def get_analytics_data(df, period_type='month', year=None, month=None):
     if year is None:
@@ -216,6 +218,8 @@ def index():
             user_flag_data=user_flag_data
         )
     return render_template("login.html")
+
+
 
 @app.route("/user_form", methods=["GET", "POST"])
 def user_form():
@@ -368,6 +372,8 @@ def get_first(quote_data, key, index=0, default=""):
     return values or default
 
 
+
+
 @app.route("/send_quote_for_approval", methods=["POST"])
 def send_for_approval():
     if "user" not in session:
@@ -378,39 +384,69 @@ def send_for_approval():
 
     quote_data = request.form.to_dict(flat=False)
 
-    # Combine all items into a single list
+    # Combine all line items into a single list
     num_items = len(quote_data.get("item_details[]", []))
     combined_items = []
 
     for i in range(num_items):
         try:
-            tax_val = get_first(quote_data, "tax[]", i, 0)
-            try:
-                tax_val = float(tax_val)
-            except ValueError:
-                tax_val = 0
-
-            discount_val = get_first(quote_data, "discount[]", i, 0)
-            try:
-                discount_val = float(discount_val)
-            except ValueError:
-                discount_val = 0
+            # SAFELY convert values to float or default to 0
+            def safe_float(val, default=0):
+                try:
+                    return float(val)
+                except (TypeError, ValueError):
+                    return default
 
             combined_items.append({
                 "ItemDetails": get_first(quote_data, "item_details[]", i),
                 "Brand": get_first(quote_data, "brand[]", i),
                 "Quantity": int(get_first(quote_data, "quantity[]", i, 0)),
-                "Rate": float(get_first(quote_data, "rate[]", i, 0)),
-                "Margin": float(get_first(quote_data, "margin[]", i, 0)),
-                "Tax": tax_val,
-                "Discount": discount_val,
-                "Amount": float(get_first(quote_data, "amount[]", i, 0)),
-                "SellingPrice": float(get_first(quote_data, "selling_price[]", i, 0))
+                "Rate": safe_float(get_first(quote_data, "rate[]", i)),
+                "Margin": safe_float(get_first(quote_data, "margin[]", i)),
+                "Tax": safe_float(get_first(quote_data, "tax[]", i)),
+                "Discount": safe_float(get_first(quote_data, "discount[]", i)),
+                "Amount": safe_float(get_first(quote_data, "amount[]", i)),
+                "SellingPrice": safe_float(get_first(quote_data, "selling_price[]", i))
             })
         except Exception as e:
             print(f"Error parsing item {i}: {e}")
 
-    # Store all items together in one SharePoint row
+    # -----------------------------
+    # TOTAL CALCULATIONS (Same as quote_details page)
+    # -----------------------------
+    total_rate = 0
+    total_amount = 0
+    total_selling_price = 0
+    total_tax = 0
+    total_margin_value = 0
+    margin_count = 0
+    total_discount = 0
+
+    for item in combined_items:
+        rate = float(item.get("Rate") or 0)
+        margin = float(item.get("Margin") or 0)
+        tax = float(item.get("Tax") or 0)
+        amount = float(item.get("Amount") or 0)
+        discount = float(item.get("Discount") or 0)
+
+        total_rate += rate
+        total_amount += amount
+        total_tax += tax
+        total_discount += discount
+
+        if margin > 0:
+            total_margin_value += margin
+            margin_count += 1
+
+        # EXACT SAME FORMULA AS quote_details PAGE
+        selling_price = amount * (1 + margin / 100) - discount + (amount * tax)
+        total_selling_price += selling_price
+
+    avg_margin = total_margin_value / margin_count if margin_count > 0 else 0
+
+    # -----------------------------
+    # Prepare SharePoint Fields
+    # -----------------------------
     item_fields = {
         "Title": get_first(quote_data, "reference", 0, "No Title"),
         "CustomerID": get_first(quote_data, "customer_id", 0),
@@ -425,18 +461,31 @@ def send_for_approval():
         "QuoteCreator": get_first(quote_data, "quote_creator", 0),
         "BCD": get_first(quote_data, "bcd", 0),
         "ApprovalStatus": "Pending",
-        "Amount": sum(item["Amount"] for item in combined_items),
-        "Margin": sum(item["Margin"] for item in combined_items),
-        "Rate": sum(item["Rate"] for item in combined_items) / len(combined_items) if combined_items else 0,
-        # Convert list of items to JSON
-        "AllItems": json.dumps(combined_items, indent=2)
+
+        # --- TOTALS STORED IN SHAREPOINT ----
+        "Amount": total_amount,
+        "Margin": avg_margin,
+        "Rate": total_rate / len(combined_items) if combined_items else 0,
+        "TotalSellingPrice": total_selling_price,
+        "Tax": total_tax,           # ✅ Now saves correctly
+        "TotalDiscount": total_discount,  # Uncomment if you have column
+
+        # Store JSON list of all line items
+        "AllItems": json.dumps(combined_items, indent=2),
     }
+
+    # DEBUG: print payload before sending
+    print("DEBUG SharePoint payload:", json.dumps(item_fields, indent=2))
 
     try:
         add_sharepoint_list_item(item_fields)
         return render_template("pages/quote_success.html", user=user, added_items=1)
+
     except Exception as e:
+        print("SharePoint Error:", e)
         return f"❌ Error adding quote to SharePoint: {str(e)}", 500
+
+
 
 
 @app.route("/quote_decision")
@@ -546,6 +595,14 @@ def quote_details(quote_id):
                 "SellingPrice": total_selling_price,
                 "Discount": total_discount
             }
+            try:
+                item_fields={
+                    "TotalSellingPrice":total_selling_price
+                }
+                print("TotalSellingPrice : " , total_selling_price )
+                
+            except:
+                print("selling price saving error ")
         else:
             quote['AllItems_parsed'] = []
             quote['Totals'] = {}

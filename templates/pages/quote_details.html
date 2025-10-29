@@ -29,32 +29,41 @@
                     <th class="px-4 py-2">Item Details</th>
                     <th class="px-4 py-2">Brand</th>
                     <th class="px-4 py-2">Quantity</th>
-                    <th class="px-4 py-2">Rate</th>
-                    <th class="px-4 py-2">Margin</th>
-                    <th class="px-4 py-2">Discount</th>
-                    <th class="px-4 py-2">Tax</th>
-                    <th class="px-4 py-2">Amount</th>
-                    <th class="px-4 py-2">Selling Price</th>
+                    <th class="px-4 py-2">Rate ({{ quote.Currency }})</th>
+                    <th class="px-4 py-2">Margin (%)</th>
+                    <th class="px-4 py-2">Discount ({{ quote.Currency }})</th>
+                    <th class="px-4 py-2">Amount (after Discount) ({{ quote.Currency }})</th>
+                    <th class="px-4 py-2">Tax (%)</th>
+                    <th class="px-4 py-2">Tax Amount ({{ quote.Currency }})</th>
+                    <th class="px-4 py-2">Selling Price ({{ quote.Currency }})</th>
                 </tr>
             </thead>
             <tbody>
                 {% for item in quote.AllItems_parsed %}
+                {% set qty = item.Quantity | default(0) %}
+                {% set rate = item.Rate | default(0) %}
+                {% set margin = item.Margin | default(0) %}
+                {% set discount = item.get('Discount', 0) | default(0) %}
+                {% set tax = item.Tax | default(0) %}
+                {% set base_amount = (qty * rate * (1 + margin / 100)) %}
+                {% set amount = (base_amount - discount) | round(2) %}
+                {% set tax_amount = (amount * tax) | round(2) %}
+                {% set selling = (amount + tax_amount) | round(2) %}
                 <tr class="hover:bg-gray-50">
                     <td class="border px-4 py-2">{{ item.ItemDetails }}</td>
                     <td class="border px-4 py-2">{{ item.Brand }}</td>
-                    <td class="border px-4 py-2">{{ item.Quantity }}</td>
-                    <td class="border px-4 py-2">{{ item.Rate }}</td>
-                    <td class="border px-4 py-2">{{ item.Margin }}</td>
-                    <td class="border px-4 py-2">{{ item.get('Discount', 0) }}</td>
-                    <td class="border px-4 py-2">{{ item.Tax }}</td>
-                    <td class="border px-4 py-2">{{ item.Amount }}</td>
-                    <td class="border px-4 py-2">
-                        {{ (item.Amount * (1 + item.Margin / 100) - item.get('Discount', 0) + (item.Amount * item.Tax)) | round(2) }}
-                    </td>
+                    <td class="border px-4 py-2">{{ qty }}</td>
+                    <td class="border px-4 py-2">{{ rate | round(2) }}</td>
+                    <td class="border px-4 py-2">{{ margin | round(2) }}%</td>
+                    <td class="border px-4 py-2">{{ discount | round(2) }}</td>
+                    <td class="border px-4 py-2">{{ amount }}</td>
+                    <td class="border px-4 py-2">{{ (tax*100) | round(2) }}%</td>
+                    <td class="border px-4 py-2">{{ tax_amount }}</td>
+                    <td class="border px-4 py-2">{{ selling }}</td>
                 </tr>
                 {% else %}
                 <tr>
-                    <td colspan="9" class="text-center py-4">No items found.</td>
+                    <td colspan="10" class="text-center py-4">No items found.</td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -64,20 +73,20 @@
         <table class="min-w-full bg-white shadow rounded-lg mb-6">
             <thead>
                 <tr class="bg-gray-100 text-left">
-                    <th class="px-4 py-2">Total Rate</th>
-                    <th class="px-4 py-2">Average Margin</th>
-                    <th class="px-4 py-2">Total Discount</th>
-                    <th class="px-4 py-2">Total Tax</th>
-                    <th class="px-4 py-2">Total Selling Price</th>
+                    <th class="px-4 py-2">Total Rate ({{ quote.Currency }})</th>
+                    <th class="px-4 py-2">Average Margin (%)</th>
+                    <th class="px-4 py-2">Total Discount ({{ quote.Currency }})</th>
+                    <th class="px-4 py-2">Total Tax ({{ quote.Currency }})</th>
+                    <th class="px-4 py-2">Total Selling Price ({{ quote.Currency }})</th>
                 </tr>
             </thead>
             <tbody>
                 <tr>
-                    <td class="border px-4 py-2">{{ quote.Totals.Rate }}</td>
-                    <td class="border px-4 py-2">{{ quote.Totals.AvgMargin }}</td>
-                    <td class="border px-4 py-2">{{ quote.Totals.Discount }}</td>
-                    <td class="border px-4 py-2">{{ quote.Totals.Tax }}</td>
-                    <td class="border px-4 py-2">{{ quote.Totals.SellingPrice }}</td>
+                    <td class="border px-4 py-2">{{ quote.Totals.Rate | default(0) | round(2) }}</td>
+                    <td class="border px-4 py-2">{{ quote.Totals.AvgMargin | default(0) | round(2) }}%</td>
+                    <td class="border px-4 py-2">{{ quote.Totals.Discount | default(0) | round(2) }}</td>
+                    <td class="border px-4 py-2">{{ quote.Totals.TaxAmount | default(0) | round(2) }}</td>
+                    <td class="border px-4 py-2">{{ quote.Totals.SellingPrice | default(0) | round(2) }}</td>
                 </tr>
             </tbody>
         </table>
