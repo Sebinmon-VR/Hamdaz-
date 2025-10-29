@@ -718,6 +718,9 @@ def admin_report():
     overall_analytics, per_user_analytics = get_analytics_data(df, period_type='all')
     return render_template("pages/admin_report.html", user=user, overall_analytics=overall_analytics, per_user_analytics=per_user_analytics)
 
+
+
+
 # ==============================================================
 # START FLASK + BACKGROUND UPDATER
 # ==============================================================
