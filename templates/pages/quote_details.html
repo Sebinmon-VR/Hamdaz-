@@ -85,16 +85,18 @@
                     <td class="border px-4 py-2">{{ quote.Totals.Rate | default(0) | round(2) }}</td>
                     <td class="border px-4 py-2">{{ quote.Totals.AvgMargin | default(0) | round(2) }}%</td>
                     <td class="border px-4 py-2">{{ quote.Totals.Discount | default(0) | round(2) }}</td>
-                    <td class="border px-4 py-2">{{ quote.Totals.TaxAmount | default(0) | round(2) }}</td>
-                    <td class="border px-4 py-2">{{ quote.Totals.SellingPrice | default(0) | round(2) }}</td>
+                    <td class="border px-4 py-2">{{ quote.Totals.Tax  }}</td>
+                    <td class="border px-4 py-2">{{ quote.Totals.SellingPrice}}</td>
                 </tr>
             </tbody>
         </table>
-<!-- 
-            <li>
-                <a href="{{ attachments }}" target="_blank">{{ attachments }}</a>
-            </li> -->
+
+  
     
     </div>
-</div>
+
+    <div><strong>Attachments:</strong> <a href="{{ quote.attachmentlink }}" target="_blank">{{ quote.attachmentlink }}</a>
+</div></div>
+
+                
 {% endblock %}

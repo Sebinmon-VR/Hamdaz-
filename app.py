@@ -512,6 +512,7 @@ def quote_decision():
 
     return render_template("pages/quote_decision.html", user=user, quote_items=quote_items)
 
+
 @app.route("/quote_details/<quote_id>")
 def quote_details(quote_id):
     if "user" not in session:
@@ -524,7 +525,6 @@ def quote_details(quote_id):
     site_path = "/sites/Test"
     list_name = "Quotes"
     quote_items = fetch_sharepoint_list(site_domain, site_path, list_name)
-    
     quote = next((q for q in quote_items if str(q.get("id")) == str(quote_id)), None)
     if not quote:
         return "Quote not found", 404
@@ -534,18 +534,20 @@ def quote_details(quote_id):
     customer_name = get_customer_name_from_zoho(customer_id) or ""
     quote["CustomerName"] = customer_name
 
+    quote["attachmentlink"] = quote.get("attachmentlink", "")
+    print(quote["attachmentlink"])
+
     # Check Approval Status
     approval_status = quote.get("ApprovalStatus", "")
     is_approved = approval_status.lower() == "approved"
     quote["IsApproved"] = is_approved
 
-    # If approved, call another function
     if is_approved:
-       print("approved")
-       
-       
+        print("approved")
 
-    # Extract AllItems JSON from HTML
+    # -----------------------------
+    # Parse AllItems JSON
+    # -----------------------------
     all_items_raw = quote.get("AllItems", "")
     try:
         match = re.search(r'\[.*\]', html.unescape(all_items_raw), re.DOTALL)
@@ -553,43 +555,67 @@ def quote_details(quote_id):
             items = json.loads(match.group(0))
             for item in items:
                 item.setdefault('Discount', 0)
+                item.setdefault('Quantity', 1)  # default to 1 if missing
+
             quote['AllItems_parsed'] = items
 
             def to_float(val):
                 try:
+                    if val is None:
+                        return 0.0
                     if isinstance(val, str):
                         val = val.replace("%", "").strip()
                     return float(val)
                 except:
-                    return 0
+                    return 0.0
 
-            # Initialize totals
-            total_rate = total_amount = total_selling_price = total_tax = total_margin_value = total_discount = 0
+            # -----------------------------
+            # Calculate Totals correctly
+            # -----------------------------
+            total_rate = total_amount = total_selling_price = total_tax = total_discount = 0.0
+            total_margin_value = 0.0
             margin_count = 0
+            total_quantity = 0.0
 
             for item in items:
+                quantity = to_float(item.get('Quantity', 1))
                 rate = to_float(item.get('Rate', 0))
                 margin = to_float(item.get('Margin', 0))
                 tax = to_float(item.get('Tax', 0))
-                amount = to_float(item.get('Amount', 0))
                 discount = to_float(item.get('Discount', 0))
 
-                total_rate += rate
+                amount = rate * quantity
+                item['Amount'] = amount
+
+                tax_amount = amount * tax / 100.0
+                selling_price = amount * (1 + margin / 100.0) + tax_amount - (discount * quantity)
+                qty = item['Quantity']
+                
+                base_amount = (qty * rate * (1 + margin / 100))
+                amount = (base_amount - discount)
+                tax_amount = (amount * tax)
+                selling = (amount + tax_amount)
+                item['SellingPrice'] = selling
+
+                # Accumulate totals per item
+                total_selling_price += selling
+                total_tax += tax_amount
+                total_rate += amount
                 total_amount += amount
-                total_tax += tax
-                total_discount += discount
+                total_discount += discount * quantity
 
                 if margin > 0:
                     total_margin_value += margin
                     margin_count += 1
 
-                selling_price = amount * (1 + margin / 100) - discount + (amount * tax)
-                total_selling_price += selling_price
+                total_quantity += quantity
 
             avg_margin = total_margin_value / margin_count if margin_count > 0 else 0
+            avg_rate = total_rate / total_quantity if total_quantity > 0 else 0
 
             quote['Totals'] = {
                 "Rate": total_rate,
+                "AvgRate": avg_rate,
                 "AvgMargin": avg_margin,
                 "Tax": total_tax,
                 "Amount": total_amount,
@@ -603,13 +629,8 @@ def quote_details(quote_id):
         print("Error parsing AllItems:", e)
         quote['AllItems_parsed'] = []
         quote['Totals'] = {}
-    
+
     return render_template("pages/quote_details.html", quote=quote, user=user)
-
-
-
-
-
 
 @app.route("/vendors")
 def vendors():
