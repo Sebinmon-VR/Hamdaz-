@@ -170,10 +170,8 @@
     customerSelect.addEventListener('change', function () {
         const selectedOption = this.options[this.selectedIndex];
         const customerCurrency = selectedOption.getAttribute('data-currency');
-
         currencyInput.value = customerCurrency;
         currencyLabels.forEach(label => label.innerText = customerCurrency);
-
         document.getElementById('payment_terms').value = selectedOption.getAttribute('data-payment');
         document.getElementById('email').value = selectedOption.getAttribute('data-email');
         document.getElementById('tax_treatment').value = selectedOption.getAttribute('data-tax');
@@ -194,11 +192,11 @@
             const discount = parseFloat(row.querySelector('.discount').value) || 0;
             const tax = parseFloat(row.querySelector('.tax').value) || 0;
 
-            // Amount after discount
-            const amount = (qty * rate * (1 + margin / 100)) - discount;
-
-            // Selling price = amount + tax on amount
-            const selling = amount * (1 + tax);
+            // ✅ Correct calculation matching backend
+            const baseAmount = qty * rate * (1 + margin / 100);
+            const amount = baseAmount - discount;
+            const taxAmount = amount * tax;
+            const selling = amount + taxAmount;
 
             row.querySelector('.amount').value = amount.toFixed(2);
             row.querySelector('.selling_price').value = selling.toFixed(2);
@@ -207,18 +205,18 @@
             totalDiscount += discount;
             totalAmount += amount;
             totalSelling += selling;
-            totalRate += rate;
+            totalRate += rate * qty;
             totalMargin += margin;
-            totalTax += tax;
+            totalTax += taxAmount;
             count++;
         });
 
         document.getElementById('totalQuantity').innerText = totalQty.toFixed(2);
-        document.getElementById('Rate').innerText = totalRate.toFixed(2);
-        document.getElementById('avgMargin').innerText = (totalMargin / count).toFixed(2);
+        document.getElementById('Rate').innerText = (totalRate / totalQty || 0).toFixed(2);
+        document.getElementById('avgMargin').innerText = (totalMargin / count || 0).toFixed(2);
         document.getElementById('totalDiscount').innerText = totalDiscount.toFixed(2);
         document.getElementById('totalAmount').innerText = totalAmount.toFixed(2);
-        document.getElementById('avgTax').innerText = (totalTax / count * 100).toFixed(2); // show as %
+        document.getElementById('avgTax').innerText = ((totalTax / totalAmount || 0) * 100).toFixed(2);
         document.getElementById('totalSellingPrice').innerText = totalSelling.toFixed(2);
 
         document.getElementById('subtotal').value = totalAmount.toFixed(2);
@@ -229,6 +227,7 @@
     addItemBtn.addEventListener('click', function () {
         const newRow = itemsTableBody.rows[0].cloneNode(true);
         Array.from(newRow.querySelectorAll('input')).forEach(input => input.value = input.classList.contains('quantity') ? 1 : 0);
+        Array.from(newRow.querySelectorAll('select')).forEach(sel => sel.selectedIndex = 0);
         itemsTableBody.appendChild(newRow);
         updateCalculations();
     });

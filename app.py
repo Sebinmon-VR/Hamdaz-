@@ -375,7 +375,6 @@ def get_first(quote_data, key, index=0, default=""):
 
 
 
-
 @app.route("/send_quote_for_approval", methods=["POST"])
 def send_for_approval():
     if "user" not in session:
@@ -391,103 +390,67 @@ def send_for_approval():
     combined_items = []
 
     for i in range(num_items):
-        try:
-            # SAFELY convert values to float or default to 0
-            def safe_float(val, default=0):
-                try:
-                    return float(val)
-                except (TypeError, ValueError):
-                    return default
+        def safe_float(val, default=0):
+            try:
+                return float(val)
+            except (TypeError, ValueError):
+                return default
 
-            combined_items.append({
-                "ItemDetails": get_first(quote_data, "item_details[]", i),
-                "Brand": get_first(quote_data, "brand[]", i),
-                "Quantity": int(get_first(quote_data, "quantity[]", i, 0)),
-                "Rate": safe_float(get_first(quote_data, "rate[]", i)),
-                "Margin": safe_float(get_first(quote_data, "margin[]", i)),
-                "Tax": safe_float(get_first(quote_data, "tax[]", i)),
-                "Discount": safe_float(get_first(quote_data, "discount[]", i)),
-                "Amount": safe_float(get_first(quote_data, "amount[]", i)),
-                "SellingPrice": safe_float(get_first(quote_data, "selling_price[]", i))
-            })
-        except Exception as e:
-            print(f"Error parsing item {i}: {e}")
+        combined_items.append({
+            "ItemDetails": quote_data.get("item_details[]", [])[i],
+            "Brand": quote_data.get("brand[]", [])[i],
+            "Quantity": int(quote_data.get("quantity[]", [])[i] or 0),
+            "Rate": safe_float(quote_data.get("rate[]", [])[i]),
+            "Margin": safe_float(quote_data.get("margin[]", [])[i]),
+            "Tax": safe_float(quote_data.get("tax[]", [])[i]),
+            "Discount": safe_float(quote_data.get("discount[]", [])[i]),
+            "Amount": safe_float(quote_data.get("amount[]", [])[i]),
+            "SellingPrice": safe_float(quote_data.get("selling_price[]", [])[i])
+        })
 
     # -----------------------------
-    # TOTAL CALCULATIONS (Same as quote_details page)
+    # Take totals directly from frontend
     # -----------------------------
-    total_rate = 0
-    total_amount = 0
-    total_selling_price = 0
-    total_tax = 0
-    total_margin_value = 0
-    margin_count = 0
-    total_discount = 0
+    subtotal = safe_float(quote_data.get("subtotal", [0])[0])
+    total_discount = safe_float(quote_data.get("total_discount", [0])[0])
+    grand_total = safe_float(quote_data.get("grand_total", [0])[0])
+    avg_tax = safe_float(quote_data.get("avgTax", [0])[0])  # frontend should have avgTax input
 
-    for item in combined_items:
-        rate = float(item.get("Rate") or 0)
-        margin = float(item.get("Margin") or 0)
-        tax = float(item.get("Tax") or 0)
-        amount = float(item.get("Amount") or 0)
-        discount = float(item.get("Discount") or 0)
-
-        total_rate += rate
-        total_amount += amount
-        total_tax += tax
-        total_discount += discount
-
-        if margin > 0:
-            total_margin_value += margin
-            margin_count += 1
-
-        # EXACT SAME FORMULA AS quote_details PAGE
-        selling_price = amount * (1 + margin / 100) - discount + (amount * tax)
-        total_selling_price += selling_price
-
-    avg_margin = total_margin_value / margin_count if margin_count > 0 else 0
-
-    # -----------------------------
-    # Prepare SharePoint Fields
-    # -----------------------------
     item_fields = {
-        "Title": get_first(quote_data, "reference", 0, "No Title"),
-        "CustomerID": get_first(quote_data, "customer_id", 0),
-        "Currency": get_first(quote_data, "currency", 0),
-        "PaymentTerms": get_first(quote_data, "payment_terms", 0),
-        "Email": get_first(quote_data, "email", 0),
-        "TaxTreatment": get_first(quote_data, "tax_treatment", 0),
-        "Reference": get_first(quote_data, "reference", 0),
-        "QuoteDate": get_first(quote_data, "quote_date", 0),
-        "ExpiryDate": get_first(quote_data, "expiry_date", 0),
-        "Portal": get_first(quote_data, "portal", 0),
-        "QuoteCreator": get_first(quote_data, "quote_creator", 0),
-        "BCD": get_first(quote_data, "bcd", 0),
+        "Title": quote_data.get("reference", ["No Title"])[0],
+        "CustomerID": quote_data.get("customer_id", [""])[0],
+        "Currency": quote_data.get("currency", [""])[0],
+        "PaymentTerms": quote_data.get("payment_terms", [""])[0],
+        "Email": quote_data.get("email", [""])[0],
+        "TaxTreatment": quote_data.get("tax_treatment", [""])[0],
+        "Reference": quote_data.get("reference", [""])[0],
+        "QuoteDate": quote_data.get("quote_date", [""])[0],
+        "ExpiryDate": quote_data.get("expiry_date", [""])[0],
+        "Portal": quote_data.get("portal", [""])[0],
+        "QuoteCreator": quote_data.get("quote_creator", [""])[0],
+        "BCD": quote_data.get("bcd", [""])[0],
         "ApprovalStatus": "Pending",
 
-        # --- TOTALS STORED IN SHAREPOINT ----
-        "Amount": total_amount,
-        "Margin": avg_margin,
-        "Rate": total_rate / len(combined_items) if combined_items else 0,
-        "TotalSellingPrice": total_selling_price,
-        "Tax": total_tax,           # ✅ Now saves correctly
-        "TotalDiscount": total_discount,  # Uncomment if you have column
+        # Totals directly from frontend
+        "Amount": subtotal,
+        "TotalDiscount": total_discount,
+        "TotalSellingPrice": grand_total,
+        "Tax": avg_tax,  # ✅ save average tax percentage
+        "Margin": 0,     # optional
+        "Rate": 0,       # optional
 
         # Store JSON list of all line items
         "AllItems": json.dumps(combined_items, indent=2),
     }
 
-    # DEBUG: print payload before sending
     print("DEBUG SharePoint payload:", json.dumps(item_fields, indent=2))
 
     try:
         add_sharepoint_list_item(item_fields)
         return render_template("pages/quote_success.html", user=user, added_items=1)
-
     except Exception as e:
         print("SharePoint Error:", e)
         return f"❌ Error adding quote to SharePoint: {str(e)}", 500
-
-
 
 
 @app.route("/quote_decision")
