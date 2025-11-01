@@ -8,6 +8,10 @@
     font-family: 'roboto', sans-serif;
 }
 
+
+::-webkit-scrollbar{
+    width: 1px;
+}
 nav {
     background-color: #ffffff;
     color: #222;
@@ -51,6 +55,7 @@ main {
     overflow-x: hidden;
     /* prevent horizontal overflow */
     width: calc(100% - 200px);
+    padding-left: 10px;
 }
 
 /* Constrain inner content so it doesn't stretch across full width */

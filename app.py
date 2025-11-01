@@ -12,7 +12,6 @@ import pandas as pd  # Required for timestamp conversion
 from sharepoint_data import *
 from sharepoint_items import *
 from zoho import *
-from auto_assign import *
 import jwt
 import re
 import json
@@ -139,6 +138,7 @@ def update_analytics():
         "per_user": per_user
     })
 
+
 @app.route("/")
 def index():
     if "user" in session:
@@ -160,6 +160,7 @@ def index():
         if email.lower() in SUPERUSERS:
             dashboard_role = "admin_dashboard"
             excel_role = "admin"
+            app.jinja_env.globals.update(excel_role="admin")
         else:
             excel_role = current_user.get("role", "").strip().lower() if current_user else ""
             if excel_role == "pre-sales":
@@ -218,7 +219,6 @@ def index():
             user_flag_data=user_flag_data
         )
     return render_template("login.html")
-
 
 
 @app.route("/user_form", methods=["GET", "POST"])
@@ -373,8 +373,6 @@ def get_first(quote_data, key, index=0, default=""):
             return default
     return values or default
 
-
-
 @app.route("/send_quote_for_approval", methods=["POST"])
 def send_for_approval():
     if "user" not in session:
@@ -384,37 +382,59 @@ def send_for_approval():
     submitter_email = user.get("mail") or user.get("userPrincipalName")
 
     quote_data = request.form.to_dict(flat=False)
+    supplier_file = request.files.get("supplier_quote")  # Uploaded file
 
-    # Combine all line items into a single list
+    def safe_float(val, default=0):
+        try:
+            return float(val)
+        except (TypeError, ValueError):
+            return default
+
+    # Process quote line items as before
     num_items = len(quote_data.get("item_details[]", []))
     combined_items = []
 
+    total_amount = 0
+    total_selling = 0
+    total_discount = 0
+    total_tax_amount = 0
+    total_margin = 0
+    total_rate = 0
+    count = 0
+
     for i in range(num_items):
-        def safe_float(val, default=0):
-            try:
-                return float(val)
-            except (TypeError, ValueError):
-                return default
+        qty = int(quote_data.get("quantity[]", [])[i] or 0)
+        rate = safe_float(quote_data.get("rate[]", [])[i])
+        margin = safe_float(quote_data.get("margin[]", [])[i])
+        discount = safe_float(quote_data.get("discount[]", [])[i])
+        tax = safe_float(quote_data.get("tax[]", [])[i])
+
+        base_amount = qty * rate * (1 + margin / 100)
+        amount = base_amount - discount
+        tax_amount = amount * tax
+        selling = amount + tax_amount
 
         combined_items.append({
             "ItemDetails": quote_data.get("item_details[]", [])[i],
             "Brand": quote_data.get("brand[]", [])[i],
-            "Quantity": int(quote_data.get("quantity[]", [])[i] or 0),
-            "Rate": safe_float(quote_data.get("rate[]", [])[i]),
-            "Margin": safe_float(quote_data.get("margin[]", [])[i]),
-            "Tax": safe_float(quote_data.get("tax[]", [])[i]),
-            "Discount": safe_float(quote_data.get("discount[]", [])[i]),
-            "Amount": safe_float(quote_data.get("amount[]", [])[i]),
-            "SellingPrice": safe_float(quote_data.get("selling_price[]", [])[i])
+            "Quantity": qty,
+            "Rate": rate,
+            "Margin": margin,
+            "Tax": tax,
+            "Discount": discount,
+            "Amount": amount,
+            "SellingPrice": selling
         })
 
-    # -----------------------------
-    # Take totals directly from frontend
-    # -----------------------------
-    subtotal = safe_float(quote_data.get("subtotal", [0])[0])
-    total_discount = safe_float(quote_data.get("total_discount", [0])[0])
-    grand_total = safe_float(quote_data.get("grand_total", [0])[0])
-    avg_tax = safe_float(quote_data.get("avgTax", [0])[0])  # frontend should have avgTax input
+        total_amount += amount
+        total_selling += selling
+        total_discount += discount
+        total_tax_amount += tax_amount
+        total_margin += margin
+        total_rate += rate * qty
+        count += 1
+
+    avg_tax_percentage = (total_tax_amount / total_amount * 100) if total_amount else 0
 
     item_fields = {
         "Title": quote_data.get("reference", ["No Title"])[0],
@@ -430,24 +450,41 @@ def send_for_approval():
         "QuoteCreator": quote_data.get("quote_creator", [""])[0],
         "BCD": quote_data.get("bcd", [""])[0],
         "ApprovalStatus": "Pending",
-
-        # Totals directly from frontend
-        "Amount": subtotal,
+        "Tax": avg_tax_percentage,
+        "Amount": total_amount,
         "TotalDiscount": total_discount,
-        "TotalSellingPrice": grand_total,
-        "Tax": avg_tax,  # ✅ save average tax percentage
-        "Margin": 0,     # optional
-        "Rate": 0,       # optional
-
-        # Store JSON list of all line items
-        "AllItems": json.dumps(combined_items, indent=2),
+        "TotalSellingPrice": total_selling,
+        "Margin": (total_margin / count) if count else 0,
+        "Rate": (total_rate / sum([int(q) for q in quote_data.get("quantity[]", [])])) if count else 0,
+        "AllItems": json.dumps(combined_items, indent=2)
     }
 
     print("DEBUG SharePoint payload:", json.dumps(item_fields, indent=2))
 
     try:
-        add_sharepoint_list_item(item_fields)
+        # Add SharePoint list item
+        resp_json = add_sharepoint_list_item(item_fields)
+        if not resp_json:
+            raise Exception("Failed to create SharePoint item")
+        item_id = resp_json.get("id")
+
+        if supplier_file and supplier_file.filename:
+            print("File detected in request")
+            file_name = supplier_file.filename  # Use secure_filename if needed
+            file_bytes = supplier_file.read()
+            print(f"File size: {len(file_bytes)} bytes")
+
+            # Upload file to SharePoint document library folder (replace 'QuoteAttachments' with your folder path)
+            share_link = upload_file_to_sharepoint_folder( folder_path="QuoteAttachments", file_name=file_name, file_bytes=file_bytes)
+            print("File uploaded. Share link:", share_link)
+
+            # Update SharePoint list item with link
+            update_sharepoint_item_with_link(item_id, share_link)
+        else:
+            print("No file in request or filename missing")
+
         return render_template("pages/quote_success.html", user=user, added_items=1)
+
     except Exception as e:
         print("SharePoint Error:", e)
         return f"❌ Error adding quote to SharePoint: {str(e)}", 500
@@ -695,6 +732,10 @@ def admin_report():
     df = items_to_dataframe(tasks)
     overall_analytics, per_user_analytics = get_analytics_data(df, period_type='all')
     return render_template("pages/admin_report.html", user=user, overall_analytics=overall_analytics, per_user_analytics=per_user_analytics)
+
+
+
+# ==============================================================
 
 
 

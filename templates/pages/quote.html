@@ -1,10 +1,8 @@
 {% extends "base.html" %}
-
 {% block content %}
-
 <div class="container my-4">
     <h2 class="mb-4">New Quote</h2>
-    <form id="quoteForm" method="POST" action="/send_quote_for_approval">
+    <form id="quoteForm" method="POST" action="/send_quote_for_approval" enctype="multipart/form-data">
 
         <!-- Customer Selection -->
         <div class="mb-3">
@@ -73,6 +71,13 @@
                         required>
                 </div>
             </div>
+        </div>
+
+        <!-- Supplier Quote Upload -->
+        <div class="card mb-4 p-3">
+            <h5>Upload Supplier Quote</h5>
+            <input type="file" class="form-control" name="supplier_quote" accept=".pdf,.doc,.docx,.xlsx">
+            <small class="text-muted">Supported formats: PDF, DOC, DOCX, XLSX</small>
         </div>
 
         <!-- Items Table -->
@@ -163,27 +168,30 @@
 </div>
 
 <script>
+document.addEventListener("DOMContentLoaded", function() {
     const customerSelect = document.getElementById('customerSelect');
     const currencyInput = document.getElementById('currency');
     const currencyLabels = document.querySelectorAll('#currencyLabel, #currencyLabelAmount, #currencyLabelDiscount, #currencyLabelSelling, #currencyLabelSummary, #currencyLabelSummaryDiscount, #currencyLabelSummarySelling');
 
-    customerSelect.addEventListener('change', function () {
-        const selectedOption = this.options[this.selectedIndex];
+    function updateCustomerFields() {
+        const selectedOption = customerSelect.options[customerSelect.selectedIndex];
         const customerCurrency = selectedOption.getAttribute('data-currency');
         currencyInput.value = customerCurrency;
         currencyLabels.forEach(label => label.innerText = customerCurrency);
         document.getElementById('payment_terms').value = selectedOption.getAttribute('data-payment');
         document.getElementById('email').value = selectedOption.getAttribute('data-email');
         document.getElementById('tax_treatment').value = selectedOption.getAttribute('data-tax');
-    });
-    customerSelect.dispatchEvent(new Event('change'));
+    }
+
+    customerSelect.addEventListener('change', updateCustomerFields);
+    updateCustomerFields();
 
     const addItemBtn = document.getElementById('addItemBtn');
     const itemsTableBody = document.getElementById('itemsTable').getElementsByTagName('tbody')[0];
 
     function updateCalculations() {
         let totalQty = 0, totalDiscount = 0, totalAmount = 0, totalSelling = 0;
-        let totalRate = 0, totalMargin = 0, totalTax = 0, count = 0;
+        let totalRate = 0, totalMargin = 0, totalTaxAmount = 0, count = 0;
 
         Array.from(itemsTableBody.rows).forEach(row => {
             const qty = parseFloat(row.querySelector('.quantity').value) || 0;
@@ -192,7 +200,6 @@
             const discount = parseFloat(row.querySelector('.discount').value) || 0;
             const tax = parseFloat(row.querySelector('.tax').value) || 0;
 
-            // ✅ Correct calculation matching backend
             const baseAmount = qty * rate * (1 + margin / 100);
             const amount = baseAmount - discount;
             const taxAmount = amount * tax;
@@ -207,7 +214,7 @@
             totalSelling += selling;
             totalRate += rate * qty;
             totalMargin += margin;
-            totalTax += taxAmount;
+            totalTaxAmount += taxAmount;
             count++;
         });
 
@@ -216,7 +223,7 @@
         document.getElementById('avgMargin').innerText = (totalMargin / count || 0).toFixed(2);
         document.getElementById('totalDiscount').innerText = totalDiscount.toFixed(2);
         document.getElementById('totalAmount').innerText = totalAmount.toFixed(2);
-        document.getElementById('avgTax').innerText = ((totalTax / totalAmount || 0) * 100).toFixed(2);
+        document.getElementById('avgTax').innerText = ((totalTaxAmount / totalAmount || 0) * 100).toFixed(2);
         document.getElementById('totalSellingPrice').innerText = totalSelling.toFixed(2);
 
         document.getElementById('subtotal').value = totalAmount.toFixed(2);
@@ -245,8 +252,11 @@
         }
     });
 
-    // initial calculation
-    updateCalculations();
-</script>
+    document.getElementById('quoteForm').addEventListener('submit', function() {
+        updateCalculations(); // ensure totals updated before submission
+    });
 
+    updateCalculations(); // initial
+});
+</script>
 {% endblock %}

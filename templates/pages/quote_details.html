@@ -18,7 +18,10 @@
                 style="background-color: {% if quote.ApprovalStatus == 'Approved' %}#d1fae5{% elif quote.ApprovalStatus == 'Rejected' %}#fee2e2{% else %}#fef3c7{% endif %};">
                 {{ quote.ApprovalStatus }}
             </span>
+
         </div>
+        <div><strong>Decision By :</strong> {{ quote.ApprovedBy }}</div>
+
     </div>
 
     <h2 class="text-xl font-semibold mb-2">Items</h2>
@@ -95,7 +98,7 @@
     
     </div>
 
-    <div><strong>Attachments:</strong> <a href="{{ quote.attachmentlink }}" target="_blank">{{ quote.attachmentlink }}</a>
+    <div><strong><img src="/static/icons/files.png" alt=""> Attachments:</strong> <a href="{{ quote.attachmentlink }}" target="_blank">{{ quote.attachmentlink }}</a>
 </div></div>
 
                 

@@ -314,31 +314,23 @@ def compute_user_analytics(df):
         }
 
     return analytics
-
-
 def compute_user_analytics_with_last_date(df, EXCLUDED_USERS, period=None):
     """
     Compute user analytics with optional period filtering.
-    
-    Args:
-        df (pd.DataFrame): DataFrame with SharePoint items
-        EXCLUDED_USERS (list): List of users to exclude
-        period (dict, optional): Dictionary with filter parameters:
-            - 'type': 'month', 'year', or 'all'
-            - 'year': Year to filter for (int)
-            - 'month': Month to filter for (int, 1-12)
     """
+
     if df.empty or 'AssignedTo' not in df.columns:
         return {}
 
-    df = df[~df['AssignedTo'].isin(EXCLUDED_USERS)]
+    # ✅ Make a copy to avoid SettingWithCopyWarning
+    df = df[~df['AssignedTo'].isin(EXCLUDED_USERS)].copy()
     if df.empty:
         return {}
 
     uae_tz = pytz.timezone("Asia/Dubai")
     now_uae = datetime.now(uae_tz)
 
-    # Convert dates to UAE timezone
+    # ✅ Safely update datetime fields
     df['Created'] = pd.to_datetime(df['Created'], errors='coerce', utc=True).dt.tz_convert(uae_tz)
     df['BCD'] = pd.to_datetime(df['BCD'], errors='coerce', utc=True).dt.tz_convert(uae_tz)
 
@@ -346,25 +338,21 @@ def compute_user_analytics_with_last_date(df, EXCLUDED_USERS, period=None):
     if period and period['type'] != 'all':
         if period['type'] == 'month':
             df = df[
-                (df['Created'].dt.year == period['year']) & 
+                (df['Created'].dt.year == period['year']) &
                 (df['Created'].dt.month == period['month'])
-            ]
+            ].copy()
         elif period['type'] == 'year':
-            df = df[df['Created'].dt.year == period['year']]
+            df = df[df['Created'].dt.year == period['year']].copy()
 
-    start_col = None
-    for col in df.columns:
-        if col.lower().replace(" ", "") == "startdate":
-            start_col = col
-            break
+    # Detect Start Date column (case/space tolerant)
+    start_col = next((col for col in df.columns if col.lower().replace(" ", "") == "startdate"), None)
 
     if start_col:
         df[start_col] = pd.to_datetime(df[start_col], errors='coerce', utc=True).dt.tz_convert(uae_tz)
 
     analytics = {}
     for user, user_df in df.groupby('AssignedTo'):
-        last_assigned_date = user_df[start_col].max() if start_col else None
-        last_assigned_date_str = last_assigned_date.strftime("%Y-%m-%d %H:%M") if pd.notna(last_assigned_date) else None
+        last_assigned = user_df[start_col].max() if start_col else None
 
         analytics[user] = {
             "total_tasks": len(user_df),
@@ -372,8 +360,9 @@ def compute_user_analytics_with_last_date(df, EXCLUDED_USERS, period=None):
             "tasks_pending": len(user_df[(user_df['SubmissionStatus'] != 'Submitted') & (user_df['BCD'] >= now_uae)]),
             "tasks_missed": len(user_df[(user_df['SubmissionStatus'] != 'Submitted') & (user_df['BCD'] < now_uae)]),
             "orders_received": len(user_df[user_df['Status'] == 'Received']) if 'Status' in df.columns else 0,
-            "last_assigned_date": last_assigned_date_str
+            "last_assigned_date": last_assigned.strftime("%Y-%m-%d %H:%M") if pd.notna(last_assigned) else None
         }
+
     return analytics
 
 
@@ -936,6 +925,51 @@ def add_sharepoint_list_item(item_fields):
 
 
 
+from urllib.parse import quote
+
+
+
+# def upload_file_to_sharepoint(file_bytes, filename, folder_name="QuoteAttachments"):
+#     """
+#     Uploads a file to a SharePoint document library folder using Graph API.
+#     """
+#     try:
+#         access_token = get_access_token()
+
+#         # First, get the site ID dynamically (replace with your site domain/path)
+#         site_id = get_site_id(access_token, "hamdaz1.sharepoint.com", "/sites/Test")
+
+#         # Get the drive ID for the default document library (usually "Documents")
+#         headers = {"Authorization": f"Bearer {access_token}"}
+#         drive_resp = requests.get(f"{GRAPH_API}/sites/{site_id}/drive", headers=headers)
+#         drive_resp.raise_for_status()
+#         drive_id = drive_resp.json().get("id")
+
+#         if not drive_id:
+#             raise Exception("Could not fetch the drive ID for SharePoint site.")
+
+#         # Prepare upload URL
+#         # Ensure filename is URL-encoded
+#         safe_filename = quote(filename)
+#         upload_url = f"{GRAPH_API}/sites/{site_id}/drives/{drive_id}/root:/{folder_name}/{safe_filename}:/content"
+
+#         # Upload the file
+#         upload_headers = {
+#             "Authorization": f"Bearer {access_token}",
+#             "Content-Type": "application/octet-stream"
+#         }
+#         resp = requests.put(upload_url, headers=upload_headers, data=file_bytes)
+#         resp.raise_for_status()
+
+#         print(f"✅ File '{filename}' uploaded successfully to SharePoint folder '{folder_name}'")
+#         return resp.json()
+
+#     except Exception as e:
+#         print(f"❌ Error uploading file to SharePoint: {e}")
+#         return None
+
+
+
 def update_sharepoint_item(reference, update_fields):
     """Update SharePoint item based on unique reference field."""
     token = get_access_token()
@@ -1122,3 +1156,104 @@ def get_excel_data_from_onedrive(file_name, sheet_name):
         return []
 
 
+
+
+def get_user_profile_photo():
+    access_token = get_access_token()
+    url ="https://graph.microsoft.com/v1.0/me/photo/$value"
+    headers = {"Authorization": f"Bearer {access_token}"}
+    resp = requests.get(url, headers=headers)
+    return resp
+
+
+
+
+def update_priority(priority_values):
+    try:
+        access_token = get_access_token()
+        headers= {"Autherization":f"Bearer{access_token}" , "Content-Type":"application/json"}
+        url =f"{GRAPH_API_ENDPOINT}/users/{ONEDRIVE_PRIMARY_USER_ID}/drive/root:/prio.xlsx/workbook/worksheets('Sheet1')/tables('Table1')/rows/add"
+        resp =requests.post(url,headers=headers, json={"values":priority_values})
+        resp.raise_for_status()
+    except:
+        print("Error")
+
+
+# def calculate_priority(SITE_DOMAIN,SITE_PATH, LIST_NAME ,EXCLUDED_USERS):
+#     tasks = fetch_sharepoint_list(SITE_DOMAIN, SITE_PATH, LIST_NAME)
+#     df = items_to_dataframe(tasks)
+#     user_analytics = generate_user_analytics(df, exclude_users=EXCLUDED_USERS)
+
+    
+    
+    
+    
+
+
+# def upload_file_to_user_onedrive(folder_path, file_name, file_bytes):
+#     """
+#     Uploads a file to a specific user's OneDrive folder and returns the shared link.
+#     :param user_id: The user principal name (email) or user ID
+#     :param folder_path: Folder path inside OneDrive (can be empty string for root)
+#     :param file_name: Name of the file to upload
+#     :param file_bytes: Binary content of the file
+#     :param access_token: Valid Microsoft Graph API access token with Files.ReadWrite.All or Files.ReadWrite delegated permissions
+#     :return: Shareable link URL string
+#     """
+#     access_token=get_access_token()
+#     if folder_path:
+#         upload_url = f"https://graph.microsoft.com/v1.0/users/{ONEDRIVE_PRIMARY_USER_ID}/drive/root:/{folder_path}/{file_name}:/content"
+#     else:
+#         upload_url = f"https://graph.microsoft.com/v1.0/users/{ONEDRIVE_PRIMARY_USER_ID}/drive/root:/{file_name}:/content"
+
+#     headers = {
+#         "Authorization": f"Bearer {access_token}",
+#         "Accept": "application/json"
+#     }
+
+#     resp = requests.put(upload_url, headers=headers, data=file_bytes)
+#     resp.raise_for_status()
+#     item_id = resp.json()['id']
+
+#     # Create shareable view link
+#     share_url = f"https://graph.microsoft.com/v1.0/users/{ONEDRIVE_PRIMARY_USER_ID}/drive/items/{item_id}/createLink"
+#     link_data = {"type": "view", "scope": "anonymous"}
+#     link_resp = requests.post(share_url, headers=headers, json=link_data)
+#     link_resp.raise_for_status()
+#     share_link = link_resp.json()["link"]["webUrl"]
+
+#     return share_link
+
+
+def upload_file_to_sharepoint_folder(folder_path, file_name, file_bytes):
+    token = get_access_token()
+    site_id = get_site_id(token, "hamdaz1.sharepoint.com", "/sites/Test")
+    access_token = get_access_token()
+    upload_url = f"https://graph.microsoft.com/v1.0/sites/{site_id}/drive/root:/{folder_path}/{file_name}:/content"
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Accept": "application/json"
+    }
+    resp = requests.put(upload_url, headers=headers, data=file_bytes)
+    resp.raise_for_status()
+    return resp.json()  # returns metadata including 'id', 'webUrl' etc.
+
+
+
+
+def update_sharepoint_item_with_link(item_id, link_url):
+    access_token=get_access_token()
+    # PATCH to item fields endpoint
+    site_id = get_site_id(access_token , "hamdaz1.sharepoint.com", "/sites/Test")
+    list_id = get_list_id(access_token , site_id, "Quotes")
+    patch_url = f"https://graph.microsoft.com/v1.0/sites/{site_id}/lists/{list_id}/items/{item_id}/fields"
+    headers = {
+        'Authorization': f'Bearer {access_token}',
+        'Content-Type': 'application/json'
+    }
+    data = {
+        "attachmentlink": link_url   # Replace with your actual column internal name
+    }
+    resp = requests.patch(patch_url, headers=headers, json=data)
+    resp.raise_for_status()
+    return resp.json()
