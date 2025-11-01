@@ -475,7 +475,7 @@ def send_for_approval():
             print(f"File size: {len(file_bytes)} bytes")
 
             # Upload file to SharePoint document library folder (replace 'QuoteAttachments' with your folder path)
-            share_link = upload_file_to_sharepoint_folder( folder_path="QuoteAttachments", file_name=file_name, file_bytes=file_bytes)
+            share_link = upload_file_to_sharepoint_folder( folder_path="Shared Documents/QuoteAttachments", file_name=file_name, file_bytes=file_bytes)
             print("File uploaded. Share link:", share_link)
 
             # Update SharePoint list item with link
@@ -534,8 +534,11 @@ def quote_details(quote_id):
     customer_name = get_customer_name_from_zoho(customer_id) or ""
     quote["CustomerName"] = customer_name
 
-    quote["attachmentlink"] = quote.get("attachmentlink", "")
-    print(quote["attachmentlink"])
+    attachment_str = quote.get("attachmentlink", "")
+    if attachment_str:
+        quote["AttachmentLinks"] = [link.strip() for link in attachment_str.split(",") if link.strip()]
+    else:
+        quote["AttachmentLinks"] = []
 
     # Check Approval Status
     approval_status = quote.get("ApprovalStatus", "")

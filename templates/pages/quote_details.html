@@ -12,19 +12,35 @@
         <div><strong>Expiry Date:</strong> {{ quote.ExpiryDate[:10] }}</div>
         <div><strong>Portal:</strong> {{ quote.Portal }}</div>
         <div><strong>Quote Creator:</strong> {{ quote.QuoteCreator }}</div>
+
         <div>
             <strong>Approval Status:</strong>
             <span class="px-2 py-1 rounded"
                 style="background-color: {% if quote.ApprovalStatus == 'Approved' %}#d1fae5{% elif quote.ApprovalStatus == 'Rejected' %}#fee2e2{% else %}#fef3c7{% endif %};">
                 {{ quote.ApprovalStatus }}
             </span>
-
         </div>
         <div><strong>Decision By :</strong> {{ quote.ApprovedBy }}</div>
-
     </div>
+    <div class="mt-4">
+        <strong class="flex items-center gap-2">
+            <img src="/static/icons/files.png" alt="Files" class="w-5 h-5"> Attachments:
+        </strong>
 
-    <h2 class="text-xl font-semibold mb-2">Items</h2>
+        <div class="flex flex-col gap-2 mt-2">
+            {% for link in quote.AttachmentLinks %}
+            {% set filename = link.split('/')[-1] %}
+            <a href="{{ link }}" target="_blank"
+                class="flex items-center gap-2 p-2 bg-gray-100 rounded hover:bg-gray-200 transition cursor-pointer w-max">
+                <img src="/static/icons/file-icon.png" alt="File" class="w-6 h-6">
+                <span class="truncate max-w-xs">{{ filename }}</span>
+            </a>
+            {% else %}
+            <span class="text-gray-500">No attachments available.</span>
+            {% endfor %}
+        </div>
+    </div>
+    <h2 class="text-xl font-semibold mb-2 mt-3">Items</h2>
     <div class="overflow-x-auto">
         <table class="min-w-full bg-white shadow rounded-lg">
             <thead>
@@ -88,18 +104,17 @@
                     <td class="border px-4 py-2">{{ quote.Totals.Rate | default(0) | round(2) }}</td>
                     <td class="border px-4 py-2">{{ quote.Totals.AvgMargin | default(0) | round(2) }}%</td>
                     <td class="border px-4 py-2">{{ quote.Totals.Discount | default(0) | round(2) }}</td>
-                    <td class="border px-4 py-2">{{ quote.Totals.Tax  }}</td>
+                    <td class="border px-4 py-2">{{ quote.Totals.Tax }}</td>
                     <td class="border px-4 py-2">{{ quote.Totals.SellingPrice}}</td>
                 </tr>
             </tbody>
         </table>
 
-  
-    
     </div>
 
-    <div><strong><img src="/static/icons/files.png" alt=""> Attachments:</strong> <a href="{{ quote.attachmentlink }}" target="_blank">{{ quote.attachmentlink }}</a>
-</div></div>
+    <!-- Attachments Section -->
 
-                
+
+
+</div>
 {% endblock %}

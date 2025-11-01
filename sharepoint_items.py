@@ -1228,32 +1228,35 @@ def update_priority(priority_values):
 def upload_file_to_sharepoint_folder(folder_path, file_name, file_bytes):
     token = get_access_token()
     site_id = get_site_id(token, "hamdaz1.sharepoint.com", "/sites/Test")
-    access_token = get_access_token()
+ 
     upload_url = f"https://graph.microsoft.com/v1.0/sites/{site_id}/drive/root:/{folder_path}/{file_name}:/content"
     headers = {
-        "Authorization": f"Bearer {access_token}",
+        "Authorization": f"Bearer {token}",
         "Accept": "application/json"
     }
     resp = requests.put(upload_url, headers=headers, data=file_bytes)
     resp.raise_for_status()
-    return resp.json()  # returns metadata including 'id', 'webUrl' etc.
-
+    share_link = resp.json()["webUrl"]
+    return share_link # returns metadata including 'id', 'webUrl' etc.
 
 
 
 def update_sharepoint_item_with_link(item_id, link_url):
-    access_token=get_access_token()
-    # PATCH to item fields endpoint
-    site_id = get_site_id(access_token , "hamdaz1.sharepoint.com", "/sites/Test")
-    list_id = get_list_id(access_token , site_id, "Quotes")
+    access_token = get_access_token()
+    site_id = get_site_id(access_token, "hamdaz1.sharepoint.com", "/sites/Test")
+    list_id = get_list_id(access_token, site_id, "Quotes")
+
     patch_url = f"https://graph.microsoft.com/v1.0/sites/{site_id}/lists/{list_id}/items/{item_id}/fields"
     headers = {
-        'Authorization': f'Bearer {access_token}',
-        'Content-Type': 'application/json'
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json"
     }
+
+    # ✅ The correct way to update a Hyperlink column via Graph API
     data = {
-        "attachmentlink": link_url   # Replace with your actual column internal name
+        "attachmentlink": f"{link_url}"
     }
+
     resp = requests.patch(patch_url, headers=headers, json=data)
     resp.raise_for_status()
     return resp.json()
