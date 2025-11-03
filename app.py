@@ -1,5 +1,4 @@
 import email
-from pkgutil import get_data
 from flask import Flask, redirect, url_for, session, request, render_template, jsonify
 from msal import ConfidentialClientApplication
 import requests
@@ -251,8 +250,9 @@ def teams():
 @app.route("/bd")
 
 def view_data():
-    data = get_data()
-    return render_template("business_dev_team".html, data=data)
+    user = session["user"]
+    data = get_partnership_data()
+    return render_template("business_dev_team.html", data=data,, user=user)
 
 
 

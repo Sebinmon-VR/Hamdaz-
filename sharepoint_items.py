@@ -1257,3 +1257,8 @@ def update_sharepoint_item_with_link(item_id, link_url):
     resp = requests.patch(patch_url, headers=headers, json=data)
     resp.raise_for_status()
     return resp.json()
+
+def get_partnership_data():
+    df = pd.read_excel("competitor_contact_info_mock.xlsx")
+    df = df.fillna("")
+    return df.to_dict(orient='records')
