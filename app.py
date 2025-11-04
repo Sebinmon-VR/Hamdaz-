@@ -82,8 +82,6 @@ def greetings():
     else:
         return "Hello"
 
-
-
 def get_analytics_data(df, period_type='month', year=None, month=None):
     if year is None:
         year = datetime.now().year
@@ -101,8 +99,6 @@ def get_analytics_data(df, period_type='month', year=None, month=None):
 # ==============================================================
 # BACKGROUND DATA UPDATER
 # ==============================================================
-
-
 
 def background_updater():
     """Runs in background to refresh SharePoint data periodically."""
@@ -171,7 +167,6 @@ def update_analytics():
         "analytics": analytics,
         "per_user": per_user
     })
-
 
 @app.route("/")
 def index():
@@ -253,7 +248,6 @@ def index():
             user_flag_data=user_flag_data
         )
     return render_template("login.html")
-
 
 @app.route("/user_form", methods=["GET", "POST"])
 def user_form():
@@ -730,21 +724,13 @@ def approvals():
     
     return render_template("pages/quote_decision.html", user=user, quote_items=quote_items)
 
-    
-
-
-
-
-
 # ==============================================================
-
 @app.route("/chatbot")
 def chatbot():
     if "user" not in session:
         return redirect(url_for('login'))
     user = session.get("user")
     return render_template("pages/chatbot.html", user=user)
-
 
 # ==============================================================
 
@@ -770,17 +756,14 @@ def admin_report():
     overall_analytics, per_user_analytics = get_analytics_data(df, period_type='all')
     return render_template("pages/admin_report.html", user=user, overall_analytics=overall_analytics, per_user_analytics=per_user_analytics)
 
-
-
 # ==============================================================
-
-
-
 
 # ==============================================================
 # START FLASK + BACKGROUND UPDATER
 # ==============================================================
+threading.Thread(target=background_updater, daemon=True).start()
 
 if __name__ == "__main__":
-    threading.Thread(target=background_updater, daemon=True).start()
+    
     app.run(debug=True)
+    
