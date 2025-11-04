@@ -142,7 +142,7 @@ def background_updater():
                 else:
                     add_item_to_sharepoint(item_fields)
 
-            print(f"[BG] Data updated successfully at {datetime.now()}")
+            print(f"[BG] Data updated successfully at {datetime.now()}" , flush=True)
 
         except Exception as e:
             print("[BG] Error during update:", e)
