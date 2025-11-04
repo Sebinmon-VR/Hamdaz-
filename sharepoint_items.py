@@ -804,7 +804,6 @@ def add_or_update_user_in_excel(email, user_id, name, role, photo_file=None):
         print(f"Error adding/updating user in Excel: {e}")
         return False
 
-
         
 # ==============================================================================
 # ==============================================================================
@@ -1168,15 +1167,15 @@ def get_user_profile_photo():
 
 
 
-def update_priority(priority_values):
-    try:
-        access_token = get_access_token()
-        headers= {"Autherization":f"Bearer{access_token}" , "Content-Type":"application/json"}
-        url =f"{GRAPH_API_ENDPOINT}/users/{ONEDRIVE_PRIMARY_USER_ID}/drive/root:/prio.xlsx/workbook/worksheets('Sheet1')/tables('Table1')/rows/add"
-        resp =requests.post(url,headers=headers, json={"values":priority_values})
-        resp.raise_for_status()
-    except:
-        print("Error")
+# def update_priority(priority_values):
+#     try:
+#         access_token = get_access_token()
+#         headers= {"Autherization":f"Bearer{access_token}" , "Content-Type":"application/json"}
+#         url =f"{GRAPH_API_ENDPOINT}/users/{ONEDRIVE_PRIMARY_USER_ID}/drive/root:/prio.xlsx/workbook/worksheets('Sheet1')/tables('Table1')/rows/add"
+#         resp =requests.post(url,headers=headers, json={"values":priority_values})
+#         resp.raise_for_status()
+#     except:
+#         print("Error")
 
 
 # def calculate_priority(SITE_DOMAIN,SITE_PATH, LIST_NAME ,EXCLUDED_USERS):
@@ -1260,3 +1259,108 @@ def update_sharepoint_item_with_link(item_id, link_url):
     resp = requests.patch(patch_url, headers=headers, json=data)
     resp.raise_for_status()
     return resp.json()
+
+
+def update_user_analytics_in_sharepoint(item_id, item_fields):
+    access_token = get_access_token()
+    site_id = get_site_id(access_token, "hamdaz1.sharepoint.com", "/sites/Test")
+    list_id = get_list_id(access_token, site_id, "useranalytics")
+
+    patch_url = f"https://graph.microsoft.com/v1.0/sites/{site_id}/lists/{list_id}/items/{item_id}/fields"
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json"
+    }
+
+    # ✅ Send fields dictionary directly
+    resp = requests.patch(patch_url, headers=headers, json=item_fields)
+    resp.raise_for_status()
+    return resp.json()
+
+
+
+
+def add_item_to_sharepoint(item_fields):
+    token = get_access_token()
+    site_id = get_site_id(token, "hamdaz1.sharepoint.com", "/sites/Test")
+    list_id = get_list_id(token, site_id, "useranalytics")
+
+    url = f"{GRAPH_API_ENDPOINT}/sites/{site_id}/lists/{list_id}/items"
+    payload = {"fields": item_fields}
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+
+    try:
+        resp = requests.post(url, headers=headers, json=payload)
+        resp.raise_for_status()
+        print(f"✅ Item {item_fields.get('Username')} added successfully")
+        return resp.json()
+    except requests.exceptions.RequestException as e:
+        print(f"❌ Error adding item {item_fields.get('Username')} to SharePoint: {e}")
+        return None
+
+def get_existing_useranalytics_items():
+    token = get_access_token()
+    site_id = get_site_id(token, "hamdaz1.sharepoint.com", "/sites/Test")
+    list_id = get_list_id(token, site_id, "useranalytics")
+    url = f"{GRAPH_API_ENDPOINT}/sites/{site_id}/lists/{list_id}/items?expand=fields"
+    headers = {"Authorization": f"Bearer {token}"}
+
+    all_items = []
+
+    while url:
+        resp = requests.get(url, headers=headers)
+        resp.raise_for_status()
+        data = resp.json()
+        all_items.extend(data.get("value", []))
+        url = data.get("@odata.nextLink")  # Fetch next page if exists
+
+    return all_items
+
+
+
+from datetime import datetime, timezone
+
+def calculate_priority_score(user_analytics):
+    """
+    Calculate priority score for each user based on ActiveTasks and LastAssignedDate.
+    Returns a DataFrame with an extra 'PriorityScore' column.
+    """
+    now = datetime.now(timezone.utc)
+    priority_scores = []
+
+    for _, row in user_analytics.iterrows():
+        active_tasks = int(row["OngoingTasksCount"])
+        last_assigned = row["LastAssignedDate"]
+
+        if isinstance(last_assigned, str):
+            last_assigned = datetime.fromisoformat(last_assigned)
+
+        days_since_last = (now - last_assigned).total_seconds() / (24 * 3600)
+
+        # Avoid division by zero
+        task_priority = active_tasks if active_tasks > 0 else 1
+
+        # Combined score: higher score → higher priority
+        score = (1 / task_priority) + days_since_last
+        priority_scores.append(score)
+
+    df = user_analytics.copy()
+    df["PriorityScore"] = priority_scores
+    return df
+
+def assign_priority_rank(user_analytics):
+    """
+    Assign simple priority ranks:
+    - Highest priority user = 1
+    - Next highest = 2
+    - Lowest priority user = N
+    """
+    df = user_analytics.copy()
+
+    # Sort descending by PriorityScore: highest score = highest priority
+    df = df.sort_values(by="PriorityScore", ascending=False).reset_index(drop=True)
+
+    # Assign rank: highest priority = 1
+    df["PriorityRank"] = df.index + 1
+
+    return df

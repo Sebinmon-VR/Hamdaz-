@@ -102,23 +102,57 @@ def get_analytics_data(df, period_type='month', year=None, month=None):
 # BACKGROUND DATA UPDATER
 # ==============================================================
 
+
+
 def background_updater():
     """Runs in background to refresh SharePoint data periodically."""
     global tasks, df, user_analytics
+
     while True:
         try:
             print("[BG] Updating SharePoint data...")
+
+            # Fetch latest SharePoint list
             tasks = fetch_sharepoint_list(SITE_DOMAIN, SITE_PATH, LIST_NAME)
             df = items_to_dataframe(tasks)
             user_analytics = generate_user_analytics(df, exclude_users=EXCLUDED_USERS)
 
-            print(f"[BG] Data updated successfully at {datetime.now()}")
+            # Calculate priority score and rank
+            user_analytics = calculate_priority_score(user_analytics)
+            user_analytics = assign_priority_rank(user_analytics)
 
+            # Fetch existing SharePoint items
+            existing_items = get_existing_useranalytics_items()
+
+            for _, row in user_analytics.iterrows():
+                username = row["User"]
+                item_fields = {
+                    "Username": username,
+                    "ActiveTasks": int(row["OngoingTasksCount"]),
+                    "RecentDate": row["LastAssignedDate"].isoformat() if isinstance(row["LastAssignedDate"], datetime) else row["LastAssignedDate"],
+                    "Priority": int(row["PriorityRank"])
+                }
+
+
+                # Check if this user already exists
+                existing_item = next(
+                    (item for item in existing_items if item["fields"].get("Username") == username),
+                    None
+                )
+
+                if existing_item:
+                    update_user_analytics_in_sharepoint(existing_item["id"], item_fields)
+                    print(f"🔄 Updated {username} in SharePoint")
+                else:
+                    add_item_to_sharepoint(item_fields)
+
+            print(f"[BG] Data updated successfully at {datetime.now()}")
 
         except Exception as e:
             print("[BG] Error during update:", e)
 
         time.sleep(500)
+
 # ==============================================================
 # ROUTES
 # ==============================================================
@@ -515,7 +549,7 @@ def quote_decision():
 
 @app.route("/quote_details/<quote_id>")
 def quote_details(quote_id):
-    if "user" not in session:
+    if "user" not in session:                                   
         return redirect(url_for("login"))
 
     user = session.get("user")
