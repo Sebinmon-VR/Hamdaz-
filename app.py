@@ -99,7 +99,6 @@ def get_analytics_data(df, period_type='month', year=None, month=None):
 # ==============================================================
 # BACKGROUND DATA UPDATER
 # ==============================================================
-
 def background_updater():
     """Runs in background to refresh SharePoint data periodically."""
     global tasks, df, user_analytics
@@ -129,25 +128,23 @@ def background_updater():
                     "Priority": int(row["PriorityRank"])
                 }
 
-
-                # Check if this user already exists
-                existing_item = next(
-                    (item for item in existing_items if item["fields"].get("Username") == username),
-                    None
-                )
+                # ✅ Use safe helper to find existing user
+                existing_item = find_existing_user_item(existing_items, username)
 
                 if existing_item:
                     update_user_analytics_in_sharepoint(existing_item["id"], item_fields)
                     print(f"🔄 Updated {username} in SharePoint")
                 else:
                     add_item_to_sharepoint(item_fields)
+                    print(f"➕ Added new user {username} to SharePoint")
 
-            print(f"[BG] Data updated successfully at {datetime.now()}" , flush=True)
+            print(f"[BG] Data updated successfully at {datetime.now()}", flush=True)
 
         except Exception as e:
             print("[BG] Error during update:", e)
 
         time.sleep(500)
+
 
 # ==============================================================
 # ROUTES

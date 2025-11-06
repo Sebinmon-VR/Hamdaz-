@@ -417,23 +417,12 @@ def get_user_details(access_token, usernames):
 
 
 def generate_user_analytics(df, user_column='AssignedTo', status_column='Status', 
-                            title_column='Title', due_column='DueDate', orders_column='OrdersReceived',
+                            title_column='Title', due_column='DueDate', start_column='StartDate',
+                            assigned_column='AssignedDate', orders_column='OrdersReceived',
                             exclude_users=None):
     """
     Generate per-user analytics with counts, lists of tasks, last assigned date,
-    and orders received, excluding specific users.
-
-    Args:
-        df (pd.DataFrame): DataFrame containing SharePoint items.
-        user_column (str): Column name for assigned user.
-        status_column (str): Column name for task status.
-        title_column (str): Column name for task title.
-        due_column (str): Column name for task due date.
-        orders_column (str): Column name for orders received.
-        exclude_users (list): List of users to exclude from analytics.
-
-    Returns:
-        pd.DataFrame: Analytics per user with counts, task lists, last assigned date, and orders received.
+    and orders received, excluding specific users. Considers tasks with future start dates as ongoing.
     """
     if exclude_users is None:
         exclude_users = []
@@ -443,8 +432,14 @@ def generate_user_analytics(df, user_column='AssignedTo', status_column='Status'
     if df.empty:
         return pd.DataFrame(analytics)
 
-    # Ensure DueDate is datetime with UTC timezone
+    # Ensure date columns are datetime with UTC timezone
     df[due_column] = pd.to_datetime(df[due_column], utc=True, errors='coerce')
+    df[start_column] = pd.to_datetime(df[start_column], utc=True, errors='coerce')
+    
+    if assigned_column in df.columns:
+        df[assigned_column] = pd.to_datetime(df[assigned_column], utc=True, errors='coerce')
+    else:
+        df[assigned_column] = df[start_column]  # fallback if no assigned date column
 
     now_utc = pd.Timestamp.now(tz='UTC')
 
@@ -460,26 +455,23 @@ def generate_user_analytics(df, user_column='AssignedTo', status_column='Status'
         # Completed tasks
         completed_tasks_df = group[group[status_column] == 'Completed']
 
-        # Ongoing tasks: Not submitted + due in future
+        # Ongoing tasks: Not submitted + either due date in future or start date in future
         ongoing_tasks_df = group[
             (group[status_column] != 'Submitted') & 
-            (group[due_column] >= now_utc)
+            ((group[due_column] >= now_utc) | (group[start_column] >= now_utc))
         ]
 
-        # Missed tasks: Not submitted + due in past
+        # Missed tasks: Not submitted + due date in past
         missed_tasks_df = group[
             (group[status_column] != 'Submitted') & 
             (group[due_column] < now_utc)
         ]
 
-        # Last assigned date: latest DueDate in user's tasks
-        last_assigned_date = group[due_column].max() if not group[due_column].dropna().empty else None
+        # ✅ Last assigned date: use AssignedDate if exists
+        last_assigned_date = group[assigned_column].max() if not group[assigned_column].dropna().empty else None
 
-        # Orders received: sum of orders_column if exists, else 0
-        if orders_column in group.columns:
-            orders_received = group[orders_column].sum()
-        else:
-            orders_received = 0
+        # Orders received
+        orders_received = group[orders_column].sum() if orders_column in group.columns else 0
 
         analytics.append({
             'User': user,
@@ -492,12 +484,10 @@ def generate_user_analytics(df, user_column='AssignedTo', status_column='Status'
             'MissedTasks': missed_tasks_df[title_column].tolist(),
             'LastAssignedDate': last_assigned_date.isoformat() if last_assigned_date is not None else None,
             'OrdersReceived': orders_received
-            })
-
+        })
 
     analytics_df = pd.DataFrame(analytics)
     return analytics_df
-
 
 
 def get_user_analytics_specific(df: pd.DataFrame, username: str) -> dict:
@@ -1261,6 +1251,9 @@ def update_sharepoint_item_with_link(item_id, link_url):
     return resp.json()
 
 
+# ============================================================================
+
+
 def update_user_analytics_in_sharepoint(item_id, item_fields):
     access_token = get_access_token()
     site_id = get_site_id(access_token, "hamdaz1.sharepoint.com", "/sites/Test")
@@ -1298,6 +1291,7 @@ def add_item_to_sharepoint(item_fields):
         print(f"❌ Error adding item {item_fields.get('Username')} to SharePoint: {e}")
         return None
 
+
 def get_existing_useranalytics_items():
     token = get_access_token()
     site_id = get_site_id(token, "hamdaz1.sharepoint.com", "/sites/Test")
@@ -1320,10 +1314,11 @@ def get_existing_useranalytics_items():
 
 from datetime import datetime, timezone
 
+
 def calculate_priority_score(user_analytics):
     """
     Calculate priority score for each user based on ActiveTasks and LastAssignedDate.
-    Returns a DataFrame with an extra 'PriorityScore' column.
+    Higher score → higher priority.
     """
     now = datetime.now(timezone.utc)
     priority_scores = []
@@ -1337,16 +1332,17 @@ def calculate_priority_score(user_analytics):
 
         days_since_last = (now - last_assigned).total_seconds() / (24 * 3600)
 
-        # Avoid division by zero
         task_priority = active_tasks if active_tasks > 0 else 1
 
-        # Combined score: higher score → higher priority
+        # Score: fewer active tasks + recently assigned → lower score, higher priority
         score = (1 / task_priority) + days_since_last
         priority_scores.append(score)
 
     df = user_analytics.copy()
     df["PriorityScore"] = priority_scores
     return df
+
+
 
 def assign_priority_rank(user_analytics):
     """
@@ -1364,3 +1360,18 @@ def assign_priority_rank(user_analytics):
     df["PriorityRank"] = df.index + 1
 
     return df
+
+
+
+
+def find_existing_user_item(existing_items, username):
+    """Find existing SharePoint row matching the username (case-insensitive)."""
+    username = username.lower().strip()
+
+    for item in existing_items:
+        fields = item.get("fields", {})
+        normalized = {k.lower(): str(v).lower() for k, v in fields.items()}
+        if normalized.get("username") == username or username in normalized.values():
+            return item
+
+    return None
