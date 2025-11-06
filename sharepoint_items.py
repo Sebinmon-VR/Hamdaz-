@@ -4,8 +4,7 @@ import os
 import requests
 from msal import ConfidentialClientApplication
 from dotenv import load_dotenv
-import os
-import requests
+import io
 import pandas as pd
 from datetime import datetime
 import pytz
@@ -1258,7 +1257,39 @@ def update_sharepoint_item_with_link(item_id, link_url):
     resp.raise_for_status()
     return resp.json()
 
+
 def get_partnership_data():
-    df = pd.read_excel("competitor_contact_info_mock.xlsx")
-    df = df.fillna("")
-    return df.to_dict(orient='records')
+    """Fetches data from competitor_contact_info_mock.xlsx in OneDrive via Graph API."""
+    try:
+        access_token = get_onedrive_access_token()
+        headers = {"Authorization": f"Bearer {access_token}"}
+
+        url = (
+            f"{GRAPH_API_ENDPOINT}/users/{ONEDRIVE_PRIMARY_USER_ID}/drive/root:/"
+            f"competitor_contact_info_mock.xlsx:/workbook/worksheets('Sheet1')/usedRange"
+        )
+
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+        data = response.json()
+
+        rows = data.get('values')
+        if not rows or len(rows) < 2:
+            print("[WARN] No valid rows found in Excel file.")
+            return []
+
+        headers_row = rows[0]
+        records = rows[1:]
+
+        # Safeguard in case headers are missing or invalid
+        if not isinstance(headers_row, list):
+            print("[ERROR] Invalid header format in Excel.")
+            return []
+
+        df = pd.DataFrame(records, columns=headers_row)
+        df = df.fillna("")
+        return df.to_dict(orient="records")
+
+    except Exception as e:
+        print(f"[ERROR] Failed to fetch or parse OneDrive Excel: {e}")
+        return []  # Return an empty list instead of None

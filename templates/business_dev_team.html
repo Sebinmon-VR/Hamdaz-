@@ -1,50 +1,139 @@
-
 {% extends "base.html" %}
 
+{% block title %}Vendor Competitors{% endblock %}
+
 {% block content %}
-<div class="container-fluid mt-4">
-  <h2 class="text-center mb-4">Excel Data Viewer</h2>
+<style>
+    .content-container { padding: 2em; background-color: #f8f9fa; min-height: 100vh; }
+    .page-header { margin-bottom: 1.5em; }
+    .page-header h1 { margin: 0; font-size: 2rem; color: #343a40; }
 
-  <div class="table-container bg-white p-3 rounded shadow-sm">
-    <div class="table-responsive">
-      <table class="table table-striped table-bordered table-hover align-middle">
-        <thead class="table-primary text-center">
-          <tr>
-            <th>Product Group Number</th>
-            <th>Product</th>
-            <th>ADNOC Approved Manufacturer</th>
-            <th>Competitor Company</th>
-            <th>Email</th>
-            <th>Contact URL</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for row in data %}
-          <tr>
-            <td>{{ row['Product Group Number'] }}</td>
-            <td>{{ row['Product'] }}</td>
-            <td>{{ row['ADNOC Approved Manufacturer'] }}</td>
-            <td>{{ row['Competitor Company'] }}</td>
-            <td>
-              {% if row['Email'] %}
-                <a href="mailto:{{ row['Email'] }}">{{ row['Email'] }}</a>
-              {% else %}
-                <span class="text-muted">N/A</span>
-              {% endif %}
-            </td>
-            <td>
-              {% if row['Contact URL'] %}
-                <a href="{{ row['Contact URL'] }}" target="_blank">Visit</a>
-              {% else %}
-                <span class="text-muted">N/A</span>
-              {% endif %}
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+    .controls { 
+        display: flex; 
+        gap: 1rem; 
+        margin-bottom: 1.5em; 
+        align-items: center; 
+    }
+    #searchInput { 
+        flex-grow: 1; 
+        padding: 0.75em; 
+        border: 1px solid #ced4da; 
+        border-radius: 0.25rem; 
+        font-size: 1rem; 
+    }
+
+    .table-container { overflow-x: auto; background: white; border-radius: 0.25rem; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 1em; text-align: left; border-bottom: 1px solid #dee2e6; white-space: nowrap; }
+    th { background-color: #e9ecef; font-weight: 600; color: #495057; }
+    tbody tr:hover { background-color: #f1f1f1; }
+
+    /* Collapsible group rows */
+    .collapsible { font-weight: bold; background-color: #f1f1f1; cursor: pointer; }
+    .collapsible td {
+        padding-left: 0.5em; /* small left padding */
+    }
+    .collapsible-content {
+        display: flex;
+        align-items: center;
+    }
+    .collapsible-arrow {
+        display: inline-block;
+        transition: transform 0.3s;
+        margin-right: 0.5em; /* space between arrow and text */
+    }
+    .collapsible.active .collapsible-arrow { transform: rotate(90deg); }
+
+    /* Child rows hidden by default */
+    .child-row { display: none; }
+
+    /* Blue hyperlinks */
+    td a { color: #0d6efd; text-decoration: none; }
+    td a:hover { text-decoration: underline; }
+</style>
+
+<div class="content-container">
+    <div class="page-header">
+        <h1>Vendor Competitors</h1>
     </div>
-  </div>
-</div>
 
+    <div class="controls">
+        <input type="text" id="searchInput" class="form-control" placeholder="Search products...">
+    </div>
+
+    <div class="table-container">
+        <table id="dataTable">
+            <thead>
+                <tr>
+                    <th>Product Group Number</th>
+                    <th>Product</th>
+                    <th>ADNOC Approved Manufacturer</th>
+                    <th>Competitor Company</th>
+                    <th>Email</th>
+                    <th>Contact URL</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for group, entries in grouped_data.items() %}
+                    <tr class="collapsible" data-group="{{ group }}">
+                        <td colspan="6">
+                            <div class="collapsible-content">
+                                <span class="collapsible-arrow">▶</span>
+                                <span>{{ group }} - ({{ entries|length }} entries)</span>
+                            </div>
+                        </td>
+                    </tr>
+                    {% for entry in entries %}
+                    <tr class="child-row" data-parent="{{ group }}">
+                        <td>{{ entry['Product Group Number'] }}</td>
+                        <td>{{ entry['Product'] }}</td>
+                        <td>{{ entry['ADNOC Approved Manufacturer'] }}</td>
+                        <td>{{ entry['Competitor Company'] }}</td>
+                        <td>{% if entry['Email'] %}<a href="mailto:{{ entry['Email'] }}">{{ entry['Email'] }}</a>{% endif %}</td>
+                        <td>{% if entry['Contact URL'] %}<a href="{{ entry['Contact URL'] }}" target="_blank">Visit</a>{% endif %}</td>
+                    </tr>
+                    {% endfor %}
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const tableBody = document.querySelector('#dataTable tbody');
+    const searchInput = document.getElementById('searchInput');
+
+    // Collapsible functionality with arrow rotation
+    tableBody.querySelectorAll('.collapsible').forEach(row => {
+        row.addEventListener('click', () => {
+            row.classList.toggle('active'); // arrow rotation
+            const group = row.dataset.group;
+            tableBody.querySelectorAll(`.child-row[data-parent="${group}"]`).forEach(r => {
+                r.style.display = r.style.display === 'table-row' ? 'none' : 'table-row';
+            });
+        });
+    });
+
+    // Search filter
+    searchInput.addEventListener('input', () => {
+        const term = searchInput.value.toLowerCase();
+
+        tableBody.querySelectorAll('.child-row').forEach(row => {
+            const text = row.textContent.toLowerCase();
+            row.style.display = text.includes(term) ? 'table-row' : 'none';
+        });
+
+        // Show/hide group rows based on visible children
+        tableBody.querySelectorAll('.collapsible').forEach(groupRow => {
+            const group = groupRow.dataset.group;
+            const hasVisible = Array.from(tableBody.querySelectorAll(`.child-row[data-parent="${group}"]`))
+                                    .some(r => r.style.display === 'table-row');
+            groupRow.style.display = hasVisible ? '' : 'none';
+        });
+    });
+});
+</script>
 {% endblock %}

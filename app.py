@@ -252,9 +252,12 @@ def teams():
 def view_data():
     user = session["user"]
     data = get_partnership_data()
-    return render_template("business_dev_team.html", data=data,, user=user)
+    grouped_data = {}
+    for row in data:
+        key = row.get("Product Group Number", "N/A")
+        grouped_data.setdefault(key, []).append(row)
 
-
+    return render_template("business_dev_team.html", grouped_data=grouped_data, user=user)
 
 
 @app.route("/cs")
