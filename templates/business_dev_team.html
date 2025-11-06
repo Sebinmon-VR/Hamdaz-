@@ -30,18 +30,8 @@
 
     /* Collapsible group rows */
     .collapsible { font-weight: bold; background-color: #f1f1f1; cursor: pointer; }
-    .collapsible td {
-        padding-left: 0.5em; /* small left padding */
-    }
-    .collapsible-content {
-        display: flex;
-        align-items: center;
-    }
-    .collapsible-arrow {
-        display: inline-block;
-        transition: transform 0.3s;
-        margin-right: 0.5em; /* space between arrow and text */
-    }
+    .collapsible-content { display: flex; align-items: center; }
+    .collapsible-arrow { display: inline-block; transition: transform 0.3s; margin-right: 0.5em; }
     .collapsible.active .collapsible-arrow { transform: rotate(90deg); }
 
     /* Child rows hidden by default */
@@ -79,19 +69,28 @@
                         <td colspan="6">
                             <div class="collapsible-content">
                                 <span class="collapsible-arrow">▶</span>
-                                <span>{{ group }} - ({{ entries|length }} entries)</span>
+                                <span>{{ group }} - {{ entries[0]['Product'] }} ({{ entries|length }} entries)</span>
                             </div>
                         </td>
                     </tr>
+
+                    {% set last_manufacturer = None %}
                     {% for entry in entries %}
-                    <tr class="child-row" data-parent="{{ group }}">
-                        <td>{{ entry['Product Group Number'] }}</td>
-                        <td>{{ entry['Product'] }}</td>
-                        <td>{{ entry['ADNOC Approved Manufacturer'] }}</td>
-                        <td>{{ entry['Competitor Company'] }}</td>
-                        <td>{% if entry['Email'] %}<a href="mailto:{{ entry['Email'] }}">{{ entry['Email'] }}</a>{% endif %}</td>
-                        <td>{% if entry['Contact URL'] %}<a href="{{ entry['Contact URL'] }}" target="_blank">Visit</a>{% endif %}</td>
-                    </tr>
+                        <tr class="child-row" data-parent="{{ group }}">
+                            {% if loop.first or entry['ADNOC Approved Manufacturer'] != last_manufacturer %}
+                                <td>{{ entry['Product Group Number'] }}</td>
+                                <td>{{ entry['Product'] }}</td>
+                                <td>{{ entry['ADNOC Approved Manufacturer'] }}</td>
+                                {% set last_manufacturer = entry['ADNOC Approved Manufacturer'] %}
+                            {% else %}
+                                <td></td>
+                                <td></td>
+                                <td></td>
+                            {% endif %}
+                            <td>{{ entry['Competitor Company'] }}</td>
+                            <td>{% if entry['Email'] %}<a href="mailto:{{ entry['Email'] }}">{{ entry['Email'] }}</a>{% endif %}</td>
+                            <td>{% if entry['Contact URL'] %}<a href="{{ entry['Contact URL'] }}" target="_blank">Visit</a>{% endif %}</td>
+                        </tr>
                     {% endfor %}
                 {% endfor %}
             </tbody>
@@ -106,10 +105,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const tableBody = document.querySelector('#dataTable tbody');
     const searchInput = document.getElementById('searchInput');
 
-    // Collapsible functionality with arrow rotation
     tableBody.querySelectorAll('.collapsible').forEach(row => {
         row.addEventListener('click', () => {
-            row.classList.toggle('active'); // arrow rotation
+            row.classList.toggle('active');
             const group = row.dataset.group;
             tableBody.querySelectorAll(`.child-row[data-parent="${group}"]`).forEach(r => {
                 r.style.display = r.style.display === 'table-row' ? 'none' : 'table-row';
@@ -117,16 +115,11 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // Search filter
     searchInput.addEventListener('input', () => {
         const term = searchInput.value.toLowerCase();
-
         tableBody.querySelectorAll('.child-row').forEach(row => {
-            const text = row.textContent.toLowerCase();
-            row.style.display = text.includes(term) ? 'table-row' : 'none';
+            row.style.display = row.textContent.toLowerCase().includes(term) ? 'table-row' : 'none';
         });
-
-        // Show/hide group rows based on visible children
         tableBody.querySelectorAll('.collapsible').forEach(groupRow => {
             const group = groupRow.dataset.group;
             const hasVisible = Array.from(tableBody.querySelectorAll(`.child-row[data-parent="${group}"]`))
