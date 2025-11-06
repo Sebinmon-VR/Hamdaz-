@@ -1314,14 +1314,18 @@ def get_existing_useranalytics_items():
 
 from datetime import datetime, timezone
 
+from datetime import datetime, timezone
+
+from datetime import datetime, timezone
 
 def calculate_priority_score(user_analytics):
     """
-    Calculate priority score for each user based on ActiveTasks and LastAssignedDate.
-    Higher score → higher priority.
+    Calculate priority score based on:
+    1. Low active tasks → higher priority
+    2. Among similar tasks, longer idle → higher priority
     """
     now = datetime.now(timezone.utc)
-    priority_scores = []
+    scores = []
 
     for _, row in user_analytics.iterrows():
         active_tasks = int(row["OngoingTasksCount"])
@@ -1332,35 +1336,29 @@ def calculate_priority_score(user_analytics):
 
         days_since_last = (now - last_assigned).total_seconds() / (24 * 3600)
 
-        task_priority = active_tasks if active_tasks > 0 else 1
-
-        # Score: fewer active tasks + recently assigned → lower score, higher priority
-        score = (1 / task_priority) + days_since_last
-        priority_scores.append(score)
+        # Primary: negative active tasks (so fewer tasks → higher score)
+        # Secondary: days_since_last (more idle → higher score)
+        score = (-active_tasks, days_since_last)
+        scores.append(score)
 
     df = user_analytics.copy()
-    df["PriorityScore"] = priority_scores
+    df["PriorityScore"] = scores
     return df
-
 
 
 def assign_priority_rank(user_analytics):
     """
-    Assign simple priority ranks:
-    - Highest priority user = 1
-    - Next highest = 2
-    - Lowest priority user = N
+    Assign priority rank based on tuple sorting:
+    - Highest priority: lowest active tasks, then longest idle
     """
     df = user_analytics.copy()
 
-    # Sort descending by PriorityScore: highest score = highest priority
+    # Sort by tuple: (-active_tasks, days_since_last)
     df = df.sort_values(by="PriorityScore", ascending=False).reset_index(drop=True)
 
-    # Assign rank: highest priority = 1
+    # Assign rank
     df["PriorityRank"] = df.index + 1
-
     return df
-
 
 
 
