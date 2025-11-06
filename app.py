@@ -729,6 +729,8 @@ def chatbot():
     user = session.get("user")
     return render_template("pages/chatbot.html", user=user)
 
+
+
 # ==============================================================
 
 @app.route("/user_report")

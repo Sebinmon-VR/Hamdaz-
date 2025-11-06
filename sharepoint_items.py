@@ -417,7 +417,7 @@ def get_user_details(access_token, usernames):
 
 
 def generate_user_analytics(df, user_column='AssignedTo', status_column='Status', 
-                            title_column='Title', due_column='DueDate', start_column='StartDate',
+                            title_column='Title', due_column='BCD', start_column='StartDate',
                             assigned_column='AssignedDate', orders_column='OrdersReceived',
                             exclude_users=None):
     """
