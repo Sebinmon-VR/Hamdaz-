@@ -4,7 +4,7 @@ from msal import ConfidentialClientApplication
 import requests
 import os
 from dotenv import load_dotenv
-import base64
+import msal
 from datetime import datetime
 import threading
 import time
@@ -12,7 +12,7 @@ import pandas as pd  # Required for timestamp conversion
 from sharepoint_data import *
 from sharepoint_items import *
 from zoho import *
-import jwt
+import openai  
 import re
 import json
 import html
@@ -48,6 +48,10 @@ SITE_DOMAIN = "hamdaz1.sharepoint.com"
 SITE_PATH = "/sites/ProposalTeam"
 LIST_NAME = "Proposals"
 EXCLUDED_USERS = ["Sebin", "Shamshad", "Jaymon", "Hisham Arackal", "Althaf", "Nidal", "Nayif Muhammed S", "Afthab"]
+
+
+# ✅ Initialize the OpenAI Client properly
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
 # ==============================================================
 # Initialize global data (first load)
@@ -725,9 +729,44 @@ def approvals():
 @app.route("/chatbot")
 def chatbot():
     if "user" not in session:
-        return redirect(url_for('login'))
+        return redirect(url_for("login"))
+    
     user = session.get("user")
+    
+    # Initialize chat memory for this user if not exists
+    if "chat_history" not in session:
+        session["chat_history"] = []
+
     return render_template("pages/chatbot.html", user=user)
+
+
+@app.route("/chatbot/ask", methods=["POST"])
+def ask_chatbot():
+    data = request.json
+    user_prompt = data.get("message")
+
+    if "chat_history" not in session:
+        session["chat_history"] = [{"role": "system", "content": "You are a helpful assistant."}]
+    
+    chat_history = session["chat_history"]
+
+    # Add user message
+    chat_history.append({"role": "user", "content": user_prompt})
+
+    # Send full history
+    response = openai.ChatCompletion.create(
+        model="gpt-4o",
+        messages=chat_history,
+        temperature=0.7,
+    ) 
+
+    reply = response.choices[0].message.content
+
+    # Add assistant reply to memory
+    chat_history.append({"role": "assistant", "content": reply})
+    session["chat_history"] = chat_history
+
+    return jsonify({"reply": reply})
 
 
 

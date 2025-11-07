@@ -65,7 +65,6 @@ def get_access_token():
         raise Exception(f"Failed to get access token: {token_response}")
     return token_response["access_token"]
 
-
 # ----------------------------
 # Fetch all users in org
 # ----------------------------
@@ -1373,3 +1372,44 @@ def find_existing_user_item(existing_items, username):
             return item
 
     return None
+
+def list_org_users(access_token):
+    """
+    List all users in the organization using Microsoft Graph API.
+
+    Args:
+        access_token (str): Azure AD access token with User.Read.All permission.
+
+    Returns:
+        list: List of users with basic info (id, displayName, mail, userPrincipalName)
+    """
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json"
+    }
+
+    users = []
+    url = f"{GRAPH_API_ENDPOINT}/users"
+    
+    while url:
+        response = requests.get(url, headers=headers)
+        if response.status_code != 200:
+            raise Exception(f"Error fetching users: {response.status_code} - {response.text}")
+        
+        data = response.json()
+        users.extend(data.get("value", []))
+        
+        # Pagination: check if there is a next page
+        url = data.get("@odata.nextLink", None)
+
+    # Return simplified list
+    return [
+        {
+            "id": u.get("id"),
+            "displayName": u.get("displayName"),
+            "mail": u.get("mail"),
+            "userPrincipalName": u.get("userPrincipalName")
+        }
+        for u in users
+    ]
+
