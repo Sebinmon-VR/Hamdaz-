@@ -1,33 +1,33 @@
 {% extends "base.html" %}
-
+ 
 {% block title %}Business Development{% endblock %}
-
+ 
 {% block content %}
 <style>
     .content-container { padding: 2em; background-color: #f8f9fa; min-height: 100vh; }
     .page-header { margin-bottom: 1em; }
     .page-header h1 { margin: 0; font-size: 2rem; color: #343a40; }
-
-    .controls { 
-        display: flex; 
-        gap: 1rem; 
-        margin-bottom: 1.5em; 
-        align-items: center; 
+ 
+    .controls {
+        display: flex;
+        gap: 1rem;
+        margin-bottom: 1.5em;
+        align-items: center;
     }
-    #searchInput { 
-        flex-grow: 1; 
-        padding: 0.75em; 
-        border: 1px solid #ced4da; 
-        border-radius: 0.25rem; 
-        font-size: 1rem; 
+    #searchInput {
+        flex-grow: 1;
+        padding: 0.75em;
+        border: 1px solid #ced4da;
+        border-radius: 0.25rem;
+        font-size: 1rem;
     }
-
+ 
     .table-container { overflow-x: auto; background: white; border-radius: 0.25rem; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-top: 1em; }
     table { width: 100%; border-collapse: collapse; }
     th, td { padding: 1em; text-align: left; border-bottom: 1px solid #dee2e6; white-space: nowrap; }
     th { background-color: #e9ecef; font-weight: 600; color: #495057; }
     tbody tr:hover { background-color: #f1f1f1; }
-
+ 
     .collapsible { font-weight: bold; background-color: #f1f1f1; cursor: pointer; }
     .collapsible-content { display: flex; align-items: center; }
     .collapsible-arrow { display: inline-block; transition: transform 0.3s; margin-right: 0.5em; }
@@ -36,16 +36,16 @@
     td a { color: #0d6efd; text-decoration: none; }
     td a:hover { text-decoration: underline; }
 </style>
-
+ 
 <div class="content-container">
     <div class="page-header">
         <h1>Vendor Competitor Details</h1>
     </div>
-
+ 
     <div class="controls">
         <input type="text" id="searchInput" class="form-control" placeholder="Search products...">
     </div>
-
+ 
     <div class="table-container">
         <table id="dataTable">
             <thead>
@@ -67,16 +67,11 @@
                             </div>
                         </td>
                     </tr>
-
+ 
                     {% set last_manufacturer = None %}
                     {% for entry in entries %}
-                        {# Handle Status with default #}
-                        {% set Status = entry.get('Status') %}
-                        {% if not Status %}
-                            {% set Status = 'Not Started' %}
-                        {% endif %}
-
-                        {# Set color based on status #}
+                        {% set Status = entry.get('Status', 'Not Started') %}
+ 
                         {% if Status == 'On Boarded' %}
                             {% set color = '#28a745' %}
                         {% elif Status == 'In Progress' %}
@@ -86,7 +81,7 @@
                         {% else %}
                             {% set color = '#adb5bd' %}
                         {% endif %}
-
+ 
                         <tr class="child-row" data-parent="{{ group }}">
                             {% if loop.first or entry['ADNOC Approved Manufacturer'] != last_manufacturer %}
                                 <td>{{ entry['ADNOC Approved Manufacturer'] }}</td>
@@ -94,16 +89,38 @@
                             {% else %}
                                 <td></td>
                             {% endif %}
+ 
                             <td>
-                                <a href="{{ url_for('competitor_profile', product_name=entry['Product'],manufacturer=entry['ADNOC Approved Manufacturer'], competitor_name=entry['Competitor Company']) }}">
-                                      {{ entry['Competitor Company'] }}
+                                <a href="{{ url_for(
+                                    'competitor_profile',
+                                    competitor_name=entry['Competitor Company']|replace('/', '_slash_')|urlencode,
+                                    product_name=entry['Product']|replace('/', '_slash_')|urlencode,
+                                    manufacturer=entry['ADNOC Approved Manufacturer']|replace('/', '_slash_')|urlencode
+                                ) }}">
+                                    {{ entry['Competitor Company'] }}
                                 </a>
                             </td>
-                            <td>{% if entry['Email'] %}<a href="mailto:{{ entry['Email'] }}">{{ entry['Email'] }}</a>{% else %}<span style="color:#6c757d;">N/A</span>{% endif %}</td>
-                            <td>{% if entry['Contact URL'] %}<a href="{{ entry['Contact URL'] }}" target="_blank">Visit</a>{% else %}<span style="color:#6c757d;">N/A</span>{% endif %}</td>
+ 
+                            <td>
+                                {% if entry['Email'] %}
+                                    <a href="mailto:{{ entry['Email'] }}">{{ entry['Email'] }}</a>
+                                {% else %}
+                                    <span style="color:#6c757d;">N/A</span>
+                                {% endif %}
+                            </td>
+ 
+                            <td>
+                                {% if entry['Contact URL'] %}
+                                    <a href="{{ entry['Contact URL'] }}" target="_blank">Visit</a>
+                                {% else %}
+                                    <span style="color:#6c757d;">N/A</span>
+                                {% endif %}
+                            </td>
+ 
                             <td>
                                 <span style="display:inline-flex; align-items:center; gap:0.3em;">
                                     <span style="width:12px; height:12px; border-radius:50%; background-color:{{ color }}; display:inline-block;"></span>
+                                    
                                     {{ Status }}
                                 </span>
                             </td>
@@ -115,7 +132,7 @@
     </div>
 </div>
 {% endblock %}
-
+ 
 {% block scripts %}
 <script>
 document.addEventListener('DOMContentLoaded', () => {
@@ -130,7 +147,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         });
     });
-
+ 
     // Search filter
     const searchInput = document.getElementById('searchInput');
     searchInput.addEventListener('input', () => {

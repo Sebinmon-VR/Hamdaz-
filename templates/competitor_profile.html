@@ -1,164 +1,240 @@
 {% extends "base.html" %}
 {% block title %}{{ competitor['Competitor Company'] }} Profile{% endblock %}
+
 {% block content %}
 <style>
-    .content-container {
+    body {
+        background-color: #f0f2f5;
+        font-family: 'Inter', sans-serif;
+    }
+
+    .content-wrapper {
+        max-width: 1200px;
+        margin: 2em auto;
+        display: flex;
+        gap: 2rem;
+        flex-wrap: wrap;
+    }
+
+    /* Left column: main info card */
+    .info-card {
+        flex: 2;
+        background: #ffffff;
+        border-radius: 1rem;
         padding: 2em;
-        background-color: #f8f9fa;
-        min-height: 100vh;
+        box-shadow: 0 8px 20px rgba(0,0,0,0.08);
         display: flex;
         flex-direction: column;
-        align-items: center;
+        gap: 1.5em;
+        transition: transform 0.2s;
     }
 
-    .page-header {
-        margin-bottom: 1em;
-        text-align: center;
+    .info-card:hover {
+        transform: translateY(-4px);
     }
 
-    .page-header h1 {
-        margin: 0;
-        font-size: 2rem;
-        color: #343a40;
+    .breadcrumb {
+        font-size: 0.9rem;
+        color: #6c757d;
     }
 
-    .table-container, .other-products-container {
-        width: 100%;
-        max-width: 700px;
-        background: white;
-        border-radius: 0.5rem;
-        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
-        padding: 1.5em;
-        margin-top: 1em;
-    }
-
-    table {
-        width: 100%;
-        border-collapse: collapse;
-    }
-
-    th, td {
-        padding: 1em;
-        text-align: left;
-        border-bottom: 1px solid #dee2e6;
-        vertical-align: middle;
-    }
-
-    th {
-        background-color: #e9ecef;
-        color: #495057;
-        font-weight: 600;
-        width: 40%;
-    }
-
-    td a {
-        color: #0d6efd;
+    .breadcrumb a {
         text-decoration: none;
+        color: #6c63ff;
+        font-weight: 500;
     }
 
-    td a:hover {
+    .breadcrumb a:hover {
         text-decoration: underline;
     }
 
-    .status-dot {
-        width: 12px;
-        height: 12px;
-        border-radius: 50%;
-        display: inline-block;
+    .company-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
     }
 
-    .back-btn, .btn-edit {
-        display: inline-block;
-        margin-top: 1.5em;
-        padding: 0.6em 1.2em;
-        background-color: #0d6efd;
-        color: white;
-        border-radius: 0.25rem;
-        text-decoration: none;
-        transition: background 0.3s;
-        cursor: pointer;
-        border: none;
+    .company-header h1 {
+        font-size: 2.2rem;
+        margin: 0;
+        color: #343a40;
     }
 
-    .back-btn:hover, .btn-edit:hover {
-        background-color: #0b5ed7;
+    .status-pill {
+        padding: 0.4em 1.2em;
+        border-radius: 50px;
+        color: #fff;
+        font-weight: 600;
+        font-size: 0.95rem;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.1);
     }
 
-    .modal-content {
-        border-radius: 0.75rem;
-        border: none;
-        box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+    /* Status colors */
+    .status-onboarded { background-color: #28a745; }
+    .status-progress { background-color: #ffc107; color: #212529; }
+    .status-dropped { background-color: #dc3545; }
+    .status-notstarted { background-color: #6c757d; }
+
+    .info-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 1em;
     }
 
-    .modal-header {
+    .info-table th, .info-table td {
+        padding: 0.9em 1em;
         border-bottom: 1px solid #e9ecef;
-        padding: 1.25rem 1.5rem;
+        text-align: left;
     }
 
-    .modal-body {
-        padding: 1.5rem;
+    .info-table th {
+        width: 35%;
+        background-color: #f8f9fc;
+        font-weight: 600;
+        color: #495057;
     }
 
-    .other-products-container h4 {
+    .info-table td a {
+        color: #6c63ff;
+        font-weight: 500;
+    }
+
+    .info-table td a:hover {
+        text-decoration: underline;
+    }
+
+    .action-buttons {
+        display: flex;
+        gap: 1rem;
+        margin-top: 1.5em;
+    }
+
+    .action-buttons .btn-primary {
+        background-color: #6c63ff;
+        border-color: #6c63ff;
+    }
+
+    .action-buttons .btn-primary:hover {
+        background-color: #5848c2;
+        border-color: #5848c2;
+    }
+
+    .action-buttons .btn-secondary {
+        background-color: #f1f3f6;
+        color: #495057;
+        border: none;
+    }
+
+    .action-buttons .btn-secondary:hover {
+        background-color: #e2e6ea;
+    }
+
+    /* Right column: other products */
+    .other-products {
+        flex: 1;
+        background: #ffffff;
+        border-radius: 1rem;
+        padding: 1.5em;
+        box-shadow: 0 8px 20px rgba(0,0,0,0.08);
+        max-height: 600px;
+        overflow-y: auto;
+        transition: transform 0.2s;
+    }
+
+    .other-products:hover {
+        transform: translateY(-3px);
+    }
+
+    .other-products h4 {
         margin-bottom: 1rem;
+        text-align: center;
+        font-size: 1.3rem;
+        font-weight: 700;
+        color: #343a40;
     }
 
     .product-card {
-        padding: 0.8rem 1rem;
-        background: #f1f3f5;
-        border-radius: 0.25rem;
-        margin-bottom: 0.5rem;
+        background: #f8f9fc;
+        padding: 0.9rem 1rem;
+        border-radius: 0.75rem;
+        margin-bottom: 0.7rem;
+        cursor: pointer;
+        transition: all 0.2s;
+        font-weight: 500;
+        color: #343a40;
+    }
+
+    .product-card:hover {
+        background: #e0e4ff;
+        transform: translateX(4px);
+    }
+
+    /* Modal */
+    .modal-content {
+        border-radius: 1rem;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+    }
+
+    .modal-header {
+        border-bottom: none;
+    }
+
+    .modal-footer {
+        border-top: none;
+    }
+
+    @media (max-width: 1000px) {
+        .content-wrapper {
+            flex-direction: column;
+        }
+        .other-products {
+            max-height: none;
+        }
     }
 </style>
 
-<div class="content-container">
-    <div class="page-header">
-        <h1>{{ competitor['Competitor Company'] }}</h1>
-        <p style="color: #6c757d; margin-top: 0.3em;">Company Profile Overview</p>
-    </div>
+<div class="content-wrapper">
+    <!-- Left Column -->
+    <div class="info-card">
 
-    <div class="table-container">
-        {% set status = competitor.get('Status', 'Not Started') %}
-        {% if status == 'On Boarded' %}
-            {% set color = '#28a745' %}
-        {% elif status == 'In Progress' %}
-            {% set color = '#ffc107' %}
-        {% elif status == 'Dropped' %}
-            {% set color = '#dc3545' %}
-        {% else %}
-            {% set color = '#adb5bd' %}
-        {% endif %}
+        <div class="company-header">
+            <h1>{{ competitor['Competitor Company'] }}</h1>
+            {% set status = competitor.get('Status', 'Not Started') %}
+            {% if status == 'On Boarded' %}
+                {% set status_class = 'status-onboarded' %}
+            {% elif status == 'In Progress' %}
+                {% set status_class = 'status-progress' %}
+            {% elif status == 'Dropped' %}
+                {% set status_class = 'status-dropped' %}
+            {% else %}
+                {% set status_class = 'status-notstarted' %}
+            {% endif %}
+            <span class="status-pill {{ status_class }}">{{ status }}</span>
+        </div>
 
-        <table>
+        <table class="info-table">
             <tr><th>ADNOC Approved Manufacturer</th><td>{{ competitor['ADNOC Approved Manufacturer'] }}</td></tr>
             <tr><th>Product</th><td>{{ competitor['Product'] }}</td></tr>
-            <tr><th>Email</th><td>{% if competitor['Email'] %}<a href="mailto:{{ competitor['Email'] }}">{{ competitor['Email'] }}</a>{% else %}<span style="color:#6c757d;">N/A</span>{% endif %}</td></tr>
-            <tr><th>Contact URL</th><td>{% if competitor['Contact URL'] %}<a href="{{ competitor['Contact URL'] }}" target="_blank">Visit</a>{% else %}<span style="color:#6c757d;">N/A</span>{% endif %}</td></tr>
-            <tr>
-                <th>Status</th>
-                <td>
-                    <span style="display:inline-flex; align-items:center; gap:0.4em;">
-                        <span class="status-dot" style="background-color: {{ color }};"></span>
-                        <span id="statusText">{{ status }}</span>
-                    </span>
-                </td>
-            </tr>
-            <tr>
-                <th>Remarks</th>
-                <td id="remarksText">{{ competitor.get('Remarks', '—') }}</td>
-            </tr>
+            <tr><th>Email</th><td>{% if competitor['Email'] %}<a href="mailto:{{ competitor['Email'] }}">{{ competitor['Email'] }}</a>{% else %}N/A{% endif %}</td></tr>
+            <tr><th>Contact URL</th><td>{% if competitor['Contact URL'] %}<a href="{{ competitor['Contact URL'] }}" target="_blank">Visit</a>{% else %}N/A{% endif %}</td></tr>
+            <tr><th>Remarks</th><td id="remarksText">{{ competitor.get('Remarks','—') }}</td></tr>
         </table>
 
-        <button class="btn-edit" data-bs-toggle="modal" data-bs-target="#editStatusModal">Edit Status</button>
-        <a href="{{ url_for('view_data') }}" class="back-btn">← Back to Competitor List</a>
+        <div class="action-buttons">
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#editStatusModal">Edit Status</button>
+            <a href="{{ url_for('view_data') }}" class="btn btn-secondary">Back</a>
+        </div>
     </div>
 
+    <!-- Right Column -->
     {% if other_products %}
-    <div class="other-products-container">
-        <h4>Other Products by {{ competitor['Competitor Company'] }}</h4>
+    <div class="other-products">
+        <h4>Other Products</h4>
         {% for p in other_products %}
-            <div class="product-card">
-                <strong>Product:</strong> {{ p['Product'] }} &nbsp;|&nbsp; <strong>Manufacturer:</strong> {{ p['ADNOC Approved Manufacturer'] }}
+            <div class="product-card" onclick="window.location.href='{{ url_for('competitor_profile', competitor_name=p['Competitor Company'], product_name=p['Product'], manufacturer=p['ADNOC Approved Manufacturer']) }}'">
+                <strong>{{ p['Product'] }}</strong><br>
+                <small>{{ p['ADNOC Approved Manufacturer'] }}</small>
             </div>
         {% endfor %}
     </div>
@@ -175,18 +251,18 @@
             </div>
             <div class="modal-body">
                 <form id="editStatusForm">
-                    <div class="form-field-group mb-3">
-                        <label class="form-label">Status</label>
+                    <div class="mb-3">
+                        <label>Status</label>
                         <select id="editStatus" class="form-control">
-                            <option value="Not Started" {% if status == 'Not Started' %}selected{% endif %}>Not Started</option>
-                            <option value="In Progress" {% if status == 'In Progress' %}selected{% endif %}>In Progress</option>
-                            <option value="Onboarded" {% if status == 'Onboarded' %}selected{% endif %}>Onboarded</option>
-                            <option value="Dropped" {% if status == 'Dropped' %}selected{% endif %}>Dropped</option>
+                            <option value="Not Started" {% if status=='Not Started'%}selected{% endif %}>Not Started</option>
+                            <option value="In Progress" {% if status=='In Progress'%}selected{% endif %}>In Progress</option>
+                            <option value="On Boarded" {% if status=='On Boarded'%}selected{% endif %}>On Boarded</option>
+                            <option value="Dropped" {% if status=='Dropped'%}selected{% endif %}>Dropped</option>
                         </select>
                     </div>
-                    <div class="form-field-group">
-                        <label class="form-label">Remarks</label>
-                        <textarea id="editRemarks" class="form-control" rows="3">{{ competitor.get('Remarks', '') }}</textarea>
+                    <div class="mb-3">
+                        <label>Remarks</label>
+                        <textarea id="editRemarks" class="form-control" rows="3">{{ competitor.get('Remarks','') }}</textarea>
                     </div>
                 </form>
             </div>
@@ -205,7 +281,6 @@
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const saveButton = document.getElementById('saveStatusChanges');
-
     saveButton.addEventListener('click', () => {
         const newStatus = document.getElementById('editStatus').value;
         const newRemarks = document.getElementById('editRemarks').value;
@@ -218,8 +293,7 @@ document.addEventListener('DOMContentLoaded', function() {
         .then(res => res.json())
         .then(data => {
             if (data.success) {
-                // Refresh page immediately after successful update
-                window.location.reload();
+                window.location.reload(); // Refresh page to reflect changes
             } else {
                 alert('Failed to update: ' + (data.error || 'Unknown error'));
             }
