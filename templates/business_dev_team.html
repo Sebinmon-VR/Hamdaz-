@@ -103,8 +103,6 @@
 <script>
 document.addEventListener('DOMContentLoaded', () => {
     const tableBody = document.querySelector('#dataTable tbody');
-    const searchInput = document.getElementById('searchInput');
-
     tableBody.querySelectorAll('.collapsible').forEach(row => {
         row.addEventListener('click', () => {
             row.classList.toggle('active');
