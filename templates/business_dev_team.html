@@ -95,7 +95,7 @@
                                 <td></td>
                             {% endif %}
                             <td>
-                                <a href="{{ url_for('competitor_profile', competitor_name=entry['Competitor Company']) }}">
+                                <a href="{{ url_for('competitor_profile', product_name=entry['Product'],manufacturer=entry['ADNOC Approved Manufacturer'], competitor_name=entry['Competitor Company']) }}">
                                       {{ entry['Competitor Company'] }}
                                 </a>
                             </td>

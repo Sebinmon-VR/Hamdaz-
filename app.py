@@ -262,48 +262,62 @@ def view_data():
 
 
 
-@app.route('/competitor/<competitor_name>', methods=['GET', 'POST'])
-def competitor_profile(competitor_name):
+@app.route('/competitor/<competitor_name>/<product_name>/<manufacturer>', methods=['GET', 'POST'])
+def competitor_profile(competitor_name, product_name, manufacturer):
     user = session["user"]
-    data = get_partnership_data()
+    data = get_partnership_data()  # Fetch full Excel data
 
-    competitor_entry = next((row for row in data if row['Competitor Company'] == competitor_name), None)
+    # Find the specific clicked row
+    competitor_entry = next((row for row in data if
+                             row['Competitor Company'] == competitor_name
+                             and row['Product'] == product_name
+                             and row['ADNOC Approved Manufacturer'] == manufacturer), None)
     if not competitor_entry:
         abort(404)
+
+    # Fetch other products this competitor has (exclude the clicked row)
+    other_products = [row for row in data if
+                      row['Competitor Company'] == competitor_name
+                      and not (row['Product'] == product_name
+                               and row['ADNOC Approved Manufacturer'] == manufacturer)]
 
     if request.method == 'POST':
         json_data = request.get_json()
         new_status = json_data.get('status')
         new_remarks = json_data.get('remarks')
 
-        success = True
+        # Update all occurrences of this competitor
+        for row in data:
+            if row['Competitor Company'] == competitor_name:
+                if new_status:
+                    save_partnership_update(
+                        product_group=row.get('Product Group Number'),
+                        product_name=row.get('Product'),
+                        manufacturer=row.get('ADNOC Approved Manufacturer'),
+                        competitor_name=row.get('Competitor Company'),
+                        field='Status',
+                        new_value=new_status
+                    )
+                    row['Status'] = new_status
+                if new_remarks:
+                    save_partnership_update(
+                        product_group=row.get('Product Group Number'),
+                        product_name=row.get('Product'),
+                        manufacturer=row.get('ADNOC Approved Manufacturer'),
+                        competitor_name=row.get('Competitor Company'),
+                        field='Remarks',
+                        new_value=new_remarks
+                    )
+                    row['Remarks'] = new_remarks
 
-        if new_status:
-            competitor_entry['Status'] = new_status
-            success &= save_partnership_update(
-                product_group=competitor_entry.get('Product Group Number'),
-                product_name=competitor_entry.get('Product'),
-                manufacturer=competitor_entry.get('ADNOC Approved Manufacturer'),
-                competitor_name=competitor_entry.get('Competitor Company'),
-                field='Status',
-                new_value=new_status
-            )
+        return jsonify(success=True)
 
-        if new_remarks:
-            competitor_entry['Remarks'] = new_remarks
-            success &= save_partnership_update(
-                product_group=competitor_entry.get('Product Group Number'),
-                product_name=competitor_entry.get('Product'),
-                manufacturer=competitor_entry.get('ADNOC Approved Manufacturer'),
-                competitor_name=competitor_entry.get('Competitor Company'),
-                field='Remarks',
-                new_value=new_remarks
-            )
-
-        return jsonify(success=bool(success))
-
-    return render_template('competitor_profile.html', competitor=competitor_entry, user=user)
-
+    return render_template(
+        'competitor_profile.html',
+        competitor=competitor_entry,
+        other_products=other_products,
+        user=user
+    )
 
 
 @app.route("/cs")

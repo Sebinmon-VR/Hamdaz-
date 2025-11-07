@@ -22,7 +22,7 @@
         color: #343a40;
     }
 
-    .table-container {
+    .table-container, .other-products-container {
         width: 100%;
         max-width: 700px;
         background: white;
@@ -98,6 +98,17 @@
     .modal-body {
         padding: 1.5rem;
     }
+
+    .other-products-container h4 {
+        margin-bottom: 1rem;
+    }
+
+    .product-card {
+        padding: 0.8rem 1rem;
+        background: #f1f3f5;
+        border-radius: 0.25rem;
+        margin-bottom: 0.5rem;
+    }
 </style>
 
 <div class="content-container">
@@ -120,6 +131,7 @@
 
         <table>
             <tr><th>ADNOC Approved Manufacturer</th><td>{{ competitor['ADNOC Approved Manufacturer'] }}</td></tr>
+            <tr><th>Product</th><td>{{ competitor['Product'] }}</td></tr>
             <tr><th>Email</th><td>{% if competitor['Email'] %}<a href="mailto:{{ competitor['Email'] }}">{{ competitor['Email'] }}</a>{% else %}<span style="color:#6c757d;">N/A</span>{% endif %}</td></tr>
             <tr><th>Contact URL</th><td>{% if competitor['Contact URL'] %}<a href="{{ competitor['Contact URL'] }}" target="_blank">Visit</a>{% else %}<span style="color:#6c757d;">N/A</span>{% endif %}</td></tr>
             <tr>
@@ -140,6 +152,17 @@
         <button class="btn-edit" data-bs-toggle="modal" data-bs-target="#editStatusModal">Edit Status</button>
         <a href="{{ url_for('view_data') }}" class="back-btn">← Back to Competitor List</a>
     </div>
+
+    {% if other_products %}
+    <div class="other-products-container">
+        <h4>Other Products by {{ competitor['Competitor Company'] }}</h4>
+        {% for p in other_products %}
+            <div class="product-card">
+                <strong>Product:</strong> {{ p['Product'] }} &nbsp;|&nbsp; <strong>Manufacturer:</strong> {{ p['ADNOC Approved Manufacturer'] }}
+            </div>
+        {% endfor %}
+    </div>
+    {% endif %}
 </div>
 
 <!-- Edit Modal -->
@@ -174,6 +197,7 @@
         </div>
     </div>
 </div>
+
 {% endblock %}
 
 {% block scripts %}
@@ -181,8 +205,6 @@
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const saveButton = document.getElementById('saveStatusChanges');
-    const modalEl = document.getElementById('editStatusModal');
-    const bsModal = new bootstrap.Modal(modalEl);
 
     saveButton.addEventListener('click', () => {
         const newStatus = document.getElementById('editStatus').value;
@@ -196,8 +218,8 @@ document.addEventListener('DOMContentLoaded', function() {
         .then(res => res.json())
         .then(data => {
             if (data.success) {
-                bsModal.hide(); // close modal
-                window.location.reload(); // refresh page immediately
+                // Refresh page immediately after successful update
+                window.location.reload();
             } else {
                 alert('Failed to update: ' + (data.error || 'Unknown error'));
             }
