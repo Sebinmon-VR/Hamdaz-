@@ -1294,13 +1294,12 @@ def get_partnership_data():
         print(f"[ERROR] Failed to fetch or parse OneDrive Excel: {e}")
         return []  # Return an empty list instead of None
     
-import requests
-import pandas as pd
 
-def save_partnership_data(data):
+
+def save_partnership_update(product_group, product_name, manufacturer, competitor_name, field, new_value):
     """
-    Updates the 'competitor_contact_info_mock.xlsx' file in OneDrive
-    with the given data list of dictionaries.
+    Updates only one cell (Status or Remarks) in the Excel file on OneDrive.
+    Matches based on Product Group Number, Product, and Manufacturer.
     """
     try:
         access_token = get_onedrive_access_token()
@@ -1309,22 +1308,74 @@ def save_partnership_data(data):
             "Content-Type": "application/json"
         }
 
-        # Convert list of dicts to a 2D array with headers as first row
-        if not data:
-            return
-
-        df = pd.DataFrame(data)
-        values = [list(df.columns)] + df.values.tolist()
-
-        url = (
+        # 1️⃣ Fetch the Excel data
+        read_url = (
             f"{GRAPH_API_ENDPOINT}/users/{ONEDRIVE_PRIMARY_USER_ID}/drive/root:/"
-            f"competitor_contact_info_mock-6cf94edb-c82a-46b0-879d-4dddc061788e.xlsx:/workbook/worksheets('Sheet1')/usedRange)"
+            f"competitor_contact_info_mock-6cf94edb-c82a-46b0-879d-4dddc061788e.xlsx:"
+            f"/workbook/worksheets('Sheet1')/usedRange"
+        )
+        read_resp = requests.get(read_url, headers=headers)
+        read_resp.raise_for_status()
+        read_values = read_resp.json().get('values', [])
+
+        if not read_values or len(read_values) < 2:
+            print("[ERROR] No data found in Excel file.")
+            return False
+
+        headers_row = read_values[0]
+        data_rows = read_values[1:]
+
+        # 2️⃣ Get the column index
+        if field not in headers_row:
+            print(f"[ERROR] Column '{field}' not found in Excel.")
+            return False
+
+        col_idx = headers_row.index(field)
+
+        # 3️⃣ Find matching row
+        row_idx = None
+        for i, row in enumerate(data_rows, start=2):  # +1 for header
+            try:
+                if (
+                    str(row[headers_row.index("Product Group Number")]).strip() == str(product_group).strip()
+                    and str(row[headers_row.index("Product")]).strip() == str(product_name).strip()
+                    and str(row[headers_row.index("ADNOC Approved Manufacturer")]).strip() == str(manufacturer).strip()
+                    and str(row[headers_row.index("Competitor Company")]).strip() == str(competitor_name).strip()
+                ):
+                    row_idx = i
+                    break
+            except Exception:
+                continue
+
+        if not row_idx:
+            print("[WARN] No matching row found for update.")
+            return False
+
+        # 4️⃣ Convert to Excel column letter (A, B, C…)
+        def excel_column_letter(n):
+            result = ""
+            while n > 0:
+                n, remainder = divmod(n - 1, 26)
+                result = chr(65 + remainder) + result
+            return result
+
+        col_letter = excel_column_letter(col_idx + 1)
+        cell_address = f"Sheet1!{col_letter}{row_idx}"
+
+        # 5️⃣ Send PATCH update request
+        update_url = (
+            f"{GRAPH_API_ENDPOINT}/users/{ONEDRIVE_PRIMARY_USER_ID}/drive/root:/"
+            f"competitor_contact_info_mock-6cf94edb-c82a-46b0-879d-4dddc061788e.xlsx:"
+            f"/workbook/worksheets('Sheet1')/range(address='{cell_address}')"
         )
 
-        payload = {"values": values}
-        response = requests.patch(url, headers=headers, json=payload)
-        response.raise_for_status()
+        payload = {"values": [[new_value]]}
+        patch_resp = requests.patch(update_url, headers=headers, json=payload)
+        patch_resp.raise_for_status()
 
-        print("[INFO] Excel updated successfully.")
+        print(f"[INFO] Successfully updated {field} for {manufacturer} ({product_name}) → {new_value}")
+        return True
+
     except Exception as e:
-        print(f"[ERROR] Failed to save Excel: {e}")
+        print(f"[ERROR] Failed to update Excel cell: {e}")
+        return False

@@ -265,21 +265,42 @@ def view_data():
 @app.route('/competitor/<competitor_name>', methods=['GET', 'POST'])
 def competitor_profile(competitor_name):
     user = session["user"]
-    data = get_partnership_data()  # fetch the full Excel data
+    data = get_partnership_data()
 
-    # Find the competitor entry
     competitor_entry = next((row for row in data if row['Competitor Company'] == competitor_name), None)
     if not competitor_entry:
         abort(404)
 
     if request.method == 'POST':
         json_data = request.get_json()
-        competitor_entry['Status'] = json_data.get('status', competitor_entry.get('Status'))
-        competitor_entry['Remarks'] = json_data.get('remarks', competitor_entry.get('Remarks', ''))
+        new_status = json_data.get('status')
+        new_remarks = json_data.get('remarks')
 
-        save_partnership_data(data)  # write changes back to Excel
+        success = True
 
-        return jsonify(success=True)
+        if new_status:
+            competitor_entry['Status'] = new_status
+            success &= save_partnership_update(
+                product_group=competitor_entry.get('Product Group Number'),
+                product_name=competitor_entry.get('Product'),
+                manufacturer=competitor_entry.get('ADNOC Approved Manufacturer'),
+                competitor_name=competitor_entry.get('Competitor Company'),
+                field='Status',
+                new_value=new_status
+            )
+
+        if new_remarks:
+            competitor_entry['Remarks'] = new_remarks
+            success &= save_partnership_update(
+                product_group=competitor_entry.get('Product Group Number'),
+                product_name=competitor_entry.get('Product'),
+                manufacturer=competitor_entry.get('ADNOC Approved Manufacturer'),
+                competitor_name=competitor_entry.get('Competitor Company'),
+                field='Remarks',
+                new_value=new_remarks
+            )
+
+        return jsonify(success=bool(success))
 
     return render_template('competitor_profile.html', competitor=competitor_entry, user=user)
 

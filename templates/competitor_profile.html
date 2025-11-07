@@ -174,7 +174,6 @@
         </div>
     </div>
 </div>
-
 {% endblock %}
 
 {% block scripts %}
@@ -182,8 +181,8 @@
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const saveButton = document.getElementById('saveStatusChanges');
-    const statusText = document.getElementById('statusText');
-    const remarksText = document.getElementById('remarksText');
+    const modalEl = document.getElementById('editStatusModal');
+    const bsModal = new bootstrap.Modal(modalEl);
 
     saveButton.addEventListener('click', () => {
         const newStatus = document.getElementById('editStatus').value;
@@ -197,10 +196,8 @@ document.addEventListener('DOMContentLoaded', function() {
         .then(res => res.json())
         .then(data => {
             if (data.success) {
-                statusText.textContent = newStatus;
-                remarksText.textContent = newRemarks || '—';
-                const modal = bootstrap.Modal.getInstance(document.getElementById('editStatusModal'));
-                modal.hide();
+                bsModal.hide(); // close modal
+                window.location.reload(); // refresh page immediately
             } else {
                 alert('Failed to update: ' + (data.error || 'Unknown error'));
             }
