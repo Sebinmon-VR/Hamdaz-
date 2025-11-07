@@ -1,5 +1,5 @@
 import email
-from flask import Flask, redirect, url_for, session, request, render_template, jsonify
+from flask import Flask, redirect, url_for, session, request, render_template, jsonify, abort
 from msal import ConfidentialClientApplication
 import requests
 import os
@@ -258,6 +258,31 @@ def view_data():
         grouped_data.setdefault(key, []).append(row)
 
     return render_template("business_dev_team.html", grouped_data=grouped_data, user=user)
+
+
+
+
+@app.route('/competitor/<competitor_name>', methods=['GET', 'POST'])
+def competitor_profile(competitor_name):
+    user = session["user"]
+    data = get_partnership_data()  # fetch the full Excel data
+
+    # Find the competitor entry
+    competitor_entry = next((row for row in data if row['Competitor Company'] == competitor_name), None)
+    if not competitor_entry:
+        abort(404)
+
+    if request.method == 'POST':
+        json_data = request.get_json()
+        competitor_entry['Status'] = json_data.get('status', competitor_entry.get('Status'))
+        competitor_entry['Remarks'] = json_data.get('remarks', competitor_entry.get('Remarks', ''))
+
+        save_partnership_data(data)  # write changes back to Excel
+
+        return jsonify(success=True)
+
+    return render_template('competitor_profile.html', competitor=competitor_entry, user=user)
+
 
 
 @app.route("/cs")

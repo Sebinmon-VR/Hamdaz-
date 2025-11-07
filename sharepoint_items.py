@@ -1266,7 +1266,7 @@ def get_partnership_data():
 
         url = (
             f"{GRAPH_API_ENDPOINT}/users/{ONEDRIVE_PRIMARY_USER_ID}/drive/root:/"
-            f"competitor_contact_info_mock.xlsx:/workbook/worksheets('Sheet1')/usedRange"
+            f"competitor_contact_info_mock-6cf94edb-c82a-46b0-879d-4dddc061788e.xlsx:/workbook/worksheets('Sheet1')/usedRange"
         )
 
         response = requests.get(url, headers=headers)
@@ -1293,3 +1293,38 @@ def get_partnership_data():
     except Exception as e:
         print(f"[ERROR] Failed to fetch or parse OneDrive Excel: {e}")
         return []  # Return an empty list instead of None
+    
+import requests
+import pandas as pd
+
+def save_partnership_data(data):
+    """
+    Updates the 'competitor_contact_info_mock.xlsx' file in OneDrive
+    with the given data list of dictionaries.
+    """
+    try:
+        access_token = get_onedrive_access_token()
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json"
+        }
+
+        # Convert list of dicts to a 2D array with headers as first row
+        if not data:
+            return
+
+        df = pd.DataFrame(data)
+        values = [list(df.columns)] + df.values.tolist()
+
+        url = (
+            f"{GRAPH_API_ENDPOINT}/users/{ONEDRIVE_PRIMARY_USER_ID}/drive/root:/"
+            f"competitor_contact_info_mock-6cf94edb-c82a-46b0-879d-4dddc061788e.xlsx:/workbook/worksheets('Sheet1')/usedRange)"
+        )
+
+        payload = {"values": values}
+        response = requests.patch(url, headers=headers, json=payload)
+        response.raise_for_status()
+
+        print("[INFO] Excel updated successfully.")
+    except Exception as e:
+        print(f"[ERROR] Failed to save Excel: {e}")
