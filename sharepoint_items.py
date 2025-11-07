@@ -1424,7 +1424,7 @@ def get_partnership_data():
 
         url = (
             f"{GRAPH_API_ENDPOINT}/users/{ONEDRIVE_PRIMARY_USER_ID}/drive/root:/"
-            f"competitor_contact_info_mock-6cf94edb-c82a-46b0-879d-4dddc061788e.xlsx:/workbook/worksheets('Sheet1')/usedRange"
+            f"competitor_contact_info_full.xlsx:/workbook/worksheets('Sheet1')/usedRange"
         )
 
         response = requests.get(url, headers=headers)
@@ -1469,7 +1469,7 @@ def save_partnership_update(product_group, product_name, manufacturer, competito
         # 1️⃣ Fetch the Excel data
         read_url = (
             f"{GRAPH_API_ENDPOINT}/users/{ONEDRIVE_PRIMARY_USER_ID}/drive/root:/"
-            f"competitor_contact_info_mock-6cf94edb-c82a-46b0-879d-4dddc061788e.xlsx:"
+            f"competitor_contact_info_full.xlsx:"
             f"/workbook/worksheets('Sheet1')/usedRange"
         )
         read_resp = requests.get(read_url, headers=headers)
@@ -1523,7 +1523,7 @@ def save_partnership_update(product_group, product_name, manufacturer, competito
         # 5️⃣ Send PATCH update request
         update_url = (
             f"{GRAPH_API_ENDPOINT}/users/{ONEDRIVE_PRIMARY_USER_ID}/drive/root:/"
-            f"competitor_contact_info_mock-6cf94edb-c82a-46b0-879d-4dddc061788e.xlsx:"
+            f"competitor_contact_info_full.xlsx:"
             f"/workbook/worksheets('Sheet1')/range(address='{cell_address}')"
         )
 

@@ -277,11 +277,32 @@ def teams():
     return render_template("teams.html", user=user, email=email, user_analytics=user_analytics)
 
 from urllib.parse import unquote
+import time
+
+# Global cache
+PARTNERSHIP_CACHE = {
+    "data": None,
+    "timestamp": 0
+}
+CACHE_EXPIRY_SECONDS = 300  # e.g., 5 minutes
+
+
+def get_cached_partnership_data():
+    """
+    Returns cached data if it's still valid; otherwise, reloads from source.
+    """
+    current_time = time.time()
+    if PARTNERSHIP_CACHE["data"] is None or (current_time - PARTNERSHIP_CACHE["timestamp"]) > CACHE_EXPIRY_SECONDS:
+        # Reload data and update cache
+        PARTNERSHIP_CACHE["data"] = get_partnership_data()
+        PARTNERSHIP_CACHE["timestamp"] = current_time
+    return PARTNERSHIP_CACHE["data"]
+
 
 @app.route("/bd")
 def view_data():
     user = session["user"]
-    data = get_partnership_data()
+    data = get_cached_partnership_data()  # use cached data
     grouped_data = {}
     for row in data:
         key = row.get("Product Group Number", "N/A")
@@ -293,7 +314,7 @@ def view_data():
 @app.route('/competitor/<path:competitor_name>/<path:product_name>/<path:manufacturer>', methods=['GET', 'POST'])
 def competitor_profile(competitor_name, product_name, manufacturer):
     user = session["user"]
-    data = get_partnership_data()
+    data = get_cached_partnership_data()  # use cached data
 
     # Decode URL and restore slashes
     competitor_name = unquote(competitor_name).strip()
