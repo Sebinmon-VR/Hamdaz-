@@ -1,0 +1,305 @@
+{% extends "base.html" %}
+{% block title %}{{ competitor['Competitor Company'] }} Profile{% endblock %}
+
+{% block content %}
+<style>
+    body {
+        background-color: #f0f2f5;
+        font-family: 'Inter', sans-serif;
+    }
+
+    .content-wrapper {
+        max-width: 1200px;
+        margin: 2em auto;
+        display: flex;
+        gap: 2rem;
+        flex-wrap: wrap;
+    }
+
+    /* Left column: main info card */
+    .info-card {
+        flex: 2;
+        background: #ffffff;
+        border-radius: 1rem;
+        padding: 2em;
+        box-shadow: 0 8px 20px rgba(0,0,0,0.08);
+        display: flex;
+        flex-direction: column;
+        gap: 1.5em;
+        transition: transform 0.2s;
+    }
+
+    .info-card:hover {
+        transform: translateY(-4px);
+    }
+
+    .breadcrumb {
+        font-size: 0.9rem;
+        color: #6c757d;
+    }
+
+    .breadcrumb a {
+        text-decoration: none;
+        color: #6c63ff;
+        font-weight: 500;
+    }
+
+    .breadcrumb a:hover {
+        text-decoration: underline;
+    }
+
+    .company-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+
+    .company-header h1 {
+        font-size: 2.2rem;
+        margin: 0;
+        color: #343a40;
+    }
+
+    .status-pill {
+        padding: 0.4em 1.2em;
+        border-radius: 50px;
+        color: #fff;
+        font-weight: 600;
+        font-size: 0.95rem;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    }
+
+    /* Status colors */
+    .status-onboarded { background-color: #28a745; }
+    .status-progress { background-color: #ffc107; color: #212529; }
+    .status-dropped { background-color: #dc3545; }
+    .status-notstarted { background-color: #6c757d; }
+
+    .info-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 1em;
+    }
+
+    .info-table th, .info-table td {
+        padding: 0.9em 1em;
+        border-bottom: 1px solid #e9ecef;
+        text-align: left;
+    }
+
+    .info-table th {
+        width: 35%;
+        background-color: #f8f9fc;
+        font-weight: 600;
+        color: #495057;
+    }
+
+    .info-table td a {
+        color: #6c63ff;
+        font-weight: 500;
+    }
+
+    .info-table td a:hover {
+        text-decoration: underline;
+    }
+
+    .action-buttons {
+        display: flex;
+        gap: 1rem;
+        margin-top: 1.5em;
+    }
+
+    .action-buttons .btn-primary {
+        background-color: #6c63ff;
+        border-color: #6c63ff;
+    }
+
+    .action-buttons .btn-primary:hover {
+        background-color: #5848c2;
+        border-color: #5848c2;
+    }
+
+    .action-buttons .btn-secondary {
+        background-color: #f1f3f6;
+        color: #495057;
+        border: none;
+    }
+
+    .action-buttons .btn-secondary:hover {
+        background-color: #e2e6ea;
+    }
+
+    /* Right column: other products */
+    .other-products {
+        flex: 1;
+        background: #ffffff;
+        border-radius: 1rem;
+        padding: 1.5em;
+        box-shadow: 0 8px 20px rgba(0,0,0,0.08);
+        max-height: 600px;
+        overflow-y: auto;
+        transition: transform 0.2s;
+    }
+
+    .other-products:hover {
+        transform: translateY(-3px);
+    }
+
+    .other-products h4 {
+        margin-bottom: 1rem;
+        text-align: center;
+        font-size: 1.3rem;
+        font-weight: 700;
+        color: #343a40;
+    }
+
+    .product-card {
+        background: #f8f9fc;
+        padding: 0.9rem 1rem;
+        border-radius: 0.75rem;
+        margin-bottom: 0.7rem;
+        cursor: pointer;
+        transition: all 0.2s;
+        font-weight: 500;
+        color: #343a40;
+    }
+
+    .product-card:hover {
+        background: #e0e4ff;
+        transform: translateX(4px);
+    }
+
+    /* Modal */
+    .modal-content {
+        border-radius: 1rem;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+    }
+
+    .modal-header {
+        border-bottom: none;
+    }
+
+    .modal-footer {
+        border-top: none;
+    }
+
+    @media (max-width: 1000px) {
+        .content-wrapper {
+            flex-direction: column;
+        }
+        .other-products {
+            max-height: none;
+        }
+    }
+</style>
+
+<div class="content-wrapper">
+    <!-- Left Column -->
+    <div class="info-card">
+
+        <div class="company-header">
+            <h1>{{ competitor['Competitor Company'] }}</h1>
+            {% set status = competitor.get('Status', 'Not Started') %}
+            {% if status == 'On Boarded' %}
+                {% set status_class = 'status-onboarded' %}
+            {% elif status == 'In Progress' %}
+                {% set status_class = 'status-progress' %}
+            {% elif status == 'Dropped' %}
+                {% set status_class = 'status-dropped' %}
+            {% else %}
+                {% set status_class = 'status-notstarted' %}
+            {% endif %}
+            <span class="status-pill {{ status_class }}">{{ status }}</span>
+        </div>
+
+        <table class="info-table">
+            <tr><th>ADNOC Approved Manufacturer</th><td>{{ competitor['ADNOC Approved Manufacturer'] }}</td></tr>
+            <tr><th>Product</th><td>{{ competitor['Product'] }}</td></tr>
+            <tr><th>Email</th><td>{% if competitor['Email'] %}<a href="mailto:{{ competitor['Email'] }}">{{ competitor['Email'] }}</a>{% else %}N/A{% endif %}</td></tr>
+            <tr><th>Contact URL</th><td>{% if competitor['Contact URL'] %}<a href="{{ competitor['Contact URL'] }}" target="_blank">Visit</a>{% else %}N/A{% endif %}</td></tr>
+            <tr><th>Remarks</th><td id="remarksText">{{ competitor.get('Remarks','—') }}</td></tr>
+        </table>
+
+        <div class="action-buttons">
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#editStatusModal">Edit Status</button>
+            <a href="{{ url_for('view_data') }}" class="btn btn-secondary">Back</a>
+        </div>
+    </div>
+
+    <!-- Right Column -->
+    {% if other_products %}
+    <div class="other-products">
+        <h4>Other Products</h4>
+        {% for p in other_products %}
+            <div class="product-card" onclick="window.location.href='{{ url_for('competitor_profile',competitor_name=p['Competitor Company']|urlencode,product_name=p['Product']|urlencode,manufacturer=p['ADNOC Approved Manufacturer']|urlencode)}}'">
+                <strong>{{ p['Product'] }}</strong><br>
+                <small>{{ p['ADNOC Approved Manufacturer'] }}</small>
+            </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+</div>
+
+<!-- Edit Modal -->
+<div class="modal fade" id="editStatusModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Update Status</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="editStatusForm">
+                    <div class="mb-3">
+                        <label>Status</label>
+                        <select id="editStatus" class="form-control">
+                            <option value="Not Started" {% if status=='Not Started'%}selected{% endif %}>Not Started</option>
+                            <option value="In Progress" {% if status=='In Progress'%}selected{% endif %}>In Progress</option>
+                            <option value="On Boarded" {% if status=='On Boarded'%}selected{% endif %}>On Boarded</option>
+                            <option value="Dropped" {% if status=='Dropped'%}selected{% endif %}>Dropped</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label>Remarks</label>
+                        <textarea id="editRemarks" class="form-control" rows="3">{{ competitor.get('Remarks','') }}</textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="saveStatusChanges">Save Changes</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const saveButton = document.getElementById('saveStatusChanges');
+    saveButton.addEventListener('click', () => {
+        const newStatus = document.getElementById('editStatus').value;
+        const newRemarks = document.getElementById('editRemarks').value;
+
+        fetch(window.location.pathname, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: newStatus, remarks: newRemarks })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                window.location.reload(); // Refresh page to reflect changes
+            } else {
+                alert('Failed to update: ' + (data.error || 'Unknown error'));
+            }
+        })
+        .catch(err => alert('Error: ' + err.message));
+    });
+});
+</script>
+{% endblock %}

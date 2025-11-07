@@ -1,5 +1,5 @@
 import email
-from flask import Flask, redirect, url_for, session, request, render_template, jsonify
+from flask import Flask, redirect, url_for, session, request, render_template, jsonify ,abort
 from msal import ConfidentialClientApplication
 import requests
 import os
@@ -276,10 +276,88 @@ def teams():
     email = user.get("mail") or user.get("userPrincipalName")
     return render_template("teams.html", user=user, email=email, user_analytics=user_analytics)
 
+from urllib.parse import unquote
+
 @app.route("/bd")
-def bd():
+def view_data():
     user = session["user"]
-    return render_template("business_dev_team.html", user=user)
+    data = get_partnership_data()
+    grouped_data = {}
+    for row in data:
+        key = row.get("Product Group Number", "N/A")
+        grouped_data.setdefault(key, []).append(row)
+
+    return render_template("business_dev_team.html", grouped_data=grouped_data, user=user)
+
+
+@app.route('/competitor/<path:competitor_name>/<path:product_name>/<path:manufacturer>', methods=['GET', 'POST'])
+def competitor_profile(competitor_name, product_name, manufacturer):
+    user = session["user"]
+    data = get_partnership_data()
+
+    # Decode URL and restore slashes
+    competitor_name = unquote(competitor_name).strip()
+    product_name = unquote(product_name).replace("_slash_", "/").strip()
+    manufacturer = unquote(manufacturer).replace("_slash_", "/").strip()
+
+    competitor_entry = next(
+        (row for row in data if
+         row['Competitor Company'].strip() == competitor_name and
+         row['Product'].strip() == product_name and
+         row['ADNOC Approved Manufacturer'].strip() == manufacturer),
+        None
+    )
+
+    if not competitor_entry:
+        abort(404)
+
+    other_products = [
+        row for row in data
+        if row['Competitor Company'].strip() == competitor_name and
+        not (row['Product'].strip() == product_name and
+             row['ADNOC Approved Manufacturer'].strip() == manufacturer)
+    ]
+
+    if request.method == 'POST':
+        json_data = request.get_json()
+        new_status = json_data.get('status')
+        new_remarks = json_data.get('remarks')
+
+        for row in data:
+            if row['Competitor Company'].strip() == competitor_name:
+                if new_status:
+                    save_partnership_update(
+                        product_group=row.get('Product Group Number'),
+                        product_name=row.get('Product'),
+                        manufacturer=row.get('ADNOC Approved Manufacturer'),
+                        competitor_name=row.get('Competitor Company'),
+                        field='Status',
+                        new_value=new_status
+                    )
+                    row['Status'] = new_status
+
+                if new_remarks:
+                    save_partnership_update(
+                        product_group=row.get('Product Group Number'),
+                        product_name=row.get('Product'),
+                        manufacturer=row.get('ADNOC Approved Manufacturer'),
+                        competitor_name=row.get('Competitor Company'),
+                        field='Remarks',
+                        new_value=new_remarks
+                    )
+                    row['Remarks'] = new_remarks
+
+        return jsonify(success=True)
+
+    return render_template(
+        'competitor_profile.html',
+        competitor=competitor_entry,
+        other_products=other_products,
+        user=user
+    )
+
+
+
 
 @app.route("/cs")
 def cs():
