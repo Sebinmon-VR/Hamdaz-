@@ -15,12 +15,24 @@
         align-items: center; 
     }
     #searchInput { 
-        flex-grow: 1; 
         padding: 0.75em; 
         border: 1px solid #ced4da; 
         border-radius: 0.25rem; 
         font-size: 1rem; 
     }
+    #statusFilter {
+        padding: 0.6em 0.8em;         
+        border: none;                  
+        border-radius: 0.25rem;        
+        font-size: 1rem;
+        text-align: center;            
+        background-color: #fff;        
+        -webkit-appearance: none;    
+        -moz-appearance: none;
+        appearance: none;
+    }
+    
+    #searchInput { flex-grow: 1; }
 
     .table-container { overflow-x: auto; background: white; border-radius: 0.25rem; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-top: 1em; }
     table { width: 100%; border-collapse: collapse; }
@@ -44,6 +56,18 @@
 
     <div class="controls">
         <input type="text" id="searchInput" class="form-control" placeholder="Search products...">
+        <div style="display:flex; align-items:center; gap:0.5rem;">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-filter" viewBox="0 0 16 16">
+            <path d="M6 10.5a.5.5 0 0 1 .5-.5h3a.5.5 0 0 1 0 1h-3a.5.5 0 0 1-.5-.5zm-3-3a.5.5 0 0 1 .5-.5h9a.5.5 0 0 1 0 1h-9a.5.5 0 0 1-.5-.5zm-2-3a.5.5 0 0 1 .5-.5h13a.5.5 0 0 1 0 1h-13a.5.5 0 0 1-.5-.5z"/>
+            </svg>
+            <select id="statusFilter" class="form-control" style="margin-left: 10px; align-items:center;">
+                <option value="">All Status</option>
+                <option value="Not Started">Not Started</option>
+                <option value="On Boarded">On Boarded</option>
+                <option value="In Progress">In Progress</option>
+                <option value="Dropped">Dropped</option>
+            </select>
+        </div>
     </div>
 
     <div class="table-container">
@@ -135,8 +159,9 @@
 {% block scripts %}
 <script>
 document.addEventListener('DOMContentLoaded', () => {
-    // Collapsible functionality
     const tableBody = document.querySelector('#dataTable tbody');
+
+    // Collapsible functionality
     tableBody.querySelectorAll('.collapsible').forEach(row => {
         row.addEventListener('click', () => {
             row.classList.toggle('active');
@@ -147,20 +172,31 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // Search filter
     const searchInput = document.getElementById('searchInput');
-    searchInput.addEventListener('input', () => {
+    const statusFilter = document.getElementById('statusFilter');
+
+    function filterRows() {
         const term = searchInput.value.toLowerCase();
+        const statusValue = statusFilter.value;
+
         tableBody.querySelectorAll('.child-row').forEach(row => {
-            row.style.display = row.textContent.toLowerCase().includes(term) ? 'table-row' : 'none';
+            const statusText = row.querySelector('td:last-child').innerText.trim();
+            const matchesSearch = row.textContent.toLowerCase().includes(term);
+            const matchesStatus = !statusValue || statusText === statusValue;
+
+            row.style.display = (matchesSearch && matchesStatus) ? 'table-row' : 'none';
         });
+
         tableBody.querySelectorAll('.collapsible').forEach(groupRow => {
             const group = groupRow.dataset.group;
             const hasVisible = Array.from(tableBody.querySelectorAll(`.child-row[data-parent="${group}"]`))
                                     .some(r => r.style.display === 'table-row');
             groupRow.style.display = hasVisible ? '' : 'none';
         });
-    });
+    }
+
+    searchInput.addEventListener('input', filterRows);
+    statusFilter.addEventListener('change', filterRows);
 });
 </script>
 {% endblock %}
