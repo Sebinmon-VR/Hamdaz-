@@ -21,6 +21,32 @@
             <!-- Profile Picture -->
             <div class="profile-container" style="position: relative;">
                 <!-- <img src="{{ photo }}" alt="Profile Picture" class="profile-pic" width="50" height="50" style="border-radius:50%; cursor: pointer; margin-right: 10px; background:#fa8383;"> -->
+                <img id="profile-photo" src="/static/default-avatar.png"
+                    style="width:45px; height:45px; border-radius:50%;">
+
+                <script>
+                    async function loadProfilePhoto() {
+                        try {
+                            const token = "{{ session['access_token'] }}"  // token stored in session during login
+                            if (!token) return;
+
+                            const response = await fetch("https://graph.microsoft.com/v1.0/me/photo/$value", {
+                                headers: { "Authorization": `Bearer ${token}` }
+                            });
+
+                            if (response.ok) {
+                                const blob = await response.blob();
+                                const url = URL.createObjectURL(blob);
+                                document.getElementById("profile-photo").src = url;
+                            }
+                        } catch (err) {
+                            console.error("Failed to load profile photo", err);
+                        }
+                    }
+
+                    // Call on page load
+                    loadProfilePhoto();
+                </script>
 
                 <!-- Dropdown Card -->
                 <div id="profile-card" class="profile-card hidden">
@@ -45,8 +71,8 @@
         <ul>
             <div class="line"><span>Main Menu</span></div>
             <li><a href="dashboard"><img src="/static/icons/dashboard.png" alt=""> Dashboard</a></li>
-            
-            
+
+
             {% if is_admin(user.mail or user.userPrincipalName) %}
             <div class="line"><span>Teams</span></div>
             <li><a href="/teams"><img src="/static/icons/sales.png" alt="">Pre-sales</a></li>
@@ -78,7 +104,7 @@
 
 
             <div class="line"><span>Reports</span></div>
-            <li aria-disabled="false"><a href="reports"><img src="/static/icons/reports.png" alt="" > Reports</a></li>
+            <li aria-disabled="false"><a href="reports"><img src="/static/icons/reports.png" alt=""> Reports</a></li>
 
 
             <div class="line"><span>Chatbot</span></div>

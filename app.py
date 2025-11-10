@@ -139,7 +139,7 @@ def background_updater():
                     update_user_analytics_in_sharepoint(existing_item["id"], item_fields)
                     print(f"🔄 Updated {username} in SharePoint")
                 else:
-                    add_item_to_sharepoint(item_fields)
+                    add_item_to_sharepoint(item_fields)  
                     print(f"➕ Added new user {username} to SharePoint")
 
             print(f"[BG] Data updated successfully at {datetime.now()}", flush=True)
@@ -147,7 +147,7 @@ def background_updater():
         except Exception as e:
             print("[BG] Error during update:", e)
 
-        time.sleep(500)
+        time.sleep(200)
 
 
 # ==============================================================
@@ -275,7 +275,9 @@ def teams():
     user = session["user"]
     email = user.get("mail") or user.get("userPrincipalName")
     return render_template("teams.html", user=user, email=email, user_analytics=user_analytics)
+
 from urllib.parse import unquote
+import time
 
 @app.route("/bd")
 def view_data():
@@ -355,6 +357,7 @@ def competitor_profile(competitor_name, product_name, manufacturer):
         other_products=other_products,
         user=user
     )
+
 
 
 
