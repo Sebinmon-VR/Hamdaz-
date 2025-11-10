@@ -279,18 +279,49 @@ def teams():
 from urllib.parse import unquote
 import time
 
+def get_partnership_data_processed(search="", status="", page=1, per_page=50):
+    raw_data = get_partnership_data()# Replace with actual loading!
+    filtered = [
+        row for row in raw_data
+        if (search.lower() in row["Product"].lower() or search.lower() in row["Competitor Company"].lower())
+        and (not status or row.get("Status", "Not Started").strip() == status)
+    ]
+    total_count = len(filtered)
+    start = (page - 1) * per_page
+    end = start + per_page
+    paginated = filtered[start:end]
+    return paginated, total_count
+
+from math import ceil
+
 @app.route("/bd")
 def view_data():
-    user = session["user"]
-    data = get_partnership_data()  # fetch fresh data every time
+    user = session.get("user", "BD_USER")  # placeholder session user
+    search = request.args.get("search", "")
+    status = request.args.get("status", "")
+    page = int(request.args.get("page", 1))
+    per_page = 50
+    data, total_count = get_partnership_data_processed(search, status, page, per_page)
 
+    # Group by Product Group Number
     grouped_data = {}
     for row in data:
         key = row.get("Product Group Number", "N/A")
         grouped_data.setdefault(key, []).append(row)
 
-    return render_template("business_dev_team.html", grouped_data=grouped_data, user=user)
+    total_pages = ceil(total_count / per_page)
 
+    return render_template(
+        "business_dev_team.html",
+        grouped_data=grouped_data,
+        user=user,
+        search=search,
+        status=status,
+        page=page,
+        total_pages=total_pages,
+        per_page=per_page,
+        total_count=total_count
+    )
 
 @app.route('/competitor/<path:competitor_name>/<path:product_name>/<path:manufacturer>', methods=['GET', 'POST'])
 def competitor_profile(competitor_name, product_name, manufacturer):

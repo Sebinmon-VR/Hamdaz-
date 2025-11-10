@@ -1,52 +1,22 @@
 {% extends "base.html" %}
-
-{% block title %}Business Development{% endblock %}
-
 {% block content %}
+
 <style>
     .content-container { padding: 2em; background-color: #f8f9fa; min-height: 100vh; }
     .page-header { margin-bottom: 1em; }
-    .page-header h1 { margin: 0; font-size: 2rem; color: #343a40; }
-
-    .controls { 
-        display: flex; 
-        gap: 1rem; 
-        margin-bottom: 1.5em; 
-        align-items: center; 
-    }
-    #searchInput { 
-        padding: 0.75em; 
-        border: 1px solid #ced4da; 
-        border-radius: 0.25rem; 
-        font-size: 1rem; 
-    }
-    #statusFilter {
-        padding: 0.6em 0.8em;         
-        border: none;                  
-        border-radius: 0.25rem;        
-        font-size: 1rem;
-        text-align: center;            
-        background-color: #fff;        
-        -webkit-appearance: none;    
-        -moz-appearance: none;
-        appearance: none;
-    }
-    
-    #searchInput { flex-grow: 1; }
-
+    input, select { padding: 0.75em; border: 1px solid #ced4da; border-radius: 0.25rem; font-size: 1rem; }
     .table-container { overflow-x: auto; background: white; border-radius: 0.25rem; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-top: 1em; }
     table { width: 100%; border-collapse: collapse; }
     th, td { padding: 1em; text-align: left; border-bottom: 1px solid #dee2e6; white-space: nowrap; }
     th { background-color: #e9ecef; font-weight: 600; color: #495057; }
-    tbody tr:hover { background-color: #f1f1f1; }
-
-    .collapsible { font-weight: bold; background-color: #f1f1f1; cursor: pointer; }
-    .collapsible-content { display: flex; align-items: center; }
-    .collapsible-arrow { display: inline-block; transition: transform 0.3s; margin-right: 0.5em; }
-    .collapsible.active .collapsible-arrow { transform: rotate(90deg); }
-    .child-row { display: none; }
     td a { color: #0d6efd; text-decoration: none; }
     td a:hover { text-decoration: underline; }
+    .pagination-controls { margin-top: 16px; }
+    .pagination { display: flex; gap: 0.5em; list-style: none; padding: 0; justify-content: center; }
+    .page-item { display: inline; }
+    .page-link { padding: 0.5em 1em; border: 1px solid #ced4da; border-radius: 0.2em; background: #fff; text-decoration: none; color: #343a40; }
+    .page-item.active .page-link { background: #0d6efd; color: #fff; }
+    .page-item.disabled .page-link { pointer-events: none; opacity: 0.6; }
 </style>
 
 <div class="content-container">
@@ -54,26 +24,52 @@
         <h1>Vendor Competitor Details</h1>
     </div>
 
-    <div class="controls">
-        <input type="text" id="searchInput" class="form-control" placeholder="Search products...">
-        <div style="display:flex; align-items:center; gap:0.5rem;">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-filter" viewBox="0 0 16 16">
-            <path d="M6 10.5a.5.5 0 0 1 .5-.5h3a.5.5 0 0 1 0 1h-3a.5.5 0 0 1-.5-.5zm-3-3a.5.5 0 0 1 .5-.5h9a.5.5 0 0 1 0 1h-9a.5.5 0 0 1-.5-.5zm-2-3a.5.5 0 0 1 .5-.5h13a.5.5 0 0 1 0 1h-13a.5.5 0 0 1-.5-.5z"/>
-            </svg>
-            <select id="statusFilter" class="form-control" style="margin-left: 10px; align-items:center;">
-                <option value="">All Status</option>
-                <option value="Not Started">Not Started</option>
-                <option value="On Boarded">On Boarded</option>
-                <option value="In Progress">In Progress</option>
-                <option value="Dropped">Dropped</option>
-            </select>
+    <form class="controls" method="get" action="">
+        <input type="text" name="search" value="{{ search }}" placeholder="Search products...">
+        <select name="status">
+            <option value="">All Status</option>
+            <option value="Not Started" {% if status == "Not Started" %}selected{% endif %}>Not Started</option>
+            <option value="On Boarded" {% if status == "On Boarded" %}selected{% endif %}>On Boarded</option>
+            <option value="In Progress" {% if status == "In Progress" %}selected{% endif %}>In Progress</option>
+            <option value="Dropped" {% if status == "Dropped" %}selected{% endif %}>Dropped</option>
+        </select>
+        <button type="submit">Filter</button>
+    </form>
+    <!-- Pagination -->
+        {% if total_pages > 1 %}
+        <div class="pagination-controls">
+            <div>
+                <ul class="pagination">
+                    <li class="page-item {% if page == 1 %}disabled{% endif %}">
+                        <a class="page-link" href="?search={{ search }}&status={{ status }}&page={{ page-1 if page>1 else 1 }}">Prev</a>
+                    </li>
+
+                    {% set display_pages = 10 %}
+                    {% for p in range(1, total_pages+1) %}
+                        {% if p <= display_pages or p == total_pages %}
+                            <li class="page-item {% if p == page %}active{% endif %}">
+                                <a class="page-link" href="?search={{ search }}&status={{ status }}&page={{ p }}">{{ p }}</a>
+                            </li>
+                            {% if p == display_pages and total_pages > display_pages %}
+                                <li class="page-item disabled"><span class="page-link">...</span></li>
+                            {% endif %}
+                        {% endif %}
+                    {% endfor %}
+
+                    <li class="page-item {% if page == total_pages %}disabled{% endif %}">
+                        <a class="page-link" href="?search={{ search }}&status={{ status }}&page={{ page+1 if page<total_pages else total_pages }}">Next</a>
+                    </li>
+                </ul>
+            </div>
+
         </div>
-    </div>
+        {% endif %}
 
     <div class="table-container">
-        <table id="dataTable">
+        <table>
             <thead>
                 <tr>
+                    <th>Product Group</th>
                     <th>ADNOC Approved Manufacturer</th>
                     <th>Competitor Company</th>
                     <th>Email</th>
@@ -83,19 +79,8 @@
             </thead>
             <tbody>
                 {% for group, entries in grouped_data.items() %}
-                    <tr class="collapsible" data-group="{{ group }}">
-                        <td colspan="5">
-                            <div class="collapsible-content">
-                                <span class="collapsible-arrow">▶</span>
-                                <span>{{ group }} - {{ entries[0]['Product'] }} ({{ entries|length }} entries)</span>
-                            </div>
-                        </td>
-                    </tr>
-
-                    {% set last_manufacturer = None %}
                     {% for entry in entries %}
-                        {% set Status = entry.get('Status', 'Not Started') %}
-
+                        {% set Status = entry.get("Status", "Not Started") %}
                         {% if Status == 'On Boarded' %}
                             {% set color = '#28a745' %}
                         {% elif Status == 'In Progress' %}
@@ -105,15 +90,9 @@
                         {% else %}
                             {% set color = '#adb5bd' %}
                         {% endif %}
-
-                        <tr class="child-row" data-parent="{{ group }}">
-                            {% if loop.first or entry['ADNOC Approved Manufacturer'] != last_manufacturer %}
-                                <td>{{ entry['ADNOC Approved Manufacturer'] }}</td>
-                                {% set last_manufacturer = entry['ADNOC Approved Manufacturer'] %}
-                            {% else %}
-                                <td></td>
-                            {% endif %}
-
+                        <tr>
+                            <td>{{ group }}</td>
+                            <td>{{ entry['ADNOC Approved Manufacturer'] }}</td>
                             <td>
                                 <a href="{{ url_for(
                                     'competitor_profile',
@@ -124,7 +103,6 @@
                                     {{ entry['Competitor Company'] }}
                                 </a>
                             </td>
-
                             <td>
                                 {% if entry['Email'] %}
                                     <a href="mailto:{{ entry['Email'] }}">{{ entry['Email'] }}</a>
@@ -132,7 +110,6 @@
                                     <span style="color:#6c757d;">N/A</span>
                                 {% endif %}
                             </td>
-
                             <td>
                                 {% if entry['Contact URL'] %}
                                     <a href="{{ entry['Contact URL'] }}" target="_blank">Visit</a>
@@ -140,7 +117,6 @@
                                     <span style="color:#6c757d;">N/A</span>
                                 {% endif %}
                             </td>
-
                             <td>
                                 <span style="display:inline-flex; align-items:center; gap:0.3em;">
                                     <span style="width:12px; height:12px; border-radius:50%; background-color:{{ color }}; display:inline-block;"></span>
@@ -152,51 +128,37 @@
                 {% endfor %}
             </tbody>
         </table>
+
+        <!-- Pagination -->
+        {% if total_pages > 1 %}
+        <div class="pagination-controls">
+            <div>
+                <ul class="pagination">
+                    <li class="page-item {% if page == 1 %}disabled{% endif %}">
+                        <a class="page-link" href="?search={{ search }}&status={{ status }}&page={{ page-1 if page>1 else 1 }}">Prev</a>
+                    </li>
+
+                    {% set display_pages = 10 %}
+                    {% for p in range(1, total_pages+1) %}
+                        {% if p <= display_pages or p == total_pages %}
+                            <li class="page-item {% if p == page %}active{% endif %}">
+                                <a class="page-link" href="?search={{ search }}&status={{ status }}&page={{ p }}">{{ p }}</a>
+                            </li>
+                            {% if p == display_pages and total_pages > display_pages %}
+                                <li class="page-item disabled"><span class="page-link">...</span></li>
+                            {% endif %}
+                        {% endif %}
+                    {% endfor %}
+
+                    <li class="page-item {% if page == total_pages %}disabled{% endif %}">
+                        <a class="page-link" href="?search={{ search }}&status={{ status }}&page={{ page+1 if page<total_pages else total_pages }}">Next</a>
+                    </li>
+                </ul>
+            </div>
+            <span>{{ total_count }} records found.</span>
+        </div>
+        {% endif %}
     </div>
 </div>
-{% endblock %}
 
-{% block scripts %}
-<script>
-document.addEventListener('DOMContentLoaded', () => {
-    const tableBody = document.querySelector('#dataTable tbody');
-
-    // Collapsible functionality
-    tableBody.querySelectorAll('.collapsible').forEach(row => {
-        row.addEventListener('click', () => {
-            row.classList.toggle('active');
-            const group = row.dataset.group;
-            tableBody.querySelectorAll(`.child-row[data-parent="${group}"]`).forEach(r => {
-                r.style.display = r.style.display === 'table-row' ? 'none' : 'table-row';
-            });
-        });
-    });
-
-    const searchInput = document.getElementById('searchInput');
-    const statusFilter = document.getElementById('statusFilter');
-
-    function filterRows() {
-        const term = searchInput.value.toLowerCase();
-        const statusValue = statusFilter.value;
-
-        tableBody.querySelectorAll('.child-row').forEach(row => {
-            const statusText = row.querySelector('td:last-child').innerText.trim();
-            const matchesSearch = row.textContent.toLowerCase().includes(term);
-            const matchesStatus = !statusValue || statusText === statusValue;
-
-            row.style.display = (matchesSearch && matchesStatus) ? 'table-row' : 'none';
-        });
-
-        tableBody.querySelectorAll('.collapsible').forEach(groupRow => {
-            const group = groupRow.dataset.group;
-            const hasVisible = Array.from(tableBody.querySelectorAll(`.child-row[data-parent="${group}"]`))
-                                    .some(r => r.style.display === 'table-row');
-            groupRow.style.display = hasVisible ? '' : 'none';
-        });
-    }
-
-    searchInput.addEventListener('input', filterRows);
-    statusFilter.addEventListener('change', filterRows);
-});
-</script>
 {% endblock %}
