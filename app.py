@@ -806,6 +806,7 @@ def approvals():
     return render_template("pages/quote_decision.html", user=user, quote_items=quote_items)
 
 # ==============================================================
+from chatbot_service import ChatbotService
 chatbot_service = ChatbotService()
 
 @app.route("/chatbot")
