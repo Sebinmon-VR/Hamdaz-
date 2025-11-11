@@ -147,7 +147,7 @@ def background_updater():
         except Exception as e:
             print("[BG] Error during update:", e)
 
-        time.sleep(200)
+        time.sleep(100)
 
 
 # ==============================================================
