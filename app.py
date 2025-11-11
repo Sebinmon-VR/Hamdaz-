@@ -806,49 +806,105 @@ def approvals():
     return render_template("pages/quote_decision.html", user=user, quote_items=quote_items)
 
 # ==============================================================
+chatbot_service = ChatbotService()
+
 @app.route("/chatbot")
 def chatbot():
+    """Render the chatbot interface"""
     if "user" not in session:
         return redirect(url_for("login"))
     
     user = session.get("user")
+    user_email = user.get("preferred_username") or user.get("email")
     
-    # Initialize chat memory for this user if not exists
+    # Initialize chat history for this user if not exists
     if "chat_history" not in session:
         session["chat_history"] = []
-
-    return render_template("pages/chatbot.html", user=user)
+    
+    # Check if user is admin
+    is_admin = user_email.lower() in SUPERUSERS
+    
+    return render_template(
+        "pages/chatbot.html", 
+        user=user,
+        is_admin=is_admin,
+    )
 
 
 @app.route("/chatbot/ask", methods=["POST"])
 def ask_chatbot():
+    """Handle chatbot message requests"""
+    if "user" not in session:
+        return jsonify({"error": "Not authenticated"}), 401
+    
     data = request.json
     user_prompt = data.get("message")
-
-    if "chat_history" not in session:
-        session["chat_history"] = [{"role": "system", "content": "You are a helpful assistant."}]
     
-    chat_history = session["chat_history"]
-
-    # Add user message
-    chat_history.append({"role": "user", "content": user_prompt})
-
-    # Send full history
-    response = openai.ChatCompletion.create(
-        model="gpt-4o",
-        messages=chat_history,
-        temperature=0.7,
-    ) 
-
-    reply = response.choices[0].message.content
-
-    # Add assistant reply to memory
-    chat_history.append({"role": "assistant", "content": reply})
-    session["chat_history"] = chat_history
-
-    return jsonify({"reply": reply})
-
-
+    # Validate input
+    if not user_prompt or not isinstance(user_prompt, str):
+        return jsonify({"error": "Invalid message"}), 400
+    
+    # Sanitize input
+    user_prompt = user_prompt.strip()
+    if len(user_prompt) == 0:
+        return jsonify({"error": "Message cannot be empty"}), 400
+    
+    if len(user_prompt) > 2000:
+        return jsonify({"error": "Message too long. Maximum 2000 characters."}), 400
+    
+    try:
+        # Get user email
+        user_email = session["user"].get("preferred_username") or session["user"].get("email")
+        if not user_email:
+            return jsonify({"error": "User email not found"}), 400
+        
+        # Get chat history from session
+        chat_history = session.get("chat_history", [])
+        
+        # Call the ChatbotService
+        response = chatbot_service.chat(
+            user_email=user_email,
+            user_message=user_prompt,
+            chat_history=chat_history
+        )
+        
+        # Handle errors
+        if not response.get("success"):
+            error_msg = response.get("error", "Failed to generate response")
+            print(f"Chatbot error for {user_email}: {error_msg}")
+            return jsonify({
+                "error": "I encountered an error. Please try again.",
+                "details": error_msg
+            }), 500
+        
+        # Get the assistant's reply
+        assistant_reply = response["response"]
+        
+        # Update chat history in session
+        chat_history.append({"role": "user", "content": user_prompt})
+        chat_history.append({"role": "assistant", "content": assistant_reply})
+        
+        # Keep only the last N messages to prevent session from growing too large
+        session["chat_history"] = chat_history[-20:]
+        session.modified = True
+        
+        # Return response with metadata
+        return jsonify({
+            "reply": assistant_reply,
+            "metadata": {
+                "is_admin": response.get("context_used", {}).get("is_admin", False),
+                "data_sources": response.get("context_used", {}).get("data_sources", []),
+                "tokens_used": response.get("tokens_used", 0)
+            }
+        })
+        
+    except Exception as e:
+        print(f"Error in ask_chatbot for user {user_email}: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            "error": "An unexpected error occurred. Please try again later."
+        }), 500
 
 # ==============================================================
 
