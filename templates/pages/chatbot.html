@@ -8,14 +8,14 @@
     <div class="flex flex-col w-full max-w-4xl h-[700px]">
 
         <!-- Chat Box -->
-        <div id="chatBox" class="flex-1 overflow-y-auto p-4 space-y-3"></div>
+        <div id="chatBox" class="flex-1 overflow-y-auto p-4 space-y-3   rounded-lg "></div>
 
         <!-- Input Box -->
-        <div class="flex items-center p-3">
+        <div class="flex items-center p-3 border-t">
             <textarea id="messageInput" rows="1"
                 class="flex-1 p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
                 placeholder="Type a message..."></textarea>
-            <button onclick="sendMessage()"
+            <button id="sendBtn"
                 class="ml-3 px-5 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600">Send</button>
         </div>
     </div>
@@ -24,6 +24,7 @@
 <script>
 const chatBox = document.getElementById("chatBox");
 const messageInput = document.getElementById("messageInput");
+const sendBtn = document.getElementById("sendBtn");
 
 // Scroll to bottom
 function scrollToBottom() {
@@ -33,7 +34,7 @@ function scrollToBottom() {
 // Append message (Markdown + dynamic bubble width)
 function appendMessage(message, sender) {
     const wrapper = document.createElement("div"); 
-    wrapper.classList.add("w-full", "flex"); // wrapper flex for alignment
+    wrapper.classList.add("w-full", "flex");
 
     const div = document.createElement("div");
     div.classList.add("p-3", "rounded-xl", "inline-block", "max-w-[70%]", "break-words");
@@ -42,14 +43,19 @@ function appendMessage(message, sender) {
     if(sender === "user") {
         div.classList.add("bg-blue-500", "text-white", "ml-auto");
         wrapper.classList.add("justify-end");
-    } else {
+    } else if(sender === "assistant") {
         div.classList.add("bg-gray-200", "text-gray-900", "mr-auto");
+        wrapper.classList.add("justify-start");
+    } else if(sender === "loading") {
+        div.classList.add("bg-gray-200", "text-gray-900", "mr-auto", "italic");
+        div.innerHTML = `<span class="loading-dots">Processing<span>.</span><span>.</span><span>.</span></span>`;
         wrapper.classList.add("justify-start");
     }
 
     wrapper.appendChild(div);
     chatBox.appendChild(wrapper);
     scrollToBottom();
+    return wrapper; // return wrapper for removal if needed
 }
 
 // Send message
@@ -59,16 +65,36 @@ async function sendMessage() {
 
     appendMessage(message, "user");
     messageInput.value = "";
+    messageInput.disabled = true;
+    sendBtn.disabled = true;
 
-    const res = await fetch("/chatbot/ask", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({message})
-    });
+    // Show loading animation
+    const loadingMessage = appendMessage("", "loading");
 
-    const data = await res.json();
-    if(data.reply) appendMessage(data.reply, "assistant");
-    else appendMessage("Error: " + data.error, "assistant");
+    try {
+        const res = await fetch("/chatbot/ask", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({message})
+        });
+
+        const data = await res.json();
+
+        // Remove loading animation
+        loadingMessage.remove();
+
+        if(data.reply) appendMessage(data.reply, "assistant");
+        else appendMessage("Error: " + data.error, "assistant");
+
+    } catch (err) {
+        loadingMessage.remove();
+        appendMessage("Error connecting to server.", "assistant");
+        console.error(err);
+    } finally {
+        messageInput.disabled = false;
+        sendBtn.disabled = false;
+        messageInput.focus();
+    }
 }
 
 // Enter to send, Shift+Enter for newline
@@ -78,5 +104,21 @@ messageInput.addEventListener("keydown", function(e) {
         sendMessage();
     }
 });
+
+sendBtn.addEventListener("click", sendMessage);
 </script>
+
+<style>
+/* Simple animated dots for loading */
+@keyframes blink {
+    0%, 100% { opacity: 0.2; }
+    50% { opacity: 1; }
+}
+.loading-dots span {
+    display: inline-block;
+    animation: blink 1.4s infinite;
+}
+.loading-dots span:nth-child(2) { animation-delay: 0.2s; }
+.loading-dots span:nth-child(3) { animation-delay: 0.4s; }
+</style>
 {% endblock %}

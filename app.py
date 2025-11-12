@@ -837,48 +837,86 @@ def approvals():
     return render_template("pages/quote_decision.html", user=user, quote_items=quote_items)
 
 # ==============================================================
+
+# Global chat histories
+chat_histories = {}
+
+
 @app.route("/chatbot")
 def chatbot():
     if "user" not in session:
         return redirect(url_for("login"))
     
-    user = session.get("user")
+    user = session["user"]
+    email = user.get("mail") or user.get("userPrincipalName")
+
+    # Initialize chat history if not exists
+    if email not in chat_histories:
+        chat_histories[email] = [{"role": "system", "content": "You are a helpful assistant."}]
     
-    # Initialize chat memory for this user if not exists
-    if "chat_history" not in session:
-        session["chat_history"] = []
-
     return render_template("pages/chatbot.html", user=user)
-
 
 @app.route("/chatbot/ask", methods=["POST"])
 def ask_chatbot():
+    if "user" not in session:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    user = session["user"]
+    email = user.get("mail") or user.get("userPrincipalName")
+    is_admin_user = is_admin(email)
+
     data = request.json
     user_prompt = data.get("message")
+    period_type = data.get("period", "month")  # 'month' or 'all'
 
-    if "chat_history" not in session:
-        session["chat_history"] = [{"role": "system", "content": "You are a helpful assistant."}]
-    
-    chat_history = session["chat_history"]
+    if email not in chat_histories:
+        chat_histories[email] = [{"role": "system", "content": "You are a helpful assistant."}]
 
-    # Add user message
-    chat_history.append({"role": "user", "content": user_prompt})
+    chat_history = chat_histories[email]
 
-    # Send full history
+    if is_admin_user:
+        # Fetch both all-time and period-specific analytics
+        overall_analytics, per_user_analytics = get_analytics_data(df, period_type='all')
+        period_analytics, period_per_user = get_analytics_data(df, period_type=period_type)
+        
+        username = user.get("displayName", "").replace(" ", "")
+        user_analytics_specific = get_user_analytics_specific(df, username)
+        now_utc = pd.Timestamp.utcnow()
+        ongoing_filtered = [
+            t for t in user_analytics_specific['OngoingTasks']
+            if pd.to_datetime(t['BCD']) > now_utc and t.get('SubmissionStatus','') != 'Submitted'
+        ]
+        user_analytics_specific['OngoingTasks'] = ongoing_filtered
+        ongoing_tasks_count = len(ongoing_filtered)
+
+        data_message = (
+            f"You have access to all users' data.\n\n"
+            f"📊 All-time Analytics: {json.dumps(per_user_analytics, default=str)}\n\n"
+            f"📊 {period_type.capitalize()} Analytics: {json.dumps(period_per_user, default=str)}\n\n"
+            f"Active tasks for user {username}: {ongoing_tasks_count}"
+        )
+    else:
+        # Non-admin: limit to their own data
+        username = user.get("displayName", "").replace(" ", "")
+        user_tasks = get_user_analytics_specific(df, username)
+        data_message = f"You only have access to this user's data: {json.dumps(user_tasks, default=str)}"
+
+    messages_for_ai = [{"role": "system", "content": data_message}] + chat_history[1:] + [{"role": "user", "content": user_prompt}]
+
+    # OpenAI call
     response = openai.ChatCompletion.create(
         model="gpt-4o",
-        messages=chat_history,
-        temperature=0.7,
-    ) 
+        messages=messages_for_ai,
+        temperature=0.7
+    )
 
     reply = response.choices[0].message.content
 
-    # Add assistant reply to memory
+    chat_history.append({"role": "user", "content": user_prompt})
     chat_history.append({"role": "assistant", "content": reply})
-    session["chat_history"] = chat_history
+    chat_histories[email] = chat_history
 
     return jsonify({"reply": reply})
-
 
 
 # ==============================================================
