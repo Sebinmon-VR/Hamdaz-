@@ -22,6 +22,8 @@ body { background-color: #ffffff; color: #111111; font-family: 'Segoe UI', sans-
 .tree-value { margin-left: 12px; color: #475569; word-break: break-word; }
 .download-btn { background-color: #10b981; color: white; padding: 6px 12px; border-radius: 6px; margin-top: 4px; cursor: pointer; transition: all 0.3s ease; }
 .download-btn:hover { background-color: #059669; }
+.draggable-file { padding: 4px 8px; margin-bottom: 4px; background-color: #e2e8f0; border-radius: 4px; cursor: grab; }
+.draggable-file.dragging { opacity: 0.5; }
 </style>
 
 <div class="flex flex-col space-y-6 p-6 max-w-6xl mx-auto">
@@ -80,7 +82,7 @@ body { background-color: #ffffff; color: #111111; font-family: 'Segoe UI', sans-
         <div id="content-tech" class="tab-content vscode-panel scroll-container hidden">
             <div class="flex space-x-4">
                 <div id="tp-selected-files" class="w-1/2 vscode-panel scroll-container">
-                    <h3 class="font-semibold mb-2">Selected Files</h3>
+                    <h3 class="font-semibold mb-2">Selected Files (Drag to Reorder)</h3>
                 </div>
                 <div id="tp-merged-preview" class="w-1/2 vscode-panel">
                     <h3 class="font-semibold mb-2">Merged PDF</h3>
@@ -94,7 +96,7 @@ body { background-color: #ffffff; color: #111111; font-family: 'Segoe UI', sans-
         <div id="content-commercial" class="tab-content vscode-panel scroll-container hidden">
             <div class="flex space-x-4">
                 <div id="cp-selected-files" class="w-1/2 vscode-panel scroll-container">
-                    <h3 class="font-semibold mb-2">Selected Files</h3>
+                    <h3 class="font-semibold mb-2">Selected Files (Drag to Reorder)</h3>
                 </div>
                 <div id="cp-merged-preview" class="w-1/2 vscode-panel">
                     <h3 class="font-semibold mb-2">Merged PDF</h3>
@@ -111,7 +113,7 @@ body { background-color: #ffffff; color: #111111; font-family: 'Segoe UI', sans-
 <input type="file" id="pdf-upload" accept="application/pdf" class="hidden" />
 
 <script>
-// --- Upload ---
+// --- Upload & Toggle ---
 let uploadedFile = null;
 const pdfDrop = document.getElementById('pdf-drop');
 const pdfUpload = document.getElementById('pdf-upload');
@@ -138,7 +140,6 @@ function handlePDF(file){
     setTimeout(()=>{ pdfDrop.style.display="none"; reuploadBtn.classList.remove('hidden'); },400);
 }
 
-// --- Toggle PDF Preview ---
 document.getElementById('toggle-preview').addEventListener('click', () => {
     if(!uploadedFile){ alert("Please upload a PDF first!"); return; }
     pdfPreviewContainer.classList.toggle('hidden');
@@ -157,14 +158,13 @@ Object.keys(tabMap).forEach(tabId => {
     });
 });
 
-// --- Analyze PDF ---
+// --- Analyze PDF & Attachments ---
 const analyzeBtn = document.getElementById('analyze-btn');
 const analyzeLoader = document.getElementById('analyze-loader');
 const analyzeStatus = document.getElementById('analyze-status');
 const extractedDataContainer = document.getElementById('extracted-data');
 let attachmentsFiles = {};
-let mergedTPBlob = null;
-let mergedCPBlob = null;
+let mergedTPBlob = null, mergedCPBlob = null;
 
 analyzeBtn.addEventListener('click', async ()=> {
     if(!uploadedFile){ alert("Please upload a PDF first!"); return; }
@@ -215,7 +215,10 @@ function renderAttachmentTable(data){
     attachmentsNeeded.forEach((item, idx) => {
         const tr = document.createElement('tr');
         const tdName = document.createElement('td'); tdName.className = "p-2 border-b"; tdName.textContent = item;
-        const tdFile = document.createElement('td'); tdFile.className = "p-2 border-b"; const input = document.createElement('input'); input.type='file'; input.addEventListener('change', e=>{ attachmentsFiles[item]=attachmentsFiles[item]||{}; attachmentsFiles[item].file=e.target.files[0]; updateProposals(); }); tdFile.appendChild(input);
+        const tdFile = document.createElement('td'); tdFile.className = "p-2 border-b"; 
+        const input = document.createElement('input'); input.type='file'; 
+        input.addEventListener('change', e=>{ attachmentsFiles[item]=attachmentsFiles[item]||{}; attachmentsFiles[item].file=e.target.files[0]; updateProposals(); });
+        tdFile.appendChild(input);
         const tdTP = document.createElement('td'); tdTP.className="p-2 border-b text-center"; const tpCheck=document.createElement('input'); tpCheck.type='checkbox'; tpCheck.addEventListener('change',updateProposals); tdTP.appendChild(tpCheck);
         const tdCP = document.createElement('td'); tdCP.className="p-2 border-b text-center"; const cpCheck=document.createElement('input'); cpCheck.type='checkbox'; cpCheck.addEventListener('change',updateProposals); tdCP.appendChild(cpCheck);
         tr.appendChild(tdName); tr.appendChild(tdFile); tr.appendChild(tdTP); tr.appendChild(tdCP); tableBody.appendChild(tr);
@@ -223,47 +226,92 @@ function renderAttachmentTable(data){
     });
 }
 
-// --- Update Proposals & Merge PDFs ---
-async function updateProposals(){
-    const tpDiv = document.getElementById('tp-selected-files'); const tpIframe = document.getElementById('tp-merged-iframe');
-    const cpDiv = document.getElementById('cp-selected-files'); const cpIframe = document.getElementById('cp-merged-iframe');
+// --- Drag & Drop Reordering & Merge ---
+function makeDraggable(containerId, filesArrayName){
+    const container = document.getElementById(containerId);
 
-    const tpFiles=[]; const cpFiles=[];
-    tpDiv.innerHTML=""; cpDiv.innerHTML="";
+    function dragStartHandler(e){
+        e.dataTransfer.setData('text/plain', e.target.dataset.name);
+        e.target.classList.add('dragging');
+    }
+    function dragOverHandler(e){ e.preventDefault(); const dragging = container.querySelector('.dragging'); const afterElement = getDragAfterElement(container, e.clientY); if(afterElement==null){ container.appendChild(dragging); } else { container.insertBefore(dragging, afterElement); } }
+    function dragEndHandler(e){ e.target.classList.remove('dragging'); updateProposals(); }
 
-    for(const [name,obj] of Object.entries(attachmentsFiles)){
-        if(obj.tp.checked && obj.file){ tpFiles.push(obj.file); tpDiv.innerHTML+=`<div>${name}</div>`; }
-        if(obj.cp.checked && obj.file){ cpFiles.push(obj.file); cpDiv.innerHTML+=`<div>${name}</div>`; }
+    function getDragAfterElement(container, y){
+        const draggableElements = [...container.querySelectorAll('.draggable-file:not(.dragging)')];
+        return draggableElements.reduce((closest, child)=>{
+            const box = child.getBoundingClientRect();
+            const offset = y - box.top - box.height/2;
+            if(offset<0 && offset>closest.offset){ return {offset: offset, element: child}; } else { return closest; }
+        }, {offset: Number.NEGATIVE_INFINITY}).element;
     }
 
-    async function mergeAndShow(files, iframe){
-        if(files.length===0){ iframe.src=""; return null; }
-        const mergedPdf = await PDFLib.PDFDocument.create();
-        for(const file of files){
-            const bytes = await file.arrayBuffer();
-            const pdf = await PDFLib.PDFDocument.load(bytes);
-            const copiedPages = await mergedPdf.copyPages(pdf, pdf.getPageIndices());
-            copiedPages.forEach(page=> mergedPdf.addPage(page));
-        }
-        const mergedBytes = await mergedPdf.save();
-        const blob = new Blob([mergedBytes], {type:'application/pdf'});
-        iframe.src = URL.createObjectURL(blob);
-        return blob;
-    }
-
-    mergedTPBlob = await mergeAndShow(tpFiles,tpIframe);
-    mergedCPBlob = await mergeAndShow(cpFiles,cpIframe);
+    container.addEventListener('dragstart', dragStartHandler);
+    container.addEventListener('dragover', dragOverHandler);
+    container.addEventListener('dragend', dragEndHandler);
 }
 
-// --- Download buttons ---
-document.getElementById('tp-download').addEventListener('click', ()=>{
-    if(!mergedTPBlob){ alert("No TP merged file available"); return; }
-    const a = document.createElement('a'); a.href=URL.createObjectURL(mergedTPBlob); a.download="Technical_Proposal.pdf"; a.click();
+function updateProposals(){
+    const tpDiv = document.getElementById('tp-selected-files'); const tpIframe = document.getElementById('tp-merged-iframe');
+    const cpDiv = document.getElementById('cp-selected-files'); const cpIframe = document.getElementById('cp-merged-iframe');
+    tpDiv.innerHTML=""; cpDiv.innerHTML="";
+
+    const tpFiles=[]; const cpFiles=[];
+    // TP
+    for(const [name,obj] of Object.entries(attachmentsFiles)){
+        if(obj.tp.checked && obj.file) tpFiles.push({name:name, file:obj.file});
+    }
+    // CP
+    for(const [name,obj] of Object.entries(attachmentsFiles)){
+        if(obj.cp.checked && obj.file) cpFiles.push({name:name, file:obj.file});
+    }
+
+    function renderDraggableFiles(files, container){
+        files.forEach(f=>{
+            const div = document.createElement('div');
+            div.textContent = f.name;
+            div.className='draggable-file';
+            div.setAttribute('draggable','true');
+            div.dataset.name=f.name;
+            container.appendChild(div);
+        });
+    }
+    renderDraggableFiles(tpFiles,tpDiv);
+    renderDraggableFiles(cpFiles,cpDiv);
+
+    makeDraggable('tp-selected-files','tpFiles');
+    makeDraggable('cp-selected-files','cpFiles');
+
+    async function mergeFiles(files){
+        if(files.length===0) return null;
+        const mergedPdf = await PDFLib.PDFDocument.create();
+        for(const f of files){
+            const bytes = await f.file.arrayBuffer();
+            const pdf = await PDFLib.PDFDocument.load(bytes);
+            const copiedPages = await mergedPdf.copyPages(pdf, pdf.getPageIndices());
+            copiedPages.forEach(p=> mergedPdf.addPage(p));
+        }
+        const mergedBytes = await mergedPdf.save();
+        return new Blob([mergedBytes], {type:'application/pdf'});
+    }
+
+    mergedTPBlob = mergeFiles(tpFiles);
+    mergedCPBlob = mergeFiles(cpFiles);
+
+    mergedTPBlob.then(blob=> tpIframe.src = URL.createObjectURL(blob));
+    mergedCPBlob.then(blob=> cpIframe.src = URL.createObjectURL(blob));
+}
+
+// --- Download ---
+document.getElementById('tp-download').addEventListener('click', async ()=>{
+    if(!mergedTPBlob) return alert("No TP merged file");
+    const blob = await mergedTPBlob;
+    const a = document.createElement('a'); a.href=URL.createObjectURL(blob); a.download="Technical_Proposal.pdf"; a.click();
 });
-document.getElementById('cp-download').addEventListener('click', ()=>{
-    if(!mergedCPBlob){ alert("No CP merged file available"); return; }
-    const a = document.createElement('a'); a.href=URL.createObjectURL(mergedCPBlob); a.download="Commercial_Proposal.pdf"; a.click();
+document.getElementById('cp-download').addEventListener('click', async ()=>{
+    if(!mergedCPBlob) return alert("No CP merged file");
+    const blob = await mergedCPBlob;
+    const a = document.createElement('a'); a.href=URL.createObjectURL(blob); a.download="Commercial_Proposal.pdf"; a.click();
 });
 </script>
-
 {% endblock %}
