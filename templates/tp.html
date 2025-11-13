@@ -22,8 +22,10 @@ body { background-color: #ffffff; color: #111111; font-family: 'Segoe UI', sans-
 .tree-value { margin-left: 12px; color: #475569; word-break: break-word; }
 .download-btn { background-color: #10b981; color: white; padding: 6px 12px; border-radius: 6px; margin-top: 4px; cursor: pointer; transition: all 0.3s ease; }
 .download-btn:hover { background-color: #059669; }
-.draggable-file { padding: 4px 8px; margin-bottom: 4px; background-color: #e2e8f0; border-radius: 4px; cursor: grab; }
+.draggable-file { padding: 4px 8px; margin-bottom: 4px; background-color: #e2e8f0; border-radius: 4px; cursor: grab; display:flex; justify-content:space-between; align-items:center; }
 .draggable-file.dragging { opacity: 0.5; }
+.remove-btn { margin-left: 8px; color: red; cursor:pointer; font-weight:bold; }
+#custom-attachment-popup input[type="text"] { width: 100%; }
 </style>
 
 <div class="flex flex-col space-y-6 p-6 max-w-6xl mx-auto">
@@ -65,6 +67,22 @@ body { background-color: #ffffff; color: #111111; font-family: 'Segoe UI', sans-
 
         <!-- Attachments Table -->
         <div id="content-attachments" class="tab-content vscode-panel scroll-container hidden">
+            <div class="flex justify-end mb-2">
+                <button id="add-custom-attachment" class="reupload-btn">+ Add Custom Attachment</button>
+            </div>
+
+            <!-- Custom attachment popup -->
+            <div id="custom-attachment-popup" class="vscode-panel p-4 mb-4 hidden border border-gray-300 rounded">
+                <div class="flex flex-col space-y-2">
+                    <input type="text" id="custom-attachment-name" placeholder="Attachment Name" class="p-2 border rounded">
+                    <input type="file" id="custom-attachment-file" class="p-2 border rounded">
+                    <div class="flex space-x-2">
+                        <button id="custom-attachment-add" class="reupload-btn">Add</button>
+                        <button id="custom-attachment-cancel" class="reupload-btn">Cancel</button>
+                    </div>
+                </div>
+            </div>
+
             <table class="w-full text-left border border-gray-300 rounded">
                 <thead class="bg-gray-100">
                     <tr>
@@ -226,14 +244,42 @@ function renderAttachmentTable(data){
     });
 }
 
+// --- Custom Attachments ---
+const addCustomBtn = document.getElementById('add-custom-attachment');
+const customPopup = document.getElementById('custom-attachment-popup');
+const customNameInput = document.getElementById('custom-attachment-name');
+const customFileInput = document.getElementById('custom-attachment-file');
+const customAddBtn = document.getElementById('custom-attachment-add');
+const customCancelBtn = document.getElementById('custom-attachment-cancel');
+
+addCustomBtn.addEventListener('click', ()=> customPopup.classList.remove('hidden'));
+customCancelBtn.addEventListener('click', ()=> { customPopup.classList.add('hidden'); customNameInput.value=''; customFileInput.value=''; });
+
+customAddBtn.addEventListener('click', ()=> {
+    const name = customNameInput.value.trim();
+    const file = customFileInput.files[0];
+    if(!name || !file){ alert("Please provide name and file"); return; }
+
+    const tr = document.createElement('tr');
+    const tdName = document.createElement('td'); tdName.className="p-2 border-b"; tdName.textContent=name;
+    const tdFile = document.createElement('td'); tdFile.className="p-2 border-b"; 
+    const input = document.createElement('input'); input.type='file'; input.files = customFileInput.files;
+    tdFile.appendChild(input);
+    const tdTP = document.createElement('td'); tdTP.className="p-2 border-b text-center"; const tpCheck=document.createElement('input'); tpCheck.type='checkbox'; tpCheck.addEventListener('change',updateProposals); tdTP.appendChild(tpCheck);
+    const tdCP = document.createElement('td'); tdCP.className="p-2 border-b text-center"; const cpCheck=document.createElement('input'); cpCheck.type='checkbox'; cpCheck.addEventListener('change',updateProposals); tdCP.appendChild(cpCheck);
+    tr.appendChild(tdName); tr.appendChild(tdFile); tr.appendChild(tdTP); tr.appendChild(tdCP);
+    tableBody.appendChild(tr);
+
+    attachmentsFiles[name] = { file:file, tp:tpCheck, cp:cpCheck };
+    customPopup.classList.add('hidden'); customNameInput.value=''; customFileInput.value='';
+    updateProposals();
+});
+
 // --- Drag & Drop Reordering & Merge ---
-function makeDraggable(containerId, filesArrayName){
+function makeDraggable(containerId){
     const container = document.getElementById(containerId);
 
-    function dragStartHandler(e){
-        e.dataTransfer.setData('text/plain', e.target.dataset.name);
-        e.target.classList.add('dragging');
-    }
+    function dragStartHandler(e){ e.dataTransfer.setData('text/plain', e.target.dataset.name); e.target.classList.add('dragging'); }
     function dragOverHandler(e){ e.preventDefault(); const dragging = container.querySelector('.dragging'); const afterElement = getDragAfterElement(container, e.clientY); if(afterElement==null){ container.appendChild(dragging); } else { container.insertBefore(dragging, afterElement); } }
     function dragEndHandler(e){ e.target.classList.remove('dragging'); updateProposals(); }
 
@@ -251,36 +297,54 @@ function makeDraggable(containerId, filesArrayName){
     container.addEventListener('dragend', dragEndHandler);
 }
 
+// --- Remove from TP/CP panels ---
+function makeRemovable(containerId){
+    const container = document.getElementById(containerId);
+    container.addEventListener('click', e=>{
+        if(e.target.classList.contains('remove-btn')){
+            const attName = e.target.dataset.name;
+            container.removeChild(e.target.parentElement);
+            if(attachmentsFiles[attName]){
+                attachmentsFiles[attName].tp.checked = false;
+                attachmentsFiles[attName].cp.checked = false;
+            }
+            updateProposals();
+        }
+    });
+}
+makeRemovable('tp-selected-files');
+makeRemovable('cp-selected-files');
+
 function updateProposals(){
     const tpDiv = document.getElementById('tp-selected-files'); const tpIframe = document.getElementById('tp-merged-iframe');
     const cpDiv = document.getElementById('cp-selected-files'); const cpIframe = document.getElementById('cp-merged-iframe');
     tpDiv.innerHTML=""; cpDiv.innerHTML="";
 
     const tpFiles=[]; const cpFiles=[];
-    // TP
     for(const [name,obj] of Object.entries(attachmentsFiles)){
         if(obj.tp.checked && obj.file) tpFiles.push({name:name, file:obj.file});
-    }
-    // CP
-    for(const [name,obj] of Object.entries(attachmentsFiles)){
         if(obj.cp.checked && obj.file) cpFiles.push({name:name, file:obj.file});
     }
 
     function renderDraggableFiles(files, container){
         files.forEach(f=>{
             const div = document.createElement('div');
-            div.textContent = f.name;
-            div.className='draggable-file';
+            div.className='draggable-file flex justify-between items-center';
             div.setAttribute('draggable','true');
             div.dataset.name=f.name;
+            const span = document.createElement('span'); span.textContent=f.name;
+            const removeBtn = document.createElement('button'); removeBtn.textContent='✕'; removeBtn.className='remove-btn ml-2 text-red-600 font-bold';
+            removeBtn.dataset.name=f.name;
+            div.appendChild(span); div.appendChild(removeBtn);
             container.appendChild(div);
         });
     }
+
     renderDraggableFiles(tpFiles,tpDiv);
     renderDraggableFiles(cpFiles,cpDiv);
 
-    makeDraggable('tp-selected-files','tpFiles');
-    makeDraggable('cp-selected-files','cpFiles');
+    makeDraggable('tp-selected-files');
+    makeDraggable('cp-selected-files');
 
     async function mergeFiles(files){
         if(files.length===0) return null;

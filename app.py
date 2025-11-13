@@ -998,12 +998,10 @@ def merge():
 
     return render_template('merge_tp.html' , user=session.get("user"))
 
-
+import PyPDF2
 # Make sure to set your OpenAI API key
 openai.api_key = os.getenv("OPENAI_API_KEY")
-
-
-import PyPDF2
+CHUNK_SIZE = 3000  # characters per chunk
 
 @app.route("/tp")
 def tp():
@@ -1016,8 +1014,12 @@ def analyze_document():
 
     pdf_file = request.files['pdf_file']
 
-    # Step 1: Extract text from PDF with basic preprocessing
-    pdf_reader = PyPDF2.PdfReader(pdf_file)
+    # Step 1: Extract text from PDF
+    try:
+        pdf_reader = PyPDF2.PdfReader(pdf_file)
+    except Exception as e:
+        return jsonify({"error": f"Failed to read PDF: {str(e)}"}), 400
+
     text_content = ""
     for page in pdf_reader.pages:
         page_text = page.extract_text()
@@ -1029,25 +1031,29 @@ def analyze_document():
     if not text_content.strip():
         return jsonify({"error": "No text could be extracted from PDF"}), 400
 
-    # Step 2: Structured AI prompt
-    prompt = f"""
+    # Step 2: Split text into manageable chunks
+    chunks = [text_content[i:i+CHUNK_SIZE] for i in range(0, len(text_content), CHUNK_SIZE)]
+
+    # Step 3: Prepare final result
+    final_result = {
+        "requirements": [],
+        "attachments_needed": [],
+        "eligibility_criteria": [],
+        "deadlines": [],
+        "technical_specifications": [],
+        "other_notes": []
+    }
+
+    # Step 4: Analyze each chunk with OpenAI
+    for chunk in chunks:
+        prompt = f"""
 You are an expert RFQ/SOW analyst.
 
-Step 1: Carefully read the document below.
+Step 1: Read the document chunk below.
 
-Step 2: Identify all requirements for the bidder (technical, submission, administrative).
+Step 2: Extract all relevant information: requirements, attachments, eligibility criteria, deadlines, technical specifications, and other notes.
 
-Step 3: Identify all documents, certificates, forms, or attachments required.
-
-Step 4: Identify eligibility criteria for the bidder.
-
-Step 5: Identify all deadlines and milestones.
-
-Step 6: Identify any technical specifications or deliverables.
-
-Step 7: Identify any additional notes, constraints, or important instructions.
-
-Return your answer in valid JSON exactly like this:
+Return your answer in JSON exactly like this:
 
 {{
   "requirements": [...],
@@ -1058,37 +1064,45 @@ Return your answer in valid JSON exactly like this:
   "other_notes": [...]
 }}
 
-If a field is missing in the document, return null.
+If a field is missing, return an empty list.
 
 Document Text:
-{text_content}
-    """
-
-    try:
-        response = openai.ChatCompletion.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": "You are an expert RFQ/SOW analyst."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0,
-            max_tokens=2000
-        )
-
-        ai_output = response['choices'][0]['message']['content']
-
-        # Clean AI output of any ```json or extra formatting
-        ai_output_clean = ai_output.replace("```json", "").replace("```", "").strip()
+{chunk}
+        """
 
         try:
-            extracted_data = json.loads(ai_output_clean)
-        except:
-            extracted_data = {"raw_text": ai_output_clean}
+            response = openai.ChatCompletion.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": "You are an expert RFQ/SOW analyst."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0,
+                max_tokens=2000
+            )
 
-        return jsonify({"extracted_data": extracted_data})
+            ai_output = response['choices'][0]['message']['content']
+            ai_output_clean = ai_output.replace("```json", "").replace("```", "").strip()
 
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+            try:
+                chunk_data = json.loads(ai_output_clean)
+                # Merge chunk data into final result
+                for key in final_result.keys():
+                    if key in chunk_data and isinstance(chunk_data[key], list):
+                        final_result[key].extend(chunk_data[key])
+            except json.JSONDecodeError:
+                # fallback for unparsable chunk
+                final_result.setdefault("raw_text_chunks", []).append(ai_output_clean)
+
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
+    # Remove duplicates from lists
+    for key in final_result:
+        if isinstance(final_result[key], list):
+            final_result[key] = list(dict.fromkeys(final_result[key]))
+
+    return jsonify({"extracted_data": final_result})
 
 
 # @app.route("/submit_attachments")
