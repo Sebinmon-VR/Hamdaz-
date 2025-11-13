@@ -1016,49 +1016,84 @@ def analyze_document():
 
     pdf_file = request.files['pdf_file']
 
-    # Step 1: Extract text from PDF
+    # Step 1: Extract text from PDF with basic preprocessing
     pdf_reader = PyPDF2.PdfReader(pdf_file)
     text_content = ""
     for page in pdf_reader.pages:
         page_text = page.extract_text()
         if page_text:
+            # Clean extra whitespace & preserve structure
+            page_text = "\n".join([line.strip() for line in page_text.splitlines() if line.strip()])
             text_content += page_text + "\n"
 
     if not text_content.strip():
         return jsonify({"error": "No text could be extracted from PDF"}), 400
 
-    # Step 2: Send text to ALLM
+    # Step 2: Structured AI prompt
     prompt = f"""
-    Extract all relevant details from the following document and return in JSON format.
-    Include headings, tables, key points, and any technical specifications.
-    If a field is missing, set it as null.
+You are an expert RFQ/SOW analyst.
 
-    Document Text:
-    {text_content}
+Step 1: Carefully read the document below.
+
+Step 2: Identify all requirements for the bidder (technical, submission, administrative).
+
+Step 3: Identify all documents, certificates, forms, or attachments required.
+
+Step 4: Identify eligibility criteria for the bidder.
+
+Step 5: Identify all deadlines and milestones.
+
+Step 6: Identify any technical specifications or deliverables.
+
+Step 7: Identify any additional notes, constraints, or important instructions.
+
+Return your answer in valid JSON exactly like this:
+
+{{
+  "requirements": [...],
+  "attachments_needed": [...],
+  "eligibility_criteria": [...],
+  "deadlines": [...],
+  "technical_specifications": [...],
+  "other_notes": [...]
+}}
+
+If a field is missing in the document, return null.
+
+Document Text:
+{text_content}
     """
 
     try:
         response = openai.ChatCompletion.create(
             model="gpt-4o-mini",
             messages=[
-                {"role": "system", "content": "You are an expert document analyzer."},
+                {"role": "system", "content": "You are an expert RFQ/SOW analyst."},
                 {"role": "user", "content": prompt}
             ],
-            temperature=0
+            temperature=0,
+            max_tokens=2000
         )
 
         ai_output = response['choices'][0]['message']['content']
 
-        import json
+        # Clean AI output of any ```json or extra formatting
+        ai_output_clean = ai_output.replace("```json", "").replace("```", "").strip()
+
         try:
-            extracted_data = json.loads(ai_output)
+            extracted_data = json.loads(ai_output_clean)
         except:
-            extracted_data = {"raw_text": ai_output}
+            extracted_data = {"raw_text": ai_output_clean}
 
         return jsonify({"extracted_data": extracted_data})
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+# @app.route("/submit_attachments")
+# def submit_attachments():
+#     return 
 
 # ==============================================================
 # START FLASK + BACKGROUND UPDATER

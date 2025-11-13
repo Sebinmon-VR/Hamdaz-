@@ -3,144 +3,387 @@
 {% block content %}
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/3.3.2/tailwind.min.css">
 
-<div class="flex h-screen">
-    <!-- Left Panel: PDF Preview -->
-    <div class="w-1/2 border-r p-4 flex flex-col">
-        <input type="file" id="pdf-upload" accept="application/pdf" class="mb-4 p-2 border rounded">
-        <button id="analyze-btn" class="mb-4 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">Analyze PDF</button>
-        <div class="flex-1 overflow-auto border rounded">
-            <iframe id="pdf-preview" class="w-full h-full"></iframe>
+<style>
+body {
+    background-color: #ffffff;
+    color: #111111;
+    font-family: 'Segoe UI', sans-serif;
+}
+
+/* Upload Box */
+.drag-drop {
+    border: 2px dashed #cbd5e1;
+    border-radius: 8px;
+    padding: 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.4s ease;
+    font-size: 1rem;
+    color: #475569;
+    width: 220px;
+    background-color: #f8fafc;
+}
+.drag-drop.dragover {
+    background-color: #e2e8f0;
+    border-color: #94a3b8;
+}
+
+/* Reupload Button */
+.reupload-btn {
+    background-color: #1f2937;
+    color: #f9fafb;
+    border: none;
+    border-radius: 6px;
+    padding: 8px 12px;
+    cursor: pointer;
+    transition: all 0.4s ease;
+}
+.reupload-btn:hover {
+    background-color: #374151;
+}
+
+/* Buttons */
+button {
+    background-color: #1f2937;
+    color: #f9fafb;
+    border-radius: 6px;
+    padding: 8px 14px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+button:hover {
+    background-color: #374151;
+}
+
+/* Tabs */
+.tab-button {
+    padding: 0.5rem 1rem;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    font-weight: 500;
+}
+.tab-button.active {
+    border-color: #111827;
+    font-weight: 600;
+    color: #111827;
+}
+
+/* Panels */
+.vscode-panel {
+    background-color: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 16px;
+    overflow-y: auto;
+}
+.scroll-container {
+    max-height: 60vh;
+    overflow-y: auto;
+}
+
+/* Loader */
+.loader {
+    border: 4px solid #f3f3f3;
+    border-top: 4px solid #1f2937;
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    animation: spin 1s linear infinite;
+    display: none;
+    margin-left: 8px;
+}
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Attachment items */
+.file-item {
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 8px;
+}
+.file-item input {
+    margin-top: 4px;
+}
+.file-item button {
+    background: transparent;
+    border: none;
+    color: #ef4444;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+/* Minimalist Tree */
+.tree-node {
+    margin-left: 16px;
+    line-height: 1.5rem;
+}
+.tree-key {
+    font-weight: 600;
+    cursor: pointer;
+    color: #111827;
+}
+.tree-key:hover {
+    text-decoration: underline;
+}
+.tree-value {
+    margin-left: 12px;
+    color: #475569;
+    word-break: break-word;
+}
+</style>
+
+<div class="flex flex-col space-y-6 p-6 max-w-6xl mx-auto">
+
+    <!-- Upload + Buttons -->
+    <div class="flex items-center space-x-4">
+        <div id="pdf-drop" class="drag-drop">
+            Drag & Drop PDF or Click
+        </div>
+        <button id="reupload-btn" class="reupload-btn hidden">⟳ Re-upload</button>
+
+        <button id="toggle-preview">Toggle PDF Preview</button>
+        <button id="analyze-btn">Analyze PDF</button>
+    </div>
+
+    <!-- Status + Loader -->
+    <div class="flex justify-center items-center mt-2">
+        <span id="analyze-status" class="text-gray-600 mr-2"></span>
+        <div id="analyze-loader" class="loader"></div>
+    </div>
+
+    <!-- PDF Preview -->
+    <div id="pdf-preview-container" class="vscode-panel hidden mt-4">
+        <iframe id="pdf-preview" class="w-full h-96 border rounded"></iframe>
+    </div>
+
+    <!-- Tabs -->
+    <div class="flex space-x-4 mt-6 border-b">
+        <div id="tab-extracted" class="tab-button active">Extracted Data</div>
+        <div id="tab-attachments" class="tab-button">Attachments</div>
+    </div>
+
+    <!-- Tab Content -->
+    <div class="flex flex-col mt-4 space-y-4">
+        <div id="content-extracted" class="tab-content vscode-panel scroll-container">
+            <div id="extracted-data" class="space-y-2"></div>
+        </div>
+
+        <div id="content-attachments" class="tab-content vscode-panel scroll-container hidden">
+            <form id="attachments-form" class="space-y-2">
+                <div id="attachments-list"></div>
+                <div class="flex justify-center mt-2">
+                    <button type="submit">Submit Attachments</button>
+                </div>
+            </form>
         </div>
     </div>
 
-    <!-- Right Panel: Extracted Data -->
-    <div class="w-1/2 p-4 overflow-auto">
-        <h2 class="text-2xl font-bold mb-4">Extracted Data</h2>
-        <div id="extracted-data" class="space-y-2"></div>
-    </div>
 </div>
 
+<input type="file" id="pdf-upload" accept="application/pdf" class="hidden" />
+
 <script>
-// Elements
-const pdfUpload = document.getElementById('pdf-upload');
-const analyzeBtn = document.getElementById('analyze-btn');
-const pdfPreview = document.getElementById('pdf-preview');
-const extractedDataContainer = document.getElementById('extracted-data');
-
+// --- Upload ---
 let uploadedFile = null;
+const pdfDrop = document.getElementById('pdf-drop');
+const pdfUpload = document.getElementById('pdf-upload');
+const reuploadBtn = document.getElementById('reupload-btn');
+const pdfPreview = document.getElementById('pdf-preview');
+const pdfPreviewContainer = document.getElementById('pdf-preview-container');
 
-// Preview PDF
-pdfUpload.addEventListener('change', e => {
-    const file = e.target.files[0];
-    if (!file) return;
+pdfDrop.addEventListener('click', () => pdfUpload.click());
+pdfDrop.addEventListener('dragover', e => { e.preventDefault(); pdfDrop.classList.add('dragover'); });
+pdfDrop.addEventListener('dragleave', e => pdfDrop.classList.remove('dragover'));
+pdfDrop.addEventListener('drop', e => { e.preventDefault(); pdfDrop.classList.remove('dragover'); handlePDF(e.dataTransfer.files[0]); });
 
-    uploadedFile = file;
-    const fileURL = URL.createObjectURL(file);
-    pdfPreview.src = fileURL;
+reuploadBtn.addEventListener('click', () => {
+    pdfDrop.style.display = 'block';
+    pdfDrop.style.opacity = '1';
+    reuploadBtn.classList.add('hidden');
+    pdfUpload.click();
 });
 
-// Clean AI output: remove ```json```, ``` and raw_text labels
-function cleanAIOutput(text) {
-    if (!text) return '';
-    let cleaned = text.replace(/^```json\s*/, '')
-                      .replace(/^```\s*/, '')
-                      .replace(/```\s*$/, '');
-    cleaned = cleaned.replace(/^raw_text\s*:\s*/i, '');
-    return cleaned.trim();
+pdfUpload.addEventListener('change', e => handlePDF(e.target.files[0]));
+
+function handlePDF(file){
+    if(!file) return;
+    uploadedFile = file;
+    pdfPreview.src = URL.createObjectURL(file);
+    pdfPreviewContainer.classList.remove('hidden');
+
+    pdfDrop.style.transition = "all 0.4s ease";
+    pdfDrop.style.opacity = "0";
+    setTimeout(()=>{ pdfDrop.style.display="none"; reuploadBtn.classList.remove('hidden'); },400);
 }
 
-// Analyze PDF
-analyzeBtn.addEventListener('click', async () => {
-    if (!uploadedFile) {
-        alert("Please upload a PDF first!");
-        return;
-    }
+// --- Toggle PDF Preview ---
+const togglePreviewBtn = document.getElementById('toggle-preview');
+togglePreviewBtn.addEventListener('click', () => {
+    if(!uploadedFile){ alert("Please select a PDF first!"); return; }
+    pdfPreviewContainer.classList.toggle('hidden');
+});
+
+// --- Tabs ---
+const tabExtracted = document.getElementById('tab-extracted');
+const tabAttachments = document.getElementById('tab-attachments');
+const contentExtracted = document.getElementById('content-extracted');
+const contentAttachments = document.getElementById('content-attachments');
+
+tabExtracted.addEventListener('click', () => {
+    tabExtracted.classList.add('active');
+    tabAttachments.classList.remove('active');
+    contentExtracted.classList.remove('hidden');
+    contentAttachments.classList.add('hidden');
+});
+tabAttachments.addEventListener('click', () => {
+    tabAttachments.classList.add('active');
+    tabExtracted.classList.remove('active');
+    contentAttachments.classList.remove('hidden');
+    contentExtracted.classList.add('hidden');
+});
+
+// --- Analyze PDF ---
+const analyzeBtn = document.getElementById('analyze-btn');
+const analyzeLoader = document.getElementById('analyze-loader');
+const analyzeStatus = document.getElementById('analyze-status');
+const extractedDataContainer = document.getElementById('extracted-data');
+const attachmentsList = document.getElementById('attachments-list');
+let attachmentsFiles = {};
+
+analyzeBtn.addEventListener('click', async ()=> {
+    if(!uploadedFile){ alert("Please upload a PDF first!"); return; }
+
+    extractedDataContainer.innerHTML = '';
+    attachmentsList.innerHTML = '';
+    attachmentsFiles = {};
+
+    analyzeLoader.style.display = 'inline-block';
+    analyzeStatus.textContent = "Analyzing PDF...";
 
     const formData = new FormData();
     formData.append('pdf_file', uploadedFile);
 
-    extractedDataContainer.innerHTML = "Analyzing PDF... Please wait.";
-
-    try {
-        const res = await fetch('/analyze', { method: 'POST', body: formData });
+    try{
+        const res = await fetch('/analyze',{method:'POST', body:formData});
         const data = await res.json();
 
-        if (data.error) {
-            extractedDataContainer.innerHTML = "Error: " + data.error;
-        } else {
-            // Extract the raw AI output
-            let aiOutput = data.extracted_data.raw_text || data.extracted_data;
-            if (typeof aiOutput === 'string') {
-                aiOutput = cleanAIOutput(aiOutput);
-                try {
-                    aiOutput = JSON.parse(aiOutput);
-                } catch(e) {
-                    console.error("Failed to parse AI output:", e);
-                    extractedDataContainer.innerHTML = "Could not parse AI output.";
-                    return;
-                }
-            }
-            renderStructuredData(aiOutput);
+        analyzeLoader.style.display = 'none';
+        analyzeStatus.textContent = "";
+
+        if(data.error){
+            extractedDataContainer.innerHTML = `<div class='text-red-600'>Error: ${data.error}</div>`;
+            return;
         }
-    } catch(err) {
-        extractedDataContainer.innerHTML = "Error: " + err.message;
+
+        let aiOutput = data.extracted_data.raw_text || data.extracted_data;
+        if(typeof aiOutput==='string'){
+            aiOutput = aiOutput.replace(/^```json\s*|```$/g,'');
+            try{ aiOutput = JSON.parse(aiOutput); } 
+            catch(e){ extractedDataContainer.innerHTML="<div class='text-red-600'>Could not parse AI output.</div>"; return; }
+        }
+
+        renderTree(aiOutput);
+        renderAttachmentFields(aiOutput);
+
+    } catch(err){
+        extractedDataContainer.innerHTML=`<div class='text-red-600'>Error: ${err.message}</div>`;
+        analyzeLoader.style.display = 'none';
+        analyzeStatus.textContent="";
     }
 });
 
-// Recursive function to render structured collapsible data
-function renderStructuredData(data) {
-    extractedDataContainer.innerHTML = '';
-
-    function createNode(key, value) {
-        const container = document.createElement('div');
-        container.className = "border-l ml-2 pl-2 mb-1";
+// --- Tree Renderer ---
+function renderTree(data, parent = extractedDataContainer){
+    function createNode(key, value){
+        const node = document.createElement('div');
+        node.className = 'tree-node';
 
         const keyEl = document.createElement('div');
-        keyEl.className = "font-semibold cursor-pointer hover:text-blue-600";
+        keyEl.className = 'tree-key';
         keyEl.textContent = key;
+        node.appendChild(keyEl);
 
-        container.appendChild(keyEl);
-
-        if (typeof value === 'object' && value !== null) {
+        if(value !== null && typeof value === 'object'){
             const childrenContainer = document.createElement('div');
-            childrenContainer.className = "ml-4 mt-1 hidden";
+            childrenContainer.style.marginLeft = '12px';
+            childrenContainer.style.display = 'block'; // initially expanded
 
-            if (Array.isArray(value)) {
-                value.forEach((item, idx) => {
-                    const childNode = createNode(idx + 1, item);
-                    childrenContainer.appendChild(childNode);
-                });
+            if(Array.isArray(value)){
+                value.forEach((item,idx)=> childrenContainer.appendChild(createNode(idx+1,item)));
             } else {
-                for (const [k, v] of Object.entries(value)) {
-                    const childNode = createNode(k, v);
-                    childrenContainer.appendChild(childNode);
-                }
+                Object.entries(value).forEach(([k,v])=> childrenContainer.appendChild(createNode(k,v)));
             }
 
-            keyEl.addEventListener('click', () => {
-                childrenContainer.classList.toggle('hidden');
+            keyEl.addEventListener('click', ()=> {
+                childrenContainer.style.display = childrenContainer.style.display === 'none' ? 'block' : 'none';
             });
 
-            container.appendChild(childrenContainer);
+            node.appendChild(childrenContainer);
         } else {
-            // Leaf node
-            const valueEl = document.createElement('div');
-            valueEl.className = "ml-2 text-gray-700 break-words";
-            valueEl.textContent = value !== null ? value : "null";
-            container.appendChild(valueEl);
-
-            // Optional: click to highlight in PDF
-            container.addEventListener('click', () => {
-                console.log("Clicked field:", key, "Value:", value);
-            });
+            const valEl = document.createElement('div');
+            valEl.className = 'tree-value';
+            valEl.textContent = value;
+            node.appendChild(valEl);
         }
 
-        return container;
+        return node;
     }
 
-    for (const [key, value] of Object.entries(data)) {
-        extractedDataContainer.appendChild(createNode(key, value));
-    }
+    Object.entries(data).forEach(([k,v]) => parent.appendChild(createNode(k,v)));
 }
+
+// --- Render Attachments ---
+function renderAttachmentFields(data){
+    attachmentsList.innerHTML='';
+    attachmentsFiles={};
+
+    const attachmentsNeeded = data.attachments_needed || (data.requirements && data.requirements.attachments_needed);
+    if(!attachmentsNeeded || attachmentsNeeded.length===0){
+        attachmentsList.innerHTML="<div class='text-gray-500'>No attachments required.</div>";
+        return;
+    }
+
+    attachmentsNeeded.forEach((item,idx)=>{
+        const div=document.createElement('div');
+        div.className="file-item flex flex-col";
+
+        const label=document.createElement('label');
+        label.textContent=item;
+        label.className="font-semibold text-gray-700";
+
+        const input=document.createElement('input');
+        input.type='file';
+        input.name=`attachment_${idx}`;
+        input.addEventListener('change', e=>{
+            attachmentsFiles[item] = e.target.files[0];
+        });
+
+        div.appendChild(label);
+        div.appendChild(input);
+        attachmentsList.appendChild(div);
+    });
+}
+
+// // --- Submit Attachments ---
+// const attachmentsForm = document.getElementById('attachments-form');
+// attachmentsForm.addEventListener('submit', async e=>{
+//     e.preventDefault();
+//     const formData = new FormData();
+//     for(const [key,file] of Object.entries(attachmentsFiles)){
+//         if(file) formData.append(key,file);
+//     }
+//     formData.append('document_title','Document');
+
+//     try{
+//         const res = await fetch('/submit_attachments',{method:'POST',body:formData});
+//         const result = await res.json();
+//         if(result.success) alert("✅ Attachments submitted successfully!");
+//         else alert("❌ Error: " + (result.error || 'Unknown'));
+//     } catch(err){
+//         alert("Error: "+err.message);
+//     }
+// });
 </script>
 {% endblock %}
