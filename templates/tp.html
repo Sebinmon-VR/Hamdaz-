@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+
+{% block content %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/3.3.2/tailwind.min.css">
+
+<div class="flex h-screen">
+    <!-- Left Panel: PDF Preview -->
+    <div class="w-1/2 border-r p-4 flex flex-col">
+        <input type="file" id="pdf-upload" accept="application/pdf" class="mb-4 p-2 border rounded">
+        <button id="analyze-btn" class="mb-4 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">Analyze PDF</button>
+        <div class="flex-1 overflow-auto border rounded">
+            <iframe id="pdf-preview" class="w-full h-full"></iframe>
+        </div>
+    </div>
+
+    <!-- Right Panel: Extracted Data -->
+    <div class="w-1/2 p-4 overflow-auto">
+        <h2 class="text-2xl font-bold mb-4">Extracted Data</h2>
+        <div id="extracted-data" class="space-y-2"></div>
+    </div>
+</div>
+
+<script>
+// Elements
+const pdfUpload = document.getElementById('pdf-upload');
+const analyzeBtn = document.getElementById('analyze-btn');
+const pdfPreview = document.getElementById('pdf-preview');
+const extractedDataContainer = document.getElementById('extracted-data');
+
+let uploadedFile = null;
+
+// Preview PDF
+pdfUpload.addEventListener('change', e => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    uploadedFile = file;
+    const fileURL = URL.createObjectURL(file);
+    pdfPreview.src = fileURL;
+});
+
+// Clean AI output: remove ```json```, ``` and raw_text labels
+function cleanAIOutput(text) {
+    if (!text) return '';
+    let cleaned = text.replace(/^```json\s*/, '')
+                      .replace(/^```\s*/, '')
+                      .replace(/```\s*$/, '');
+    cleaned = cleaned.replace(/^raw_text\s*:\s*/i, '');
+    return cleaned.trim();
+}
+
+// Analyze PDF
+analyzeBtn.addEventListener('click', async () => {
+    if (!uploadedFile) {
+        alert("Please upload a PDF first!");
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('pdf_file', uploadedFile);
+
+    extractedDataContainer.innerHTML = "Analyzing PDF... Please wait.";
+
+    try {
+        const res = await fetch('/analyze', { method: 'POST', body: formData });
+        const data = await res.json();
+
+        if (data.error) {
+            extractedDataContainer.innerHTML = "Error: " + data.error;
+        } else {
+            // Extract the raw AI output
+            let aiOutput = data.extracted_data.raw_text || data.extracted_data;
+            if (typeof aiOutput === 'string') {
+                aiOutput = cleanAIOutput(aiOutput);
+                try {
+                    aiOutput = JSON.parse(aiOutput);
+                } catch(e) {
+                    console.error("Failed to parse AI output:", e);
+                    extractedDataContainer.innerHTML = "Could not parse AI output.";
+                    return;
+                }
+            }
+            renderStructuredData(aiOutput);
+        }
+    } catch(err) {
+        extractedDataContainer.innerHTML = "Error: " + err.message;
+    }
+});
+
+// Recursive function to render structured collapsible data
+function renderStructuredData(data) {
+    extractedDataContainer.innerHTML = '';
+
+    function createNode(key, value) {
+        const container = document.createElement('div');
+        container.className = "border-l ml-2 pl-2 mb-1";
+
+        const keyEl = document.createElement('div');
+        keyEl.className = "font-semibold cursor-pointer hover:text-blue-600";
+        keyEl.textContent = key;
+
+        container.appendChild(keyEl);
+
+        if (typeof value === 'object' && value !== null) {
+            const childrenContainer = document.createElement('div');
+            childrenContainer.className = "ml-4 mt-1 hidden";
+
+            if (Array.isArray(value)) {
+                value.forEach((item, idx) => {
+                    const childNode = createNode(idx + 1, item);
+                    childrenContainer.appendChild(childNode);
+                });
+            } else {
+                for (const [k, v] of Object.entries(value)) {
+                    const childNode = createNode(k, v);
+                    childrenContainer.appendChild(childNode);
+                }
+            }
+
+            keyEl.addEventListener('click', () => {
+                childrenContainer.classList.toggle('hidden');
+            });
+
+            container.appendChild(childrenContainer);
+        } else {
+            // Leaf node
+            const valueEl = document.createElement('div');
+            valueEl.className = "ml-2 text-gray-700 break-words";
+            valueEl.textContent = value !== null ? value : "null";
+            container.appendChild(valueEl);
+
+            // Optional: click to highlight in PDF
+            container.addEventListener('click', () => {
+                console.log("Clicked field:", key, "Value:", value);
+            });
+        }
+
+        return container;
+    }
+
+    for (const [key, value] of Object.entries(data)) {
+        extractedDataContainer.appendChild(createNode(key, value));
+    }
+}
+</script>
+{% endblock %}

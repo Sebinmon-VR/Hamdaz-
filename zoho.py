@@ -238,30 +238,3 @@ def get_customer_name_from_zoho(customer_id):
         print(f"⚠️ Error fetching customer name from Zoho: {e}")
         return "Unknown Customer"
 
-
-# =======================
-# MAIN
-# =======================
-# if __name__ == "__main__":
-#     try:
-#         # items = fetch_items()
-#         # print("Items DataFrame:")
-#         # print(items)
-
-#         # customers = fetch_customers()
-#         # print("Customers DataFrame:")
-#         # print(customers)
-
-#         # organizations = fetch_organizations()
-#         # print("Organizations DataFrame:")
-#         # print(organizations)
-        
-#         data=structure_customers_data(fetch_customers())
-#         print(data)
-        
-        
-        
-        
-        
-#     except Exception as e:
-#         print("Error:", e)

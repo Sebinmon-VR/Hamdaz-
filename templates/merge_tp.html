@@ -1,0 +1,186 @@
+{% extends "base.html" %}
+
+{% block content %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/3.3.2/tailwind.min.css">
+
+<div class="max-w-4xl mx-auto p-6">
+    <h1 class="text-3xl font-bold mb-6">Technical Proposal</h1>
+
+    <!-- Upload Box -->
+    <div class="mb-6">
+        <label class="block mb-2 font-semibold">Upload PDFs</label>
+        <div id="upload-box" class="relative border-2 border-dashed border-gray-400 rounded-lg p-6 flex flex-col items-center justify-center cursor-pointer hover:border-blue-500 transition-colors">
+            <div class="text-6xl mb-4 text-gray-400">📁</div>
+            <p class="text-gray-600 text-center">Drag & Drop PDFs here or click to select files</p>
+            <input type="file" id="pdf-input" accept="application/pdf" multiple class="absolute w-full h-full opacity-0 cursor-pointer">
+        </div>
+    </div>
+
+    <!-- Default PDF checkbox -->
+    <div class="mb-6 flex items-center gap-2">
+        <input type="checkbox" id="include-default" class="h-4 w-4">
+        <label for="include-default" class="font-medium">Include Default PDF</label>
+    </div>
+
+    <h2 class="text-xl font-semibold mb-2">Arrange PDFs</h2>
+    <div id="pdf-list" class="grid grid-cols-3 gap-4"></div>
+
+    <button id="merge-btn" class="mt-6 bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700">Merge PDFs</button>
+</div>
+
+<style>
+.pdf-card {
+    transition: transform 0.3s ease, opacity 0.3s ease;
+}
+.pdf-card.dragging {
+    opacity: 0.5;
+}
+.remove-btn {
+    transition: transform 0.2s, color 0.2s;
+}
+.remove-btn:hover {
+    transform: scale(1.2);
+    color: red;
+}
+</style>
+
+<script>
+let pdfList = []; // unified list of PDFs including default
+let defaultIncluded = false;
+
+const input = document.getElementById('pdf-input');
+const list = document.getElementById('pdf-list');
+const mergeBtn = document.getElementById('merge-btn');
+const uploadBox = document.getElementById('upload-box');
+const includeDefault = document.getElementById('include-default');
+
+let dragged = null;
+
+// Handle file selection
+input.addEventListener('change', e => {
+    pdfList.push(...Array.from(e.target.files).map(f => ({ file: f, name: f.name, isDefault: false })));
+    renderList();
+});
+
+// Drag-and-drop upload support
+uploadBox.addEventListener('dragover', e => {
+    e.preventDefault();
+    uploadBox.classList.add('border-blue-500', 'bg-blue-50');
+});
+uploadBox.addEventListener('dragleave', e => {
+    uploadBox.classList.remove('border-blue-500', 'bg-blue-50');
+});
+uploadBox.addEventListener('drop', e => {
+    e.preventDefault();
+    uploadBox.classList.remove('border-blue-500', 'bg-blue-50');
+    const files = Array.from(e.dataTransfer.files).filter(f => f.type === "application/pdf");
+    pdfList.push(...files.map(f => ({ file: f, name: f.name, isDefault: false })));
+    renderList();
+});
+
+// Include default PDF checkbox
+includeDefault.addEventListener('change', () => {
+    defaultIncluded = includeDefault.checked;
+    renderList();
+});
+
+// Render PDF cards
+function renderList() {
+    list.innerHTML = '';
+
+    // Remove old default if unchecked
+    pdfList = pdfList.filter(p => !p.isDefault || defaultIncluded);
+
+    // Add default PDF at the end if included and not already in list
+    if (defaultIncluded && !pdfList.some(p => p.isDefault)) {
+        pdfList.push({ file: null, name: 'Default PDF', isDefault: true });
+    }
+
+    pdfList.forEach((pdf, index) => {
+        const card = createCard(pdf.name, index, pdf.isDefault);
+        list.appendChild(card);
+    });
+
+    // Reflect checkbox state
+    includeDefault.checked = pdfList.some(p => p.isDefault);
+}
+
+function createCard(name, index, isDefault) {
+    const card = document.createElement('div');
+    card.className = "pdf-card p-4 border rounded shadow cursor-move bg-white flex flex-col items-center justify-center relative";
+    card.draggable = true;
+    card.dataset.index = index;
+
+    const icon = document.createElement('div');
+    icon.className = "text-5xl mb-2";
+    icon.innerHTML = "📄";
+
+    const label = document.createElement('div');
+    label.textContent = name;
+    label.className = "text-center text-sm break-words";
+
+    const removeBtn = document.createElement('button');
+    removeBtn.innerHTML = "&times;";
+    removeBtn.className = "remove-btn absolute top-1 right-1 text-gray-500 font-bold";
+    removeBtn.addEventListener('click', () => {
+        if (isDefault) defaultIncluded = false;
+        pdfList.splice(index, 1);
+        renderList();
+    });
+
+    card.appendChild(icon);
+    card.appendChild(label);
+    card.appendChild(removeBtn);
+
+    // Drag events
+    card.addEventListener('dragstart', () => { dragged = card; card.classList.add('dragging'); });
+    card.addEventListener('dragend', () => { card.classList.remove('dragging'); dragged = null; });
+
+    card.addEventListener('dragover', e => e.preventDefault());
+    card.addEventListener('drop', e => {
+        e.preventDefault();
+        if (!dragged || dragged === card) return;
+
+        const children = Array.from(list.children);
+        const fromIndex = children.indexOf(dragged);
+        const toIndex = children.indexOf(card);
+
+        // Move item in pdfList array
+        const moved = pdfList.splice(fromIndex, 1)[0];
+        pdfList.splice(toIndex, 0, moved);
+
+        renderList();
+    });
+
+    return card;
+}
+
+// Merge PDFs in-memory
+mergeBtn.addEventListener('click', () => {
+    const formData = new FormData();
+    pdfList.forEach(p => {
+        if (p.file) formData.append('pdf_files', p.file);
+    });
+
+    const defaultIndex = pdfList.findIndex(p => p.isDefault);
+    if (defaultIndex !== -1) {
+        formData.append('include_default', 'on');
+        formData.append('default_position', defaultIndex);
+    }
+
+    fetch('/merge', { method: 'POST', body: formData })
+        .then(resp => resp.blob())
+        .then(blob => {
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'merged.pdf';
+            a.click();
+            window.URL.revokeObjectURL(url);
+        });
+});
+
+// Optionally include default PDF initially
+renderList();
+</script>
+{% endblock %}

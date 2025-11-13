@@ -1,5 +1,5 @@
 import email
-from flask import Flask, redirect, url_for, session, request, render_template, jsonify ,abort
+from flask import Flask, redirect, url_for, session, request, render_template, jsonify ,abort ,send_file
 from msal import ConfidentialClientApplication
 import requests
 import os
@@ -113,6 +113,9 @@ def background_updater():
 
             # Fetch latest SharePoint list
             tasks = fetch_sharepoint_list(SITE_DOMAIN, SITE_PATH, LIST_NAME)
+            list_columns= get_list_columns(SITE_DOMAIN , SITE_PATH , LIST_NAME)
+            
+            
             df = items_to_dataframe(tasks)
             user_analytics = generate_user_analytics(df, exclude_users=EXCLUDED_USERS)
 
@@ -388,9 +391,6 @@ def competitor_profile(competitor_name, product_name, manufacturer):
         other_products=other_products,
         user=user
     )
-
-
-
 
 @app.route("/cs")
 def cs():
@@ -837,9 +837,14 @@ def approvals():
     return render_template("pages/quote_decision.html", user=user, quote_items=quote_items)
 
 # ==============================================================
-
 # Global chat histories
 chat_histories = {}
+
+# Helper to get tasks for a user
+def get_tasks_for_user(username):
+    now_utc = pd.Timestamp.utcnow()
+    user_tasks = [t for t in tasks if t.get("AssignedTo", "").replace(" ", "") == username]
+    return user_tasks
 
 
 @app.route("/chatbot")
@@ -867,56 +872,68 @@ def ask_chatbot():
 
     data = request.json
     user_prompt = data.get("message")
-    period_type = data.get("period", "month")  # 'month' or 'all'
+    period_type = data.get("period", "month")
 
-    if email not in chat_histories:
-        chat_histories[email] = [{"role": "system", "content": "You are a helpful assistant."}]
-
-    chat_history = chat_histories[email]
-
+    # Prepare the data message
     if is_admin_user:
-        # Fetch both all-time and period-specific analytics
         overall_analytics, per_user_analytics = get_analytics_data(df, period_type='all')
         period_analytics, period_per_user = get_analytics_data(df, period_type=period_type)
         
         username = user.get("displayName", "").replace(" ", "")
         user_analytics_specific = get_user_analytics_specific(df, username)
+
         now_utc = pd.Timestamp.utcnow()
         ongoing_filtered = [
             t for t in user_analytics_specific['OngoingTasks']
-            if pd.to_datetime(t['BCD']) > now_utc and t.get('SubmissionStatus','') != 'Submitted'
+            if pd.to_datetime(t['BCD']) > now_utc and t.get('SubmissionStatus', '') != 'Submitted'
         ]
         user_analytics_specific['OngoingTasks'] = ongoing_filtered
-        ongoing_tasks_count = len(ongoing_filtered)
 
         data_message = (
-            f"You have access to all users' data.\n\n"
+            "You have access to all users' data.\n\n"
             f"📊 All-time Analytics: {json.dumps(per_user_analytics, default=str)}\n\n"
             f"📊 {period_type.capitalize()} Analytics: {json.dumps(period_per_user, default=str)}\n\n"
-            f"Active tasks for user {username}: {ongoing_tasks_count}"
+            f"🗂️ ALL TASKS DATA (use this for answering task-related queries):\n"
+            f"{json.dumps(tasks, default=str)}"
         )
     else:
-        # Non-admin: limit to their own data
         username = user.get("displayName", "").replace(" ", "")
-        user_tasks = get_user_analytics_specific(df, username)
-        data_message = f"You only have access to this user's data: {json.dumps(user_tasks, default=str)}"
+        user_tasks = get_tasks_for_user(username)
+        data_message = (
+            f"You only have access to this user's task data:\n"
+            f"{json.dumps(user_tasks, default=str)}"
+        )
 
-    messages_for_ai = [{"role": "system", "content": data_message}] + chat_history[1:] + [{"role": "user", "content": user_prompt}]
+    # Only use last summary
+    last_summary = session.get(f"{email}_last_summary", "")
+    messages_for_ai = [{"role": "system", "content": data_message}]
+    if last_summary:
+        messages_for_ai.append({"role": "system", "content": f"Summary of previous conversation: {last_summary}"})
+    messages_for_ai.append({"role": "user", "content": user_prompt})
 
-    # OpenAI call
+    # OpenAI call with max_tokens increased
     response = openai.ChatCompletion.create(
         model="gpt-4o",
         messages=messages_for_ai,
-        temperature=0.7
+        temperature=0.7,
+        max_tokens=5000  # Increase for long responses
     )
-
     reply = response.choices[0].message.content
 
-    chat_history.append({"role": "user", "content": user_prompt})
-    chat_history.append({"role": "assistant", "content": reply})
-    chat_histories[email] = chat_history
+    # Generate short summary for session memory
+    summary_response = openai.ChatCompletion.create(
+        model="gpt-4o",
+        messages=[
+            {"role": "system", "content": "Summarize the following conversation in 1-2 sentences."},
+            {"role": "user", "content": f"User: {user_prompt}\nAssistant: {reply}"}
+        ],
+        temperature=0.5,
+        max_tokens=100
+    )
+    last_summary = summary_response.choices[0].message.content
+    session[f"{email}_last_summary"] = last_summary
 
-    return jsonify({"reply": reply})
+    return jsonify({"reply": reply, "summary": last_summary})
 
 
 # ==============================================================
@@ -944,6 +961,104 @@ def admin_report():
     return render_template("pages/admin_report.html", user=user, overall_analytics=overall_analytics, per_user_analytics=per_user_analytics)
 
 # ==============================================================
+from PyPDF2 import PdfMerger
+import io
+DEFAULT_PDF_PATH = 'default.pdf'
+
+@app.route('/merge', methods=['GET', 'POST'])
+def merge():
+    if request.method == 'POST':
+        # Get PDFs from the form
+        uploaded_files = request.files.getlist('pdf_files')
+
+        # Prepare in-memory PDFs
+        pdf_streams = []
+        for f in uploaded_files:
+            pdf_streams.append(io.BytesIO(f.read()))
+
+        # Include default PDF if requested
+        include_default = request.form.get('include_default')
+        if include_default == 'on':
+            default_pdf_position = int(request.form.get('default_position', 0))
+            with open(DEFAULT_PDF_PATH, 'rb') as df:
+                default_pdf_stream = io.BytesIO(df.read())
+            pdf_streams.insert(default_pdf_position, default_pdf_stream)
+
+        # Merge PDFs
+        merger = PdfMerger()
+        for pdf_io in pdf_streams:
+            merger.append(pdf_io)
+
+        output_pdf = io.BytesIO()
+        merger.write(output_pdf)
+        merger.close()
+        output_pdf.seek(0)
+
+        return send_file(output_pdf, as_attachment=True, download_name='merged.pdf', mimetype='application/pdf')
+
+    return render_template('merge_tp.html' , user=session.get("user"))
+
+
+# Make sure to set your OpenAI API key
+openai.api_key = os.getenv("OPENAI_API_KEY")
+
+
+import PyPDF2
+
+@app.route("/tp")
+def tp():
+    return render_template("tp.html", user=session.get("user"))
+
+@app.route('/analyze', methods=['POST'])
+def analyze_document():
+    if 'pdf_file' not in request.files:
+        return jsonify({"error": "No PDF file uploaded"}), 400
+
+    pdf_file = request.files['pdf_file']
+
+    # Step 1: Extract text from PDF
+    pdf_reader = PyPDF2.PdfReader(pdf_file)
+    text_content = ""
+    for page in pdf_reader.pages:
+        page_text = page.extract_text()
+        if page_text:
+            text_content += page_text + "\n"
+
+    if not text_content.strip():
+        return jsonify({"error": "No text could be extracted from PDF"}), 400
+
+    # Step 2: Send text to ALLM
+    prompt = f"""
+    Extract all relevant details from the following document and return in JSON format.
+    Include headings, tables, key points, and any technical specifications.
+    If a field is missing, set it as null.
+
+    Document Text:
+    {text_content}
+    """
+
+    try:
+        response = openai.ChatCompletion.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "You are an expert document analyzer."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0
+        )
+
+        ai_output = response['choices'][0]['message']['content']
+
+        import json
+        try:
+            extracted_data = json.loads(ai_output)
+        except:
+            extracted_data = {"raw_text": ai_output}
+
+        return jsonify({"extracted_data": extracted_data})
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 # ==============================================================
 # START FLASK + BACKGROUND UPDATER

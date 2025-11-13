@@ -15,6 +15,7 @@ import base64
 import json
 import openpyxl
 from openpyxl.utils import get_column_letter
+import openai
 # ----------------------------
 # Load environment variables
 # ----------------------------
@@ -996,6 +997,61 @@ def get_list_columns(site_domain, site_path, list_name):
     for col in columns:
         print(f"Display Name: {col['displayName']}, Internal Name: {col['name']}")
     return columns
+
+
+
+
+def generate_sharepoint_filter_endpoint(site_domain, site_path, list_name, columns, user_prompt):
+    """
+    Ask the LLM to generate a SharePoint API endpoint with $filter query
+    based on the columns and the user's natural language prompt.
+
+    Returns:
+        str: Graph API endpoint URL (relative to site) with filters.
+    """
+
+    system_msg = (
+        "You are an expert at generating Microsoft Graph API queries for SharePoint lists. "
+        "Columns available: " + ", ".join(columns) + ".\n"
+        "Given the user's request, generate the endpoint URL for fetching the list items with proper $filter parameters. "
+        "Return only the URL string, do not include extra text.\n"
+        "Use ISO 8601 dates where needed, and use logical operators eq, ge, le, etc. "
+        "Example: /sites/{site_id}/lists/{list_id}/items?$filter=Status eq 'Pending' and AssignedTo eq 'John'"
+    )
+
+    messages = [
+        {"role": "system", "content": system_msg},
+        {"role": "user", "content": user_prompt}
+    ]
+
+    response = openai.ChatCompletion.create(
+        model="gpt-4o",
+        messages=messages,
+        temperature=0,
+        max_tokens=2000
+    )
+
+    endpoint_url = response.choices[0].message.content.strip()
+    return endpoint_url
+
+
+
+
+def fetch_filtered_sharepoint_data(access_token, endpoint_url):
+    """
+    Calls the LLM-generated endpoint to fetch filtered SharePoint list items.
+    """
+    base_url = "https://graph.microsoft.com/v1.0"
+    full_url = f"{base_url}{endpoint_url}"
+
+    headers = {"Authorization": f"Bearer {access_token}"}
+    resp = requests.get(full_url, headers=headers)
+    resp.raise_for_status()
+    items = resp.json().get("value", [])
+    return items
+
+
+
 
 
 

@@ -82,6 +82,9 @@
             <li><a href="orders"><img src="/static/icons/orders.png" alt=""> Orders</a></li>
             <li><a href="payments"><img src="/static/icons/payments.png" alt=""> Payments</a></li>
             {% endif %}
+            <div class="line"><span>Tools</span></div>
+            <li><a href="/merge"><img src="/static/icons/merge.png" alt="">Merge Docs</a></li>
+            <li><a href="/tp"><img src="/static/icons/tp.png" alt="">Technical Proposal</a></li>
 
 
             {% if is_approver(user.mail or user.userPrincipalName) %}
@@ -96,11 +99,13 @@
             <li><a href="/quote_decision"><img src="/static/icons/quotes.png" alt="">View Quotes</a></li>
             {% endif %}
 
-
             <div class="line"><span>Partnership</span></div>
             <li><a href="/vendors"><img src="/static/icons/partnership.png" alt="">Vendors</a></li>
             <li><a href="customers"><img src="/static/icons/customer.png" alt=""> Customer</a></li>
             <li><a href="businesscard"><img src="/static/icons/businesscard.png" alt=""> Business Cards</a></li>
+
+
+
 
 
             <div class="line"><span>Reports</span></div>
