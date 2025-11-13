@@ -2,147 +2,34 @@
 
 {% block content %}
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/3.3.2/tailwind.min.css">
+<script src="https://unpkg.com/pdf-lib/dist/pdf-lib.min.js"></script>
 
 <style>
-body {
-    background-color: #ffffff;
-    color: #111111;
-    font-family: 'Segoe UI', sans-serif;
-}
-
-/* Upload Box */
-.drag-drop {
-    border: 2px dashed #cbd5e1;
-    border-radius: 8px;
-    padding: 20px;
-    text-align: center;
-    cursor: pointer;
-    transition: all 0.4s ease;
-    font-size: 1rem;
-    color: #475569;
-    width: 220px;
-    background-color: #f8fafc;
-}
-.drag-drop.dragover {
-    background-color: #e2e8f0;
-    border-color: #94a3b8;
-}
-
-/* Reupload Button */
-.reupload-btn {
-    background-color: #1f2937;
-    color: #f9fafb;
-    border: none;
-    border-radius: 6px;
-    padding: 8px 12px;
-    cursor: pointer;
-    transition: all 0.4s ease;
-}
-.reupload-btn:hover {
-    background-color: #374151;
-}
-
-/* Buttons */
-button {
-    background-color: #1f2937;
-    color: #f9fafb;
-    border-radius: 6px;
-    padding: 8px 14px;
-    cursor: pointer;
-    transition: all 0.3s ease;
-}
-button:hover {
-    background-color: #374151;
-}
-
-/* Tabs */
-.tab-button {
-    padding: 0.5rem 1rem;
-    cursor: pointer;
-    border-bottom: 2px solid transparent;
-    font-weight: 500;
-}
-.tab-button.active {
-    border-color: #111827;
-    font-weight: 600;
-    color: #111827;
-}
-
-/* Panels */
-.vscode-panel {
-    background-color: #f8fafc;
-    border: 1px solid #e2e8f0;
-    border-radius: 8px;
-    padding: 16px;
-    overflow-y: auto;
-}
-.scroll-container {
-    max-height: 60vh;
-    overflow-y: auto;
-}
-
-/* Loader */
-.loader {
-    border: 4px solid #f3f3f3;
-    border-top: 4px solid #1f2937;
-    border-radius: 50%;
-    width: 24px;
-    height: 24px;
-    animation: spin 1s linear infinite;
-    display: none;
-    margin-left: 8px;
-}
-@keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-}
-
-/* Attachment items */
-.file-item {
-    display: flex;
-    flex-direction: column;
-    margin-bottom: 8px;
-}
-.file-item input {
-    margin-top: 4px;
-}
-.file-item button {
-    background: transparent;
-    border: none;
-    color: #ef4444;
-    font-weight: bold;
-    cursor: pointer;
-}
-
-/* Minimalist Tree */
-.tree-node {
-    margin-left: 16px;
-    line-height: 1.5rem;
-}
-.tree-key {
-    font-weight: 600;
-    cursor: pointer;
-    color: #111827;
-}
-.tree-key:hover {
-    text-decoration: underline;
-}
-.tree-value {
-    margin-left: 12px;
-    color: #475569;
-    word-break: break-word;
-}
+body { background-color: #ffffff; color: #111111; font-family: 'Segoe UI', sans-serif; }
+.drag-drop { border: 2px dashed #cbd5e1; border-radius: 8px; padding: 20px; text-align: center; cursor: pointer; transition: all 0.4s ease; font-size: 1rem; color: #475569; width: 220px; background-color: #f8fafc; }
+.drag-drop.dragover { background-color: #e2e8f0; border-color: #94a3b8; }
+.reupload-btn, button { background-color: #1f2937; color: #f9fafb; border-radius: 6px; padding: 8px 12px; cursor: pointer; transition: all 0.4s ease; }
+.reupload-btn:hover, button:hover { background-color: #374151; }
+.tab-button { padding: 0.5rem 1rem; cursor: pointer; border-bottom: 2px solid transparent; font-weight: 500; }
+.tab-button.active { border-color: #111827; font-weight: 600; color: #111827; }
+.vscode-panel { background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; overflow-y: auto; }
+.scroll-container { max-height: 60vh; overflow-y: auto; }
+.loader { border: 4px solid #f3f3f3; border-top: 4px solid #1f2937; border-radius: 50%; width: 24px; height: 24px; animation: spin 1s linear infinite; display: none; margin-left: 8px; }
+@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+.tree-node { margin-left: 16px; line-height: 1.5rem; }
+.tree-key { font-weight: 600; cursor: pointer; color: #111827; }
+.tree-key:hover { text-decoration: underline; }
+.tree-value { margin-left: 12px; color: #475569; word-break: break-word; }
+.download-btn { background-color: #10b981; color: white; padding: 6px 12px; border-radius: 6px; margin-top: 4px; cursor: pointer; transition: all 0.3s ease; }
+.download-btn:hover { background-color: #059669; }
 </style>
 
 <div class="flex flex-col space-y-6 p-6 max-w-6xl mx-auto">
 
     <!-- Upload + Buttons -->
     <div class="flex items-center space-x-4">
-        <div id="pdf-drop" class="drag-drop">
-            Drag & Drop PDF or Click
-        </div>
+        <div id="pdf-drop" class="drag-drop">Drag & Drop PDF or Click</div>
         <button id="reupload-btn" class="reupload-btn hidden">⟳ Re-upload</button>
-
         <button id="toggle-preview">Toggle PDF Preview</button>
         <button id="analyze-btn">Analyze PDF</button>
     </div>
@@ -162,22 +49,61 @@ button:hover {
     <div class="flex space-x-4 mt-6 border-b">
         <div id="tab-extracted" class="tab-button active">Extracted Data</div>
         <div id="tab-attachments" class="tab-button">Attachments</div>
+        <div id="tab-tech" class="tab-button">Technical Proposal</div>
+        <div id="tab-commercial" class="tab-button">Commercial Proposal</div>
     </div>
 
     <!-- Tab Content -->
     <div class="flex flex-col mt-4 space-y-4">
+
+        <!-- Extracted Data -->
         <div id="content-extracted" class="tab-content vscode-panel scroll-container">
             <div id="extracted-data" class="space-y-2"></div>
         </div>
 
+        <!-- Attachments Table -->
         <div id="content-attachments" class="tab-content vscode-panel scroll-container hidden">
-            <form id="attachments-form" class="space-y-2">
-                <div id="attachments-list"></div>
-                <div class="flex justify-center mt-2">
-                    <button type="submit">Submit Attachments</button>
-                </div>
-            </form>
+            <table class="w-full text-left border border-gray-300 rounded">
+                <thead class="bg-gray-100">
+                    <tr>
+                        <th class="p-2 border-b">Attachment</th>
+                        <th class="p-2 border-b">Upload File</th>
+                        <th class="p-2 border-b text-center">Technical Proposal (TP)</th>
+                        <th class="p-2 border-b text-center">Commercial Proposal (CP)</th>
+                    </tr>
+                </thead>
+                <tbody id="attachments-table-body"></tbody>
+            </table>
         </div>
+
+        <!-- Technical Proposal -->
+        <div id="content-tech" class="tab-content vscode-panel scroll-container hidden">
+            <div class="flex space-x-4">
+                <div id="tp-selected-files" class="w-1/2 vscode-panel scroll-container">
+                    <h3 class="font-semibold mb-2">Selected Files</h3>
+                </div>
+                <div id="tp-merged-preview" class="w-1/2 vscode-panel">
+                    <h3 class="font-semibold mb-2">Merged PDF</h3>
+                    <iframe id="tp-merged-iframe" class="w-full h-96 border rounded"></iframe>
+                    <button id="tp-download" class="download-btn">Download TP</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Commercial Proposal -->
+        <div id="content-commercial" class="tab-content vscode-panel scroll-container hidden">
+            <div class="flex space-x-4">
+                <div id="cp-selected-files" class="w-1/2 vscode-panel scroll-container">
+                    <h3 class="font-semibold mb-2">Selected Files</h3>
+                </div>
+                <div id="cp-merged-preview" class="w-1/2 vscode-panel">
+                    <h3 class="font-semibold mb-2">Merged PDF</h3>
+                    <iframe id="cp-merged-iframe" class="w-full h-96 border rounded"></iframe>
+                    <button id="cp-download" class="download-btn">Download CP</button>
+                </div>
+            </div>
+        </div>
+
     </div>
 
 </div>
@@ -198,12 +124,7 @@ pdfDrop.addEventListener('dragover', e => { e.preventDefault(); pdfDrop.classLis
 pdfDrop.addEventListener('dragleave', e => pdfDrop.classList.remove('dragover'));
 pdfDrop.addEventListener('drop', e => { e.preventDefault(); pdfDrop.classList.remove('dragover'); handlePDF(e.dataTransfer.files[0]); });
 
-reuploadBtn.addEventListener('click', () => {
-    pdfDrop.style.display = 'block';
-    pdfDrop.style.opacity = '1';
-    reuploadBtn.classList.add('hidden');
-    pdfUpload.click();
-});
+reuploadBtn.addEventListener('click', () => { pdfDrop.style.display = 'block'; pdfDrop.style.opacity = '1'; reuploadBtn.classList.add('hidden'); pdfUpload.click(); });
 
 pdfUpload.addEventListener('change', e => handlePDF(e.target.files[0]));
 
@@ -212,36 +133,28 @@ function handlePDF(file){
     uploadedFile = file;
     pdfPreview.src = URL.createObjectURL(file);
     pdfPreviewContainer.classList.remove('hidden');
-
     pdfDrop.style.transition = "all 0.4s ease";
     pdfDrop.style.opacity = "0";
     setTimeout(()=>{ pdfDrop.style.display="none"; reuploadBtn.classList.remove('hidden'); },400);
 }
 
 // --- Toggle PDF Preview ---
-const togglePreviewBtn = document.getElementById('toggle-preview');
-togglePreviewBtn.addEventListener('click', () => {
-    if(!uploadedFile){ alert("Please select a PDF first!"); return; }
+document.getElementById('toggle-preview').addEventListener('click', () => {
+    if(!uploadedFile){ alert("Please upload a PDF first!"); return; }
     pdfPreviewContainer.classList.toggle('hidden');
 });
 
 // --- Tabs ---
-const tabExtracted = document.getElementById('tab-extracted');
-const tabAttachments = document.getElementById('tab-attachments');
-const contentExtracted = document.getElementById('content-extracted');
-const contentAttachments = document.getElementById('content-attachments');
-
-tabExtracted.addEventListener('click', () => {
-    tabExtracted.classList.add('active');
-    tabAttachments.classList.remove('active');
-    contentExtracted.classList.remove('hidden');
-    contentAttachments.classList.add('hidden');
-});
-tabAttachments.addEventListener('click', () => {
-    tabAttachments.classList.add('active');
-    tabExtracted.classList.remove('active');
-    contentAttachments.classList.remove('hidden');
-    contentExtracted.classList.add('hidden');
+const tabMap = { 'tab-extracted':'content-extracted', 'tab-attachments':'content-attachments', 'tab-tech':'content-tech', 'tab-commercial':'content-commercial' };
+Object.keys(tabMap).forEach(tabId => {
+    document.getElementById(tabId).addEventListener('click', () => {
+        Object.keys(tabMap).forEach(id => {
+            document.getElementById(id).classList.remove('active');
+            document.getElementById(tabMap[id]).classList.add('hidden');
+        });
+        document.getElementById(tabId).classList.add('active');
+        document.getElementById(tabMap[tabId]).classList.remove('hidden');
+    });
 });
 
 // --- Analyze PDF ---
@@ -249,141 +162,108 @@ const analyzeBtn = document.getElementById('analyze-btn');
 const analyzeLoader = document.getElementById('analyze-loader');
 const analyzeStatus = document.getElementById('analyze-status');
 const extractedDataContainer = document.getElementById('extracted-data');
-const attachmentsList = document.getElementById('attachments-list');
 let attachmentsFiles = {};
+let mergedTPBlob = null;
+let mergedCPBlob = null;
 
 analyzeBtn.addEventListener('click', async ()=> {
     if(!uploadedFile){ alert("Please upload a PDF first!"); return; }
-
     extractedDataContainer.innerHTML = '';
-    attachmentsList.innerHTML = '';
     attachmentsFiles = {};
-
     analyzeLoader.style.display = 'inline-block';
     analyzeStatus.textContent = "Analyzing PDF...";
-
     const formData = new FormData();
     formData.append('pdf_file', uploadedFile);
 
     try{
         const res = await fetch('/analyze',{method:'POST', body:formData});
         const data = await res.json();
-
-        analyzeLoader.style.display = 'none';
-        analyzeStatus.textContent = "";
-
-        if(data.error){
-            extractedDataContainer.innerHTML = `<div class='text-red-600'>Error: ${data.error}</div>`;
-            return;
-        }
-
-        let aiOutput = data.extracted_data.raw_text || data.extracted_data;
-        if(typeof aiOutput==='string'){
-            aiOutput = aiOutput.replace(/^```json\s*|```$/g,'');
-            try{ aiOutput = JSON.parse(aiOutput); } 
-            catch(e){ extractedDataContainer.innerHTML="<div class='text-red-600'>Could not parse AI output.</div>"; return; }
-        }
-
-        renderTree(aiOutput);
-        renderAttachmentFields(aiOutput);
-
-    } catch(err){
-        extractedDataContainer.innerHTML=`<div class='text-red-600'>Error: ${err.message}</div>`;
         analyzeLoader.style.display = 'none';
         analyzeStatus.textContent="";
-    }
+        if(data.error){ extractedDataContainer.innerHTML = `<div class='text-red-600'>Error: ${data.error}</div>`; return; }
+        let aiOutput = data.extracted_data.raw_text || data.extracted_data;
+        if(typeof aiOutput==='string'){ aiOutput = aiOutput.replace(/^```json\s*|```$/g,''); try{ aiOutput = JSON.parse(aiOutput); } catch(e){ extractedDataContainer.innerHTML="<div class='text-red-600'>Could not parse AI output.</div>"; return; } }
+        renderTree(aiOutput);
+        renderAttachmentTable(aiOutput);
+    } catch(err){ extractedDataContainer.innerHTML=`<div class='text-red-600'>Error: ${err.message}</div>`; analyzeLoader.style.display = 'none'; analyzeStatus.textContent=""; }
 });
 
 // --- Tree Renderer ---
 function renderTree(data, parent = extractedDataContainer){
     function createNode(key, value){
-        const node = document.createElement('div');
-        node.className = 'tree-node';
-
-        const keyEl = document.createElement('div');
-        keyEl.className = 'tree-key';
-        keyEl.textContent = key;
-        node.appendChild(keyEl);
-
+        const node = document.createElement('div'); node.className = 'tree-node';
+        const keyEl = document.createElement('div'); keyEl.className = 'tree-key'; keyEl.textContent = key; node.appendChild(keyEl);
         if(value !== null && typeof value === 'object'){
-            const childrenContainer = document.createElement('div');
-            childrenContainer.style.marginLeft = '12px';
-            childrenContainer.style.display = 'block'; // initially expanded
-
-            if(Array.isArray(value)){
-                value.forEach((item,idx)=> childrenContainer.appendChild(createNode(idx+1,item)));
-            } else {
-                Object.entries(value).forEach(([k,v])=> childrenContainer.appendChild(createNode(k,v)));
-            }
-
-            keyEl.addEventListener('click', ()=> {
-                childrenContainer.style.display = childrenContainer.style.display === 'none' ? 'block' : 'none';
-            });
-
+            const childrenContainer = document.createElement('div'); childrenContainer.style.marginLeft = '12px'; childrenContainer.style.display = 'block';
+            if(Array.isArray(value)){ value.forEach((item,idx)=> childrenContainer.appendChild(createNode(idx+1,item))); } else { Object.entries(value).forEach(([k,v])=> childrenContainer.appendChild(createNode(k,v))); }
+            keyEl.addEventListener('click', ()=> { childrenContainer.style.display = childrenContainer.style.display === 'none' ? 'block' : 'block'; });
             node.appendChild(childrenContainer);
-        } else {
-            const valEl = document.createElement('div');
-            valEl.className = 'tree-value';
-            valEl.textContent = value;
-            node.appendChild(valEl);
-        }
-
+        } else { const valEl = document.createElement('div'); valEl.className = 'tree-value'; valEl.textContent = value; node.appendChild(valEl); }
         return node;
     }
-
     Object.entries(data).forEach(([k,v]) => parent.appendChild(createNode(k,v)));
 }
 
-// --- Render Attachments ---
-function renderAttachmentFields(data){
-    attachmentsList.innerHTML='';
-    attachmentsFiles={};
-
+// --- Attachments Table ---
+function renderAttachmentTable(data){
+    const tableBody = document.getElementById('attachments-table-body');
+    tableBody.innerHTML = '';
+    attachmentsFiles = {};
     const attachmentsNeeded = data.attachments_needed || (data.requirements && data.requirements.attachments_needed);
-    if(!attachmentsNeeded || attachmentsNeeded.length===0){
-        attachmentsList.innerHTML="<div class='text-gray-500'>No attachments required.</div>";
-        return;
-    }
+    if(!attachmentsNeeded || attachmentsNeeded.length===0){ tableBody.innerHTML = `<tr><td colspan="4" class="text-gray-500 p-2">No attachments required.</td></tr>`; return; }
 
-    attachmentsNeeded.forEach((item,idx)=>{
-        const div=document.createElement('div');
-        div.className="file-item flex flex-col";
-
-        const label=document.createElement('label');
-        label.textContent=item;
-        label.className="font-semibold text-gray-700";
-
-        const input=document.createElement('input');
-        input.type='file';
-        input.name=`attachment_${idx}`;
-        input.addEventListener('change', e=>{
-            attachmentsFiles[item] = e.target.files[0];
-        });
-
-        div.appendChild(label);
-        div.appendChild(input);
-        attachmentsList.appendChild(div);
+    attachmentsNeeded.forEach((item, idx) => {
+        const tr = document.createElement('tr');
+        const tdName = document.createElement('td'); tdName.className = "p-2 border-b"; tdName.textContent = item;
+        const tdFile = document.createElement('td'); tdFile.className = "p-2 border-b"; const input = document.createElement('input'); input.type='file'; input.addEventListener('change', e=>{ attachmentsFiles[item]=attachmentsFiles[item]||{}; attachmentsFiles[item].file=e.target.files[0]; updateProposals(); }); tdFile.appendChild(input);
+        const tdTP = document.createElement('td'); tdTP.className="p-2 border-b text-center"; const tpCheck=document.createElement('input'); tpCheck.type='checkbox'; tpCheck.addEventListener('change',updateProposals); tdTP.appendChild(tpCheck);
+        const tdCP = document.createElement('td'); tdCP.className="p-2 border-b text-center"; const cpCheck=document.createElement('input'); cpCheck.type='checkbox'; cpCheck.addEventListener('change',updateProposals); tdCP.appendChild(cpCheck);
+        tr.appendChild(tdName); tr.appendChild(tdFile); tr.appendChild(tdTP); tr.appendChild(tdCP); tableBody.appendChild(tr);
+        attachmentsFiles[item] = { file:null, tp:tpCheck, cp:cpCheck };
     });
 }
 
-// // --- Submit Attachments ---
-// const attachmentsForm = document.getElementById('attachments-form');
-// attachmentsForm.addEventListener('submit', async e=>{
-//     e.preventDefault();
-//     const formData = new FormData();
-//     for(const [key,file] of Object.entries(attachmentsFiles)){
-//         if(file) formData.append(key,file);
-//     }
-//     formData.append('document_title','Document');
+// --- Update Proposals & Merge PDFs ---
+async function updateProposals(){
+    const tpDiv = document.getElementById('tp-selected-files'); const tpIframe = document.getElementById('tp-merged-iframe');
+    const cpDiv = document.getElementById('cp-selected-files'); const cpIframe = document.getElementById('cp-merged-iframe');
 
-//     try{
-//         const res = await fetch('/submit_attachments',{method:'POST',body:formData});
-//         const result = await res.json();
-//         if(result.success) alert("✅ Attachments submitted successfully!");
-//         else alert("❌ Error: " + (result.error || 'Unknown'));
-//     } catch(err){
-//         alert("Error: "+err.message);
-//     }
-// });
+    const tpFiles=[]; const cpFiles=[];
+    tpDiv.innerHTML=""; cpDiv.innerHTML="";
+
+    for(const [name,obj] of Object.entries(attachmentsFiles)){
+        if(obj.tp.checked && obj.file){ tpFiles.push(obj.file); tpDiv.innerHTML+=`<div>${name}</div>`; }
+        if(obj.cp.checked && obj.file){ cpFiles.push(obj.file); cpDiv.innerHTML+=`<div>${name}</div>`; }
+    }
+
+    async function mergeAndShow(files, iframe){
+        if(files.length===0){ iframe.src=""; return null; }
+        const mergedPdf = await PDFLib.PDFDocument.create();
+        for(const file of files){
+            const bytes = await file.arrayBuffer();
+            const pdf = await PDFLib.PDFDocument.load(bytes);
+            const copiedPages = await mergedPdf.copyPages(pdf, pdf.getPageIndices());
+            copiedPages.forEach(page=> mergedPdf.addPage(page));
+        }
+        const mergedBytes = await mergedPdf.save();
+        const blob = new Blob([mergedBytes], {type:'application/pdf'});
+        iframe.src = URL.createObjectURL(blob);
+        return blob;
+    }
+
+    mergedTPBlob = await mergeAndShow(tpFiles,tpIframe);
+    mergedCPBlob = await mergeAndShow(cpFiles,cpIframe);
+}
+
+// --- Download buttons ---
+document.getElementById('tp-download').addEventListener('click', ()=>{
+    if(!mergedTPBlob){ alert("No TP merged file available"); return; }
+    const a = document.createElement('a'); a.href=URL.createObjectURL(mergedTPBlob); a.download="Technical_Proposal.pdf"; a.click();
+});
+document.getElementById('cp-download').addEventListener('click', ()=>{
+    if(!mergedCPBlob){ alert("No CP merged file available"); return; }
+    const a = document.createElement('a'); a.href=URL.createObjectURL(mergedCPBlob); a.download="Commercial_Proposal.pdf"; a.click();
+});
 </script>
+
 {% endblock %}
