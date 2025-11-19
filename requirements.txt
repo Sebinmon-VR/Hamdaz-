@@ -37,4 +37,6 @@ tiktoken==0.4.0
 
 docx2pdf==0.1.8
 
-pinecone==2.2.2
+
+
+pinecone-client==2.2.2
