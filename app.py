@@ -947,7 +947,7 @@ def upsert_tasks_to_pinecone(tasks, is_admin, period_type="month"):
     return True
 
 
-def query_relevant_data(user_query, user_email, username, is_admin, top_k=10):
+def query_relevant_data(user_query, username, is_admin, top_k=10):
     """Query Pinecone for relevant tasks and analytics"""
     query_embedding = get_embedding(user_query)
     
@@ -962,7 +962,7 @@ def query_relevant_data(user_query, user_email, username, is_admin, top_k=10):
         filter=filter_dict
     )
     
-    tasks, analytics, admin_own_tasks = [], [], []
+    tasks, analytics = [], []
     
     for match in results.get('matches', []):
         meta = match.get('metadata', {})
@@ -973,10 +973,6 @@ def query_relevant_data(user_query, user_email, username, is_admin, top_k=10):
                 "task": json.loads(meta.get('full_task', '{}'))
             }
             tasks.append(task_info)
-            
-            # Track admin's personal tasks separately
-            if is_admin and meta.get('assigned_to') == username:
-                admin_own_tasks.append(task_info)
                 
         elif meta.get('type') == 'analytics':
             analytics.append({
@@ -984,9 +980,7 @@ def query_relevant_data(user_query, user_email, username, is_admin, top_k=10):
                 "analytics": json.loads(meta.get('text', '{}'))
             })
     
-    print(f"✅ Found {len(tasks)} tasks ({len(admin_own_tasks)} admin's own)", flush=True)
-    return tasks, analytics, admin_own_tasks  
-
+    return tasks, analytics 
 
 @app.route("/chatbot")
 def chatbot():
@@ -1042,8 +1036,8 @@ def ask_chatbot():
 
     try:
         # Query Pinecone
-        tasks, analytics, admin_own_tasks = query_relevant_data(
-            user_prompt, email, username, is_admin_user, top_k=10
+        tasks, analytics = query_relevant_data(
+            user_prompt, username, is_admin_user, top_k=10
         )
         
         # Build context for AI
@@ -1058,11 +1052,9 @@ def ask_chatbot():
                 _, period_per_user = get_analytics_data(df, period_type=period_type)
             
             context = (
-                f"ADMIN: {username} | Access: ALL USERS\n\n"
+                f"ADMIN has Access to ALL USERS\n\n"
                 f"📊 Analytics:\n{json.dumps(per_user_analytics, default=str)}\n\n"
-                f"👤 Your Tasks:\n{json.dumps([t['task'] for t in admin_own_tasks], default=str)}\n\n"
                 f"🌐 All Tasks:\n{json.dumps([t['task'] for t in tasks], default=str)}\n\n"
-                "When user asks 'my tasks', use 'Your Tasks'. For team queries, use 'All Tasks'."
             )
         else:
             context = (
