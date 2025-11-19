@@ -37,4 +37,4 @@ pinecone-client==2.2.2
 
 docx2pdf==0.1.8
 
-
+pinecone==2.2.2
