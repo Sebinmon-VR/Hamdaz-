@@ -33,7 +33,7 @@ REDIRECT_URI = os.getenv("REDIRECT_URI")
 AUTHORITY = f"https://login.microsoftonline.com/{TENANT_ID}"
 SCOPE = ["User.Read"]
 
-SUPERUSERS = ["jishad@hamdaz.com", "sebin@hamdaz.com","lamia@hamdaz.com"]
+SUPERUSERS = ["jishad@hamdaz.com", "sebin@hamdaz.com","lamia@hamdaz.com" , "hisham@hamdaz.com"]
 approvers = ["shibit@hamdaz.com", "althaf@hamdaz.com" ,"sebin@hamdaz.com"]
 LIMITED_USERS = [""]
 
@@ -1020,7 +1020,7 @@ def index_tasks():
         import traceback
         traceback.print_exc()
         return False
-
+# ...existing code...
 @app.route("/chatbot/ask", methods=["POST"])
 def ask_chatbot():
     if "user" not in session:
@@ -1031,74 +1031,86 @@ def ask_chatbot():
     username = user.get("displayName", "").replace(" ", "")
     is_admin_user = is_admin(email)
     
-    user_prompt = request.json.get("message")
+    user_prompt = request.json.get("message", "")
     period_type = request.json.get("period", "month")
 
     try:
-        # Query Pinecone
+        # 1) Try semantic retrieval from Pinecone
         tasks, analytics = query_relevant_data(
             user_prompt, username, is_admin_user, top_k=10
         )
-        
-        # Build context for AI
+
+        # 2) FALLBACK for non-admins: if Pinecone returned no tasks, load directly from SharePoint/global cache
+        if not is_admin_user and (not tasks or len(tasks) == 0):
+            print("[CHATBOT] Pinecone returned no matches — falling back to SharePoint tasks for user", flush=True)
+            sp_tasks = get_tasks_for_user(username)
+            tasks = [{"score": 1.0, "task": t} for t in sp_tasks] if sp_tasks else []
+
+        # 3) Build contextual system prompt
         if is_admin_user:
-            # Get analytics
+            # Admin: include analytics + all matched tasks
             if analytics:
-                analytics_data = analytics[0]['analytics']
+                analytics_data = analytics[0].get('analytics', {})
                 per_user_analytics = analytics_data.get('per_user_analytics', {})
-                period_per_user = analytics_data.get('period_per_user', {})
             else:
                 _, per_user_analytics = get_analytics_data(df, period_type='all')
-                _, period_per_user = get_analytics_data(df, period_type=period_type)
-            
+
+            tasks_list = [t['task'] for t in tasks] if tasks else []
             context = (
-                f"ADMIN has Access to ALL USERS\n\n"
-                f"📊 Analytics:\n{json.dumps(per_user_analytics, default=str)}\n\n"
-                f"🌐 All Tasks:\n{json.dumps([t['task'] for t in tasks], default=str)}\n\n"
+                f"ADMIN CONTEXT\n\n"
+                f"Analytics (per user):\n{json.dumps(per_user_analytics, default=str)}\n\n"
+                f"Matched Tasks:\n{json.dumps(tasks_list, default=str)}\n\n"
+                "You may use the analytics and tasks above to answer the user's question."
             )
         else:
-            context = (
-                f"USER: {username}\n\n"
-                f"📋 Your Tasks:\n{json.dumps([t['task'] for t in tasks], default=str)}\n\n"
-                "Answer ONLY based on the user's tasks above."
-            ) if tasks else f"USER: {username}\n\n⚠️ No tasks found."
+            # Non-admin: MUST answer only from the user's tasks. If no tasks, explicitly state cannot answer.
+            if tasks:
+                context = (
+                    f"USER: {username}\n\n"
+                    f"Use ONLY the following tasks to answer the question. Do NOT use any external knowledge.\n\n"
+                    f"{json.dumps([t['task'] for t in tasks], default=str)}\n\n"
+                    "INSTRUCTIONS: Answer ONLY using the information above. If the question cannot be answered from this data, reply exactly: \"I don't know based on available data.\" Keep the answer concise."
+                )
+            else:
+                context = (
+                    f"USER: {username}\n\n"
+                    "No task data is available for this user. You must reply: \"I don't know based on available data.\""
+                )
 
-        # Build messages
+        # 4) Compose messages and call model
         messages = [{"role": "system", "content": context}]
-        
         last_summary = session.get(f"{email}_last_summary")
         if last_summary:
             messages.append({"role": "system", "content": f"Previous: {last_summary}"})
-        
         messages.append({"role": "user", "content": user_prompt})
 
-        # Get AI response
         response = openai.ChatCompletion.create(
             model="gpt-4o",
             messages=messages,
-            temperature=0.7,
-            max_tokens=5000
+            temperature=0.0,   # deterministic answers when relying on data
+            max_tokens=800
         )
-        reply = response.choices[0].message.content
+        reply = response.choices[0].message.content.strip()
 
-        # Generate summary
-        summary = openai.ChatCompletion.create(
+        # 5) Short summary for session memory
+        summary_resp = openai.ChatCompletion.create(
             model="gpt-4o",
             messages=[
-                {"role": "system", "content": "Summarize in 1-2 sentences."},
+                {"role": "system", "content": "Summarize in 1 sentence."},
                 {"role": "user", "content": f"User: {user_prompt}\nAssistant: {reply}"}
             ],
-            temperature=0.5,
-            max_tokens=100
-        ).choices[0].message.content
-        
+            temperature=0.0,
+            max_tokens=60
+        )
+        summary = summary_resp.choices[0].message.content.strip()
         session[f"{email}_last_summary"] = summary
 
         return jsonify({"reply": reply, "summary": summary})
-    
+
     except Exception as e:
-        print(f"❌ Error: {e}", flush=True)
+        print(f"❌ Error in ask_chatbot: {e}", flush=True)
         return jsonify({"error": str(e)}), 500
+# ...existing code...
 # ==============================================================
 
 # ==============================================================
