@@ -918,45 +918,6 @@ from urllib.parse import quote
 
 
 
-# def upload_file_to_sharepoint(file_bytes, filename, folder_name="QuoteAttachments"):
-#     """
-#     Uploads a file to a SharePoint document library folder using Graph API.
-#     """
-#     try:
-#         access_token = get_access_token()
-
-#         # First, get the site ID dynamically (replace with your site domain/path)
-#         site_id = get_site_id(access_token, "hamdaz1.sharepoint.com", "/sites/Test")
-
-#         # Get the drive ID for the default document library (usually "Documents")
-#         headers = {"Authorization": f"Bearer {access_token}"}
-#         drive_resp = requests.get(f"{GRAPH_API}/sites/{site_id}/drive", headers=headers)
-#         drive_resp.raise_for_status()
-#         drive_id = drive_resp.json().get("id")
-
-#         if not drive_id:
-#             raise Exception("Could not fetch the drive ID for SharePoint site.")
-
-#         # Prepare upload URL
-#         # Ensure filename is URL-encoded
-#         safe_filename = quote(filename)
-#         upload_url = f"{GRAPH_API}/sites/{site_id}/drives/{drive_id}/root:/{folder_name}/{safe_filename}:/content"
-
-#         # Upload the file
-#         upload_headers = {
-#             "Authorization": f"Bearer {access_token}",
-#             "Content-Type": "application/octet-stream"
-#         }
-#         resp = requests.put(upload_url, headers=upload_headers, data=file_bytes)
-#         resp.raise_for_status()
-
-#         print(f"✅ File '{filename}' uploaded successfully to SharePoint folder '{folder_name}'")
-#         return resp.json()
-
-#     except Exception as e:
-#         print(f"❌ Error uploading file to SharePoint: {e}")
-#         return None
-
 
 
 def update_sharepoint_item(reference, update_fields):
@@ -1212,61 +1173,8 @@ def get_user_profile_photo():
 
 
 
-# def update_priority(priority_values):
-#     try:
-#         access_token = get_access_token()
-#         headers= {"Autherization":f"Bearer{access_token}" , "Content-Type":"application/json"}
-#         url =f"{GRAPH_API_ENDPOINT}/users/{ONEDRIVE_PRIMARY_USER_ID}/drive/root:/prio.xlsx/workbook/worksheets('Sheet1')/tables('Table1')/rows/add"
-#         resp =requests.post(url,headers=headers, json={"values":priority_values})
-#         resp.raise_for_status()
-#     except:
-#         print("Error")
-
-
-# def calculate_priority(SITE_DOMAIN,SITE_PATH, LIST_NAME ,EXCLUDED_USERS):
-#     tasks = fetch_sharepoint_list(SITE_DOMAIN, SITE_PATH, LIST_NAME)
-#     df = items_to_dataframe(tasks)
-#     user_analytics = generate_user_analytics(df, exclude_users=EXCLUDED_USERS)
-
-    
-    
-    
     
 
-
-# def upload_file_to_user_onedrive(folder_path, file_name, file_bytes):
-#     """
-#     Uploads a file to a specific user's OneDrive folder and returns the shared link.
-#     :param user_id: The user principal name (email) or user ID
-#     :param folder_path: Folder path inside OneDrive (can be empty string for root)
-#     :param file_name: Name of the file to upload
-#     :param file_bytes: Binary content of the file
-#     :param access_token: Valid Microsoft Graph API access token with Files.ReadWrite.All or Files.ReadWrite delegated permissions
-#     :return: Shareable link URL string
-#     """
-#     access_token=get_access_token()
-#     if folder_path:
-#         upload_url = f"https://graph.microsoft.com/v1.0/users/{ONEDRIVE_PRIMARY_USER_ID}/drive/root:/{folder_path}/{file_name}:/content"
-#     else:
-#         upload_url = f"https://graph.microsoft.com/v1.0/users/{ONEDRIVE_PRIMARY_USER_ID}/drive/root:/{file_name}:/content"
-
-#     headers = {
-#         "Authorization": f"Bearer {access_token}",
-#         "Accept": "application/json"
-#     }
-
-#     resp = requests.put(upload_url, headers=headers, data=file_bytes)
-#     resp.raise_for_status()
-#     item_id = resp.json()['id']
-
-#     # Create shareable view link
-#     share_url = f"https://graph.microsoft.com/v1.0/users/{ONEDRIVE_PRIMARY_USER_ID}/drive/items/{item_id}/createLink"
-#     link_data = {"type": "view", "scope": "anonymous"}
-#     link_resp = requests.post(share_url, headers=headers, json=link_data)
-#     link_resp.raise_for_status()
-#     share_link = link_resp.json()["link"]["webUrl"]
-
-#     return share_link
 
 
 def upload_file_to_sharepoint_folder(folder_path, file_name, file_bytes):
@@ -1593,3 +1501,91 @@ def save_partnership_update(product_group, product_name, manufacturer, competito
     except Exception as e:
         print(f"[ERROR] Failed to update Excel cell: {e}")
         return False
+
+import urllib.parse
+
+# def get_personal_onedrive_folder():
+#     """
+#     List all files in 'Documents/defualt_docs' in your personal OneDrive.
+#     """
+#     try:
+#         access_token = get_access_token()  # your existing function
+#         headers = {"Authorization": f"Bearer {access_token}"}
+
+#         folder_path = "Documents/defualt_docs"
+#         folder_path_encoded = urllib.parse.quote(folder_path)
+
+#         url = f"{GRAPH_API_ENDPOINT}/me/drive/root:/{folder_path_encoded}:/children"
+#         print(f"Fetching files from: {url}")
+
+#         response = requests.get(url, headers=headers)
+#         response.raise_for_status()
+
+#         files = response.json().get("value", [])
+#         print(f"Found {len(files)} files in '{folder_path}':")
+#         for f in files:
+#             print(f" - {f['name']} ({f.get('webUrl')})")
+
+#         return files
+
+#     except Exception as e:
+#         print(f"❌ Error fetching folder data: {e}")
+#         return []
+    
+
+
+def get_child_files():
+    access_token =get_access_token()
+    folder_id =  os.getenv("default_folder_id")
+    
+    if not access_token:
+        raise Exception("No access token in session")
+
+    url = f"{GRAPH_API_ENDPOINT}/users/{ONEDRIVE_PRIMARY_USER_ID}/drive/items/{folder_id}/children"
+
+    headers = {
+        "Authorization": f"Bearer {access_token}"
+    }
+
+    res = requests.get(url, headers=headers)
+    res.raise_for_status()
+
+    return res.json().get("value", [])
+
+
+
+
+from docx2pdf import convert
+import tempfile
+
+
+def download_docx(file_id):
+    """
+    Downloads a DOCX file from OneDrive using file ID.
+    Returns the path to the temporary DOCX.
+    """
+    access_token= get_onedrive_access_token()
+    
+    url = f"https://graph.microsoft.com/v1.0/users/{ONEDRIVE_PRIMARY_USER_ID}/drive/items/{file_id}/content"
+
+    headers = {"Authorization": f"Bearer {access_token}"}
+
+    response = requests.get(url, headers=headers)
+    response.raise_for_status()
+
+    # Save to a temporary DOCX
+    temp_docx = tempfile.mktemp(suffix=".docx")
+    with open(temp_docx, "wb") as f:
+        f.write(response.content)
+
+    return temp_docx
+
+def convert_docx_to_pdf(input_docx):
+    temp_pdf = tempfile.mktemp(suffix=".pdf")
+    convert(input_docx, temp_pdf)
+    return temp_pdf
+
+
+
+
+

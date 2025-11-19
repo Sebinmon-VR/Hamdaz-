@@ -27,11 +27,8 @@ body { background-color: #ffffff; color: #111111; font-family: 'Segoe UI', sans-
 .remove-btn { margin-left: 8px; color: red; cursor:pointer; font-weight:bold; }
 #custom-attachment-popup input[type="text"] { width: 100%; }
 </style>
-
-<div class="flex flex-col space-y-6 p-6 max-w-6xl mx-auto">
-
     <!-- Upload + Buttons -->
-    <div class="flex items-center space-x-4">
+    <div class="flex items-center space-x-4 mt-4">
         <div id="pdf-drop" class="drag-drop">Drag & Drop PDF or Click</div>
         <button id="reupload-btn" class="reupload-btn hidden">⟳ Re-upload</button>
         <button id="toggle-preview">Toggle PDF Preview</button>
@@ -120,6 +117,7 @@ body { background-color: #ffffff; color: #111111; font-family: 'Segoe UI', sans-
                     <h3 class="font-semibold mb-2">Merged PDF</h3>
                     <iframe id="cp-merged-iframe" class="w-full h-96 border rounded"></iframe>
                     <button id="cp-download" class="download-btn">Download CP</button>
+                    
                 </div>
             </div>
         </div>
@@ -131,7 +129,6 @@ body { background-color: #ffffff; color: #111111; font-family: 'Segoe UI', sans-
 <input type="file" id="pdf-upload" accept="application/pdf" class="hidden" />
 
 <script>
-// --- Upload & Toggle ---
 let uploadedFile = null;
 const pdfDrop = document.getElementById('pdf-drop');
 const pdfUpload = document.getElementById('pdf-upload');
@@ -176,7 +173,7 @@ Object.keys(tabMap).forEach(tabId => {
     });
 });
 
-// --- Analyze PDF & Attachments ---
+// --- Analyze PDF ---
 const analyzeBtn = document.getElementById('analyze-btn');
 const analyzeLoader = document.getElementById('analyze-loader');
 const analyzeStatus = document.getElementById('analyze-status');
@@ -187,7 +184,6 @@ let mergedTPBlob = null, mergedCPBlob = null;
 analyzeBtn.addEventListener('click', async ()=> {
     if(!uploadedFile){ alert("Please upload a PDF first!"); return; }
     extractedDataContainer.innerHTML = '';
-    attachmentsFiles = {};
     analyzeLoader.style.display = 'inline-block';
     analyzeStatus.textContent = "Analyzing PDF...";
     const formData = new FormData();
@@ -225,24 +221,92 @@ function renderTree(data, parent = extractedDataContainer){
 // --- Attachments Table ---
 function renderAttachmentTable(data){
     const tableBody = document.getElementById('attachments-table-body');
-    tableBody.innerHTML = '';
-    attachmentsFiles = {};
+    
+    // Remove only previously rendered extracted attachments
+    const existingExtracted = tableBody.querySelectorAll('.extracted-attachment-row');
+    existingExtracted.forEach(r => tableBody.removeChild(r));
+
     const attachmentsNeeded = data.attachments_needed || (data.requirements && data.requirements.attachments_needed);
-    if(!attachmentsNeeded || attachmentsNeeded.length===0){ tableBody.innerHTML = `<tr><td colspan="4" class="text-gray-500 p-2">No attachments required.</td></tr>`; return; }
+    if(!attachmentsNeeded || attachmentsNeeded.length===0){ 
+        // Optional: only show message if table empty
+        if(tableBody.children.length === 0){
+            tableBody.innerHTML = `<tr><td colspan="4" class="text-gray-500 p-2">No attachments required.</td></tr>`;
+        }
+        return; 
+    }
 
     attachmentsNeeded.forEach((item, idx) => {
         const tr = document.createElement('tr');
+        tr.classList.add('extracted-attachment-row'); // mark it as extracted row
         const tdName = document.createElement('td'); tdName.className = "p-2 border-b"; tdName.textContent = item;
         const tdFile = document.createElement('td'); tdFile.className = "p-2 border-b"; 
         const input = document.createElement('input'); input.type='file'; 
-        input.addEventListener('change', e=>{ attachmentsFiles[item]=attachmentsFiles[item]||{}; attachmentsFiles[item].file=e.target.files[0]; updateProposals(); });
+        input.addEventListener('change', e=>{
+            attachmentsFiles[item]=attachmentsFiles[item]||{};
+            attachmentsFiles[item].file=e.target.files[0];
+            updateProposals();
+        });
         tdFile.appendChild(input);
         const tdTP = document.createElement('td'); tdTP.className="p-2 border-b text-center"; const tpCheck=document.createElement('input'); tpCheck.type='checkbox'; tpCheck.addEventListener('change',updateProposals); tdTP.appendChild(tpCheck);
         const tdCP = document.createElement('td'); tdCP.className="p-2 border-b text-center"; const cpCheck=document.createElement('input'); cpCheck.type='checkbox'; cpCheck.addEventListener('change',updateProposals); tdCP.appendChild(cpCheck);
-        tr.appendChild(tdName); tr.appendChild(tdFile); tr.appendChild(tdTP); tr.appendChild(tdCP); tableBody.appendChild(tr);
-        attachmentsFiles[item] = { file:null, tp:tpCheck, cp:cpCheck };
+        tr.appendChild(tdName); tr.appendChild(tdFile); tr.appendChild(tdTP); tr.appendChild(tdCP);
+        tableBody.appendChild(tr);
+
+        attachmentsFiles[item] = attachmentsFiles[item] || { file:null, tp:tpCheck, cp:cpCheck };
     });
 }
+// --- Prefill Attachments Table from Top Files with Download & Convert ---
+document.addEventListener('DOMContentLoaded', ()=>{
+    const tableBody = document.getElementById('attachments-table-body');
+    
+    {% for f in files %}
+        const tr = document.createElement('tr');
+        tr.className = 'default-attachment-row';
+
+        const tdName = document.createElement('td'); tdName.className="p-2 border-b"; tdName.textContent="{{ f.name }}";
+        tr.appendChild(tdName);
+
+        const tdFile = document.createElement('td'); tdFile.className="p-2 border-b text-center";
+        const downloadBtn = document.createElement('button');
+        downloadBtn.textContent = "Download & Convert";
+        downloadBtn.className = "download-btn";
+        downloadBtn.dataset.fileId = "{{ f.id }}";
+        downloadBtn.dataset.fileName = "{{ f.name }}";
+        tdFile.appendChild(downloadBtn);
+        tr.appendChild(tdFile);
+
+        const tdTP = document.createElement('td'); tdTP.className="p-2 border-b text-center";
+        const tpCheck=document.createElement('input'); tpCheck.type='checkbox'; tpCheck.addEventListener('change', updateProposals);
+        tdTP.appendChild(tpCheck); tr.appendChild(tdTP);
+
+        const tdCP = document.createElement('td'); tdCP.className="p-2 border-b text-center";
+        const cpCheck=document.createElement('input'); cpCheck.type='checkbox'; cpCheck.addEventListener('change', updateProposals);
+        tdCP.appendChild(cpCheck); tr.appendChild(tdCP);
+
+        tableBody.appendChild(tr);
+
+        attachmentsFiles["{{ f.name }}"]={ file:null, tp:tpCheck, cp:cpCheck };
+
+        // --- Download & Convert handler ---
+        downloadBtn.addEventListener('click', async ()=>{
+            downloadBtn.disabled = true; downloadBtn.textContent="Downloading...";
+            try {
+                const res = await fetch(`/download/pdf/${downloadBtn.dataset.fileId}`);
+                if(!res.ok) throw new Error("Download failed");
+                const blob = await res.blob();
+                const pdfFile = new File([blob], downloadBtn.dataset.fileName.replace(/\.[^/.]+$/, ".pdf"), {type:'application/pdf'});
+                attachmentsFiles[downloadBtn.dataset.fileName].file = pdfFile;
+                downloadBtn.textContent="file added ✅";
+                updateProposals();
+            } catch(err){
+                console.error(err);
+                alert("Failed to download/convert file");
+                downloadBtn.textContent="Download & Convert";
+            } finally { downloadBtn.disabled=false; }
+        });
+
+    {% endfor %}
+});
 
 // --- Custom Attachments ---
 const addCustomBtn = document.getElementById('add-custom-attachment');
@@ -260,9 +324,10 @@ customAddBtn.addEventListener('click', ()=> {
     const file = customFileInput.files[0];
     if(!name || !file){ alert("Please provide name and file"); return; }
 
+    const tableBody = document.getElementById('attachments-table-body');
     const tr = document.createElement('tr');
     const tdName = document.createElement('td'); tdName.className="p-2 border-b"; tdName.textContent=name;
-    const tdFile = document.createElement('td'); tdFile.className="p-2 border-b"; 
+    const tdFile = document.createElement('td'); tdFile.className="p-2 border-b";
     const input = document.createElement('input'); input.type='file'; input.files = customFileInput.files;
     tdFile.appendChild(input);
     const tdTP = document.createElement('td'); tdTP.className="p-2 border-b text-center"; const tpCheck=document.createElement('input'); tpCheck.type='checkbox'; tpCheck.addEventListener('change',updateProposals); tdTP.appendChild(tpCheck);
@@ -275,29 +340,55 @@ customAddBtn.addEventListener('click', ()=> {
     updateProposals();
 });
 
-// --- Drag & Drop Reordering & Merge ---
-function makeDraggable(containerId){
+// --- Drag & Drop, Remove, Merge, Download ---
+function enableDragAndSort(containerId) {
     const container = document.getElementById(containerId);
 
-    function dragStartHandler(e){ e.dataTransfer.setData('text/plain', e.target.dataset.name); e.target.classList.add('dragging'); }
-    function dragOverHandler(e){ e.preventDefault(); const dragging = container.querySelector('.dragging'); const afterElement = getDragAfterElement(container, e.clientY); if(afterElement==null){ container.appendChild(dragging); } else { container.insertBefore(dragging, afterElement); } }
-    function dragEndHandler(e){ e.target.classList.remove('dragging'); updateProposals(); }
+    container.addEventListener("dragstart", (e) => {
+        if (e.target.classList.contains("draggable-file")) {
+            e.target.classList.add("dragging");
+        }
+    });
 
-    function getDragAfterElement(container, y){
-        const draggableElements = [...container.querySelectorAll('.draggable-file:not(.dragging)')];
-        return draggableElements.reduce((closest, child)=>{
-            const box = child.getBoundingClientRect();
-            const offset = y - box.top - box.height/2;
-            if(offset<0 && offset>closest.offset){ return {offset: offset, element: child}; } else { return closest; }
-        }, {offset: Number.NEGATIVE_INFINITY}).element;
+    container.addEventListener("dragend", (e) => {
+        if (e.target.classList.contains("draggable-file")) {
+            e.target.classList.remove("dragging");
+            updateProposals(); // re-generate merged PDFs
+        }
+    });
+
+    container.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        const dragging = container.querySelector(".dragging");
+        if (!dragging) return;
+
+        const after = getDragAfterElement(container, e.clientY);
+        if (after == null) {
+            container.appendChild(dragging);
+        } else {
+            container.insertBefore(dragging, after);
+        }
+    });
+
+    function getDragAfterElement(container, y) {
+        const elements = [...container.querySelectorAll(".draggable-file:not(.dragging)")];
+
+        return elements.reduce(
+            (closest, child) => {
+                const box = child.getBoundingClientRect();
+                const offset = y - (box.top + box.height / 2);
+
+                if (offset < 0 && offset > closest.offset) {
+                    return { offset: offset, element: child };
+                }
+                return closest;
+            },
+            { offset: Number.NEGATIVE_INFINITY, element: null }
+        ).element;
     }
-
-    container.addEventListener('dragstart', dragStartHandler);
-    container.addEventListener('dragover', dragOverHandler);
-    container.addEventListener('dragend', dragEndHandler);
 }
 
-// --- Remove from TP/CP panels ---
+
 function makeRemovable(containerId){
     const container = document.getElementById(containerId);
     container.addEventListener('click', e=>{
@@ -314,37 +405,86 @@ function makeRemovable(containerId){
 }
 makeRemovable('tp-selected-files');
 makeRemovable('cp-selected-files');
-
 function updateProposals(){
-    const tpDiv = document.getElementById('tp-selected-files'); const tpIframe = document.getElementById('tp-merged-iframe');
-    const cpDiv = document.getElementById('cp-selected-files'); const cpIframe = document.getElementById('cp-merged-iframe');
+    const tpDiv = document.getElementById('tp-selected-files'); 
+    const tpIframe = document.getElementById('tp-merged-iframe');
+    const cpDiv = document.getElementById('cp-selected-files'); 
+    const cpIframe = document.getElementById('cp-merged-iframe');
+
+    // --- Instead of clearing innerHTML, remember existing order ---
+    function getCurrentOrder(container){
+        return [...container.querySelectorAll('.draggable-file')].map(d => d.dataset.name);
+    }
+
+    const tpOrder = getCurrentOrder(tpDiv);
+    const cpOrder = getCurrentOrder(cpDiv);
+
     tpDiv.innerHTML=""; cpDiv.innerHTML="";
 
     const tpFiles=[]; const cpFiles=[];
+
     for(const [name,obj] of Object.entries(attachmentsFiles)){
         if(obj.tp.checked && obj.file) tpFiles.push({name:name, file:obj.file});
         if(obj.cp.checked && obj.file) cpFiles.push({name:name, file:obj.file});
     }
 
-    function renderDraggableFiles(files, container){
+    function renderDraggableFiles(files, container, previousOrder=[]){
+        // Sort files according to previous drag order if possible
+        files.sort((a,b)=>{
+            const aIndex = previousOrder.indexOf(a.name);
+            const bIndex = previousOrder.indexOf(b.name);
+            if(aIndex===-1 && bIndex===-1) return 0;
+            if(aIndex===-1) return 1;
+            if(bIndex===-1) return -1;
+            return aIndex - bIndex;
+        });
+
         files.forEach(f=>{
             const div = document.createElement('div');
             div.className='draggable-file flex justify-between items-center';
             div.setAttribute('draggable','true');
             div.dataset.name=f.name;
+
             const span = document.createElement('span'); span.textContent=f.name;
-            const removeBtn = document.createElement('button'); removeBtn.textContent='✕'; removeBtn.className='remove-btn ml-2 text-red-600 font-bold';
+
+            const removeBtn = document.createElement('button'); 
+            removeBtn.textContent='✕'; 
+            removeBtn.className='remove-btn ml-2 text-red-600 font-bold';
             removeBtn.dataset.name=f.name;
+
             div.appendChild(span); div.appendChild(removeBtn);
             container.appendChild(div);
+
+            // Bind drag events individually
+            div.addEventListener('dragstart', e=> div.classList.add('dragging'));
+            div.addEventListener('dragend', e=>{
+                div.classList.remove('dragging'); 
+                updateProposals(); // regenerate merged PDFs
+            });
+        });
+
+        // Enable container dragover
+        container.addEventListener('dragover', e=>{
+            e.preventDefault();
+            const dragging = container.querySelector('.dragging');
+            if(!dragging) return;
+
+            const elements = [...container.querySelectorAll('.draggable-file:not(.dragging)')];
+            const afterElement = elements.reduce((closest, child)=>{
+                const box = child.getBoundingClientRect();
+                const offset = e.clientY - (box.top + box.height/2);
+                if(offset < 0 && offset > closest.offset){
+                    return { offset: offset, element: child };
+                } return closest;
+            }, { offset: Number.NEGATIVE_INFINITY, element: null }).element;
+
+            if(!afterElement) container.appendChild(dragging);
+            else container.insertBefore(dragging, afterElement);
         });
     }
 
-    renderDraggableFiles(tpFiles,tpDiv);
-    renderDraggableFiles(cpFiles,cpDiv);
-
-    makeDraggable('tp-selected-files');
-    makeDraggable('cp-selected-files');
+    renderDraggableFiles(tpFiles,tpDiv,tpOrder);
+    renderDraggableFiles(cpFiles,cpDiv,cpOrder);
 
     async function mergeFiles(files){
         if(files.length===0) return null;
