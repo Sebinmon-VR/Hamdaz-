@@ -947,7 +947,7 @@ def upsert_tasks_to_pinecone(tasks, is_admin, period_type="month"):
     return True
 
 
-def query_relevant_data(user_query, username, is_admin, top_k=10):
+def query_relevant_data(user_query, username, is_admin, top_k=100):
     """Query Pinecone for relevant tasks and analytics"""
     query_embedding = get_embedding(user_query)
     
@@ -1007,7 +1007,7 @@ def index_tasks():
         print(f"[BG] 📊 Indexing {len(tasks)} tasks...", flush=True)
         
         # Use a system email for background indexing
-        system_email = "system@hamdaz.com"
+        # system_email = "system@hamdaz.com"
         
         # Index all tasks as admin
         upsert_tasks_to_pinecone(tasks, is_admin=True)
@@ -1035,82 +1035,398 @@ def ask_chatbot():
     period_type = request.json.get("period", "month")
 
     try:
-        # 1) Try semantic retrieval from Pinecone
-        tasks, analytics = query_relevant_data(
-            user_prompt, username, is_admin_user, top_k=10
+        # ============================================================================
+        # GET CURRENT DATE/TIME FOR ALL LOGIC
+        # ============================================================================
+        now_utc = pd.Timestamp.utcnow()
+        now_date = now_utc.date()
+        now_time = now_utc.time()
+        current_year = now_utc.year
+        current_month = now_utc.month
+        current_day = now_utc.day
+        
+        # Calculate month boundaries
+        month_start = pd.Timestamp(year=current_year, month=current_month, day=1)
+        if current_month == 12:
+            month_end = pd.Timestamp(year=current_year + 1, month=1, day=1) - pd.Timedelta(days=1)
+        else:
+            month_end = pd.Timestamp(year=current_year, month=current_month + 1, day=1) - pd.Timedelta(days=1)
+        
+        print(f"[CHATBOT] Current: {now_utc} | Month: {month_start.date()} to {month_end.date()}", flush=True)
+
+        # ============================================================================
+        # 1) SEMANTIC RETRIEVAL: Query Pinecone
+        # ============================================================================
+        pinecone_tasks, pinecone_analytics = query_relevant_data(
+            user_prompt, username, is_admin_user, top_k=100
         )
+        print(f"[CHATBOT] Pinecone: {len(pinecone_tasks)} tasks, {len(pinecone_analytics)} analytics", flush=True)
 
-        # 2) FALLBACK for non-admins: if Pinecone returned no tasks, load directly from SharePoint/global cache
-        if not is_admin_user and (not tasks or len(tasks) == 0):
-            print("[CHATBOT] Pinecone returned no matches — falling back to SharePoint tasks for user", flush=True)
-            sp_tasks = get_tasks_for_user(username)
-            tasks = [{"score": 1.0, "task": t} for t in sp_tasks] if sp_tasks else []
+        # ============================================================================
+        # 2) INTELLIGENT DATA PREPARATION WITH DATE LOGIC
+        # ============================================================================
+        processed_tasks = []
+        
+        if not is_admin_user:
+            # Get ALL user tasks
+            user_sp_tasks = get_tasks_for_user(username)
+            
+            # Process each task with date calculations
+            for task in user_sp_tasks:
+                task_processed = process_task_with_dates(task, now_utc, now_date)
+                processed_tasks.append(task_processed)
+            
+            print(f"[CHATBOT] Loaded {len(processed_tasks)} tasks for user {username}", flush=True)
+        else:
+            # For admin: process all tasks with date logic
+            for task_item in pinecone_tasks:
+                task = task_item.get('task', {})
+                task_processed = process_task_with_dates(task, now_utc, now_date)
+                processed_tasks.append(task_processed)
+            
+            print(f"[CHATBOT] Loaded {len(processed_tasks)} tasks for admin", flush=True)
 
-        # 3) Build contextual system prompt
+        # ============================================================================
+        # 3) SMART CATEGORIZATION BASED ON DATES & STATUS
+        # ============================================================================
+        task_categories = categorize_tasks(processed_tasks, now_utc, now_date, month_start, month_end)
+        
+        # ✅ FIX: Use correct key names
+        print(f"[CHATBOT] Task Categories:", flush=True)
+        print(f"  - Due Today: {len(task_categories.get('due_today', []))}", flush=True)
+        print(f"  - Overdue: {len(task_categories.get('overdue', []))}", flush=True)
+        print(f"  - Due This Week: {len(task_categories.get('due_this_week', []))}", flush=True)
+        print(f"  - Due Next Week: {len(task_categories.get('due_next_week', []))}", flush=True)
+        print(f"  - Due This Month: {len(task_categories.get('due_this_month', []))}", flush=True)
+        print(f"  - Upcoming: {len(task_categories.get('upcoming', []))}", flush=True)
+        print(f"  - In Progress: {len(task_categories.get('in_progress', []))}", flush=True)
+        print(f"  - Completed: {len(task_categories.get('completed', []))}", flush=True)
+        print(f"  - No Due Date: {len(task_categories.get('no_due_date', []))}", flush=True)
+
+        # ============================================================================
+        # 4) BUILD ENHANCED SYSTEM PROMPT WITH FULL CONTEXT
+        # ============================================================================
         if is_admin_user:
-            # Admin: include analytics + all matched tasks
-            if analytics:
-                analytics_data = analytics[0].get('analytics', {})
-                per_user_analytics = analytics_data.get('per_user_analytics', {})
+            # ADMIN: Full analytics + categorized tasks
+            if pinecone_analytics:
+                analytics_data = pinecone_analytics[0].get('analytics', {})
             else:
-                _, per_user_analytics = get_analytics_data(df, period_type='all')
+                overall_analytics, per_user_analytics = get_analytics_data(df, period_type='all')
+                analytics_data = {"overall": overall_analytics, "per_user": per_user_analytics}
 
-            tasks_list = [t['task'] for t in tasks] if tasks else []
-            context = (
-                f"ADMIN CONTEXT\n\n"
-                f"Analytics (per user):\n{json.dumps(per_user_analytics, default=str)}\n\n"
-                f"Matched Tasks:\n{json.dumps(tasks_list, default=str)}\n\n"
-                "You may use the analytics and tasks above to answer the user's question."
+            system_prompt = build_admin_prompt(
+                analytics_data, 
+                task_categories, 
+                processed_tasks, 
+                now_utc, 
+                month_start, 
+                month_end
             )
         else:
-            # Non-admin: MUST answer only from the user's tasks. If no tasks, explicitly state cannot answer.
-            if tasks:
-                context = (
-                    f"USER: {username}\n\n"
-                    f"Use ONLY the following tasks to answer the question. Do NOT use any external knowledge.\n\n"
-                    f"{json.dumps([t['task'] for t in tasks], default=str)}\n\n"
-                    "INSTRUCTIONS: Answer ONLY using the information above. If the question cannot be answered from this data, reply exactly: \"I don't know based on available data.\" Keep the answer concise."
-                )
-            else:
-                context = (
-                    f"USER: {username}\n\n"
-                    "No task data is available for this user. You must reply: \"I don't know based on available data.\""
-                )
+            # NON-ADMIN: Only their tasks with date awareness
+            system_prompt = build_user_prompt(
+                username, 
+                task_categories, 
+                processed_tasks, 
+                now_utc, 
+                now_date, 
+                month_start, 
+                month_end
+            )
 
-        # 4) Compose messages and call model
-        messages = [{"role": "system", "content": context}]
+        # ============================================================================
+        # 5) COMPOSE MESSAGES AND CALL GPT-4o
+        # ============================================================================
+        messages = [
+            {"role": "system", "content": system_prompt}
+        ]
+        
+        # Add conversation history if exists
         last_summary = session.get(f"{email}_last_summary")
         if last_summary:
-            messages.append({"role": "system", "content": f"Previous: {last_summary}"})
+            messages.append({
+                "role": "system", 
+                "content": f"[PREVIOUS CONTEXT]: {last_summary}"
+            })
+        
         messages.append({"role": "user", "content": user_prompt})
 
+        print(f"[CHATBOT] Sending {len(messages)} messages to GPT-4o", flush=True)
+        print(f"[CHATBOT] System prompt size: {len(system_prompt)} chars", flush=True)
+        
         response = openai.ChatCompletion.create(
             model="gpt-4o",
             messages=messages,
-            temperature=0.0,   # deterministic answers when relying on data
-            max_tokens=800
+            temperature=0.0,
+            max_tokens=8000
         )
+        
         reply = response.choices[0].message.content.strip()
+        print(f"[CHATBOT] Response generated: {len(reply)} chars", flush=True)
 
-        # 5) Short summary for session memory
+        # ============================================================================
+        # 6) GENERATE SUMMARY FOR SESSION
+        # ============================================================================
         summary_resp = openai.ChatCompletion.create(
-            model="gpt-4o",
+            model="gpt-4o-mini",
             messages=[
-                {"role": "system", "content": "Summarize in 1 sentence."},
-                {"role": "user", "content": f"User: {user_prompt}\nAssistant: {reply}"}
+                {"role": "system", "content": "Summarize in 1-2 sentences for context memory."},
+                {"role": "user", "content": f"Q: {user_prompt}\nA: {reply}"}
             ],
             temperature=0.0,
-            max_tokens=60
+            max_tokens=200
         )
         summary = summary_resp.choices[0].message.content.strip()
         session[f"{email}_last_summary"] = summary
 
-        return jsonify({"reply": reply, "summary": summary})
+        return jsonify({
+            "reply": reply,
+            "summary": summary,
+            "debug": {
+                "current_time": now_utc.strftime("%Y-%m-%d %H:%M:%S UTC"),
+                "tasks_total": len(processed_tasks),
+                "task_categories": {k: len(v) for k, v in task_categories.items()}
+            }
+        })
 
     except Exception as e:
         print(f"❌ Error in ask_chatbot: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
         return jsonify({"error": str(e)}), 500
-# ...existing code...
+# ============================================================================
+# HELPER FUNCTIONS FOR DATE-AWARE PROCESSING
+# ============================================================================
+
+def process_task_with_dates(task, now_utc, now_date):
+    """
+    Process a task and add calculated date fields for easy filtering.
+    """
+    task_copy = task.copy()
+    
+    # Parse BCD (Due Date)
+    bcd_str = task.get("BCD", "")
+    try:
+        bcd_date = pd.to_datetime(bcd_str).date()
+        bcd_ts = pd.to_datetime(bcd_str)
+    except:
+        bcd_date = None
+        bcd_ts = None
+    
+    # Get submission status
+    status = str(task.get("SubmissionStatus", "")).strip().lower()
+    
+    # Add calculated fields
+    task_copy["_bcd_date"] = bcd_date
+    task_copy["_bcd_timestamp"] = bcd_ts
+    task_copy["_status_lower"] = status
+    task_copy["_days_until_due"] = (bcd_date - now_date).days if bcd_date else None
+    task_copy["_is_overdue"] = bcd_date < now_date if bcd_date else False
+    task_copy["_is_due_today"] = bcd_date == now_date if bcd_date else False
+    task_copy["_is_future"] = bcd_date > now_date if bcd_date else False
+    task_copy["_is_completed"] = status == "submitted"
+    task_copy["_is_active"] = status not in ["submitted", ""] and (bcd_date is None or bcd_date >= now_date)
+    
+    return task_copy
+
+def categorize_tasks(tasks, now_utc, now_date, month_start, month_end):
+    """
+    Categorize tasks by due date and status for easy analysis.
+    """
+    categories = {
+        "overdue": [],
+        "due_today": [],
+        "due_this_week": [],
+        "due_next_week": [],
+        "due_this_month": [],
+        "upcoming": [],
+        "in_progress": [],
+        "completed": [],
+        "no_due_date": []
+    }
+    
+    # ✅ Convert all boundaries to date objects for consistency
+    today = now_date if isinstance(now_date, pd.Timestamp) else pd.Timestamp(now_date)
+    week_end_date = (today + pd.Timedelta(days=7)).date()
+    two_weeks_end_date = (today + pd.Timedelta(days=14)).date()
+    month_start_date = month_start.date() if hasattr(month_start, 'date') else month_start
+    month_end_date = month_end.date() if hasattr(month_end, 'date') else month_end
+    
+    for task in tasks:
+        bcd_date = task.get("_bcd_date")  # Already a date object from process_task_with_dates
+        status = task.get("_status_lower", "")
+        is_completed = task.get("_is_completed", False)
+        
+        if is_completed:
+            categories["completed"].append(task)
+        elif not bcd_date:
+            categories["no_due_date"].append(task)
+        elif task.get("_is_overdue"):
+            categories["overdue"].append(task)
+        elif task.get("_is_due_today"):
+            categories["due_today"].append(task)
+        elif bcd_date <= week_end_date:  # ✅ Both are date objects now
+            categories["due_this_week"].append(task)
+        elif bcd_date <= two_weeks_end_date:  # ✅ Both are date objects now
+            categories["due_next_week"].append(task)
+        elif bcd_date <= month_end_date:  # ✅ Both are date objects now
+            categories["due_this_month"].append(task)
+        else:
+            categories["upcoming"].append(task)
+        
+        # Also track active in-progress separately
+        if status in ["in progress", "in_progress", "ongoing"] and not is_completed:
+            categories["in_progress"].append(task)
+    
+    return categories
+
+
+
+
+def build_user_prompt(username, task_categories, all_tasks, now_utc, now_date, month_start, month_end):
+    """
+    Build system prompt for non-admin users with date-aware instructions.
+    """
+    
+    # Format current date/time
+    current_datetime = now_utc.strftime("%A, %B %d, %Y at %H:%M:%S UTC")
+    month_name = now_utc.strftime("%B %Y")
+    
+    # Create task summary by category
+    task_summary = f"""
+=== TASK DATA FOR: {username} ===
+Current Date/Time: {current_datetime}
+Total Tasks: {len(all_tasks)}
+
+TASKS BY CATEGORY:
+"""
+    
+    for category, tasks in task_categories.items():
+        if tasks:
+            task_summary += f"\n📋 {category.upper().replace('_', ' ')} ({len(tasks)} tasks):\n"
+            for task in tasks[:10]:  # Show first 10 of each category
+                title = task.get("Title", "No Title")
+                bcd = task.get("BCD", "No Date")
+                status = task.get("SubmissionStatus", "Unknown")
+                days = task.get("_days_until_due")
+                
+                if days is not None:
+                    if days < 0:
+                        task_summary += f"  ⚠️  {title} | Due: {bcd} ({abs(days)} days OVERDUE) | Status: {status}\n"
+                    elif days == 0:
+                        task_summary += f"  🔴 {title} | Due: {bcd} (TODAY) | Status: {status}\n"
+                    else:
+                        task_summary += f"  🟡 {title} | Due: {bcd} (in {days} days) | Status: {status}\n"
+                else:
+                    task_summary += f"  ⚪ {title} | Due: {bcd} | Status: {status}\n"
+            
+            if len(tasks) > 10:
+                task_summary += f"  ... and {len(tasks) - 10} more\n"
+    
+    # Add full task details as JSON
+    task_summary += f"\n\nFULL TASK DATA (JSON):\n{json.dumps(all_tasks, default=str, indent=2)}\n"
+    
+    system_prompt = f"""{task_summary}
+
+=== CRITICAL INSTRUCTIONS FOR ANSWERING ===
+
+CURRENT DATE/TIME REFERENCE:
+- Today's Date: {now_date.strftime("%Y-%m-%d")}
+- Current Time: {now_utc.strftime("%H:%M:%S UTC")}
+- Current Month: {month_name}
+
+DATE-BASED FILTERING RULES:
+1. "Today" or "Due Today" → Tasks with BCD = {now_date}
+2. "This Week" → Tasks with BCD between {now_date} and {(now_date + pd.Timedelta(days=7)).date()}
+3. "This Month" → Tasks with BCD between {month_start.date()} and {month_end.date()}
+4. "Upcoming" → Tasks with BCD > {now_date}
+5. "Overdue" → Tasks with BCD < {now_date} AND SubmissionStatus ≠ "Submitted"
+6. "In Progress" → SubmissionStatus = "In Progress" or "Ongoing" AND BCD >= {now_date}
+7. "Completed" → SubmissionStatus = "Submitted"
+8. "New Submissions" → SubmissionStatus = "Submitted" AND BCD within {month_name}
+
+ANSWERING RULES:
+✅ ONLY use the task data provided above
+✅ Use the current date ({now_date}) for all date calculations
+✅ Be specific: include Task Title, Due Date, Days Until Due, and Status
+✅ Group results by date when relevant (Today, This Week, Upcoming, etc.)
+✅ When comparing dates, always reference the current date ({now_date})
+❌ Do NOT use external knowledge
+❌ Do NOT make assumptions
+❌ If data is unavailable, reply: "I don't have that information in your tasks."
+
+RESPONSE FORMAT:
+- Start with the task count matching the filter
+- Group tasks by date/category
+- Include specific due dates and status for each task
+- End with a summary or next steps if relevant
+"""
+    
+    return system_prompt
+
+
+def build_admin_prompt(analytics_data, task_categories, all_tasks, now_utc, month_start, month_end):
+    """
+    Build system prompt for admin users with analytics and full date awareness.
+    """
+    
+    current_datetime = now_utc.strftime("%A, %B %d, %Y at %H:%M:%S UTC")
+    now_date = now_utc.date()
+    month_name = now_utc.strftime("%B %Y")
+    
+    # Format analytics
+    analytics_json = json.dumps(analytics_data, default=str, indent=2)
+    
+    # Task summary by category
+    task_summary = f"""
+=== ADMIN CONTEXT ===
+Current Date/Time: {current_datetime}
+Month Range: {month_start.date()} to {month_end.date()}
+Total Tasks: {len(all_tasks)}
+
+TASK SUMMARY BY STATUS:
+"""
+    
+    for category, tasks in task_categories.items():
+        task_summary += f"- {category.replace('_', ' ').title()}: {len(tasks)} tasks\n"
+    
+    task_summary += f"\nFULL TASK DATA:\n{json.dumps(all_tasks, default=str, indent=2)}\n"
+    
+    system_prompt = f"""=== ADMIN FULL CONTEXT ===
+
+Current Date/Time: {current_datetime}
+Current Month: {month_name}
+
+ANALYTICS DATA:
+{analytics_json}
+
+{task_summary}
+
+DATE/TIME REFERENCE FOR ALL CALCULATIONS:
+- Today: {now_date}
+- This Month: {month_start.date()} to {month_end.date()}
+- Current Time: {now_utc.strftime("%H:%M:%S UTC")}
+
+ADMIN INSTRUCTIONS:
+✅ Use the complete analytics and task data provided
+✅ Link users to their specific tasks and metrics
+✅ For date-based queries, use {now_date} as reference
+✅ When analyzing performance, include dates and deadlines
+✅ Provide specific numbers from analytics
+✅ Group results by user, date, or status as appropriate
+✅ Compare current month ({month_name}) performance with analytics trends
+
+RESPONSE GUIDELINES:
+1. Always include specific dates (use {now_date} as baseline)
+2. For "in progress" queries: show tasks with status ≠ "Submitted" AND BCD >= {now_date}
+3. For "this month" queries: show tasks with BCD between {month_start.date()} and {month_end.date()}
+4. For "upcoming" queries: show tasks with BCD > {now_date}
+5. For analytics: reference the per_user data to show individual performance
+6. Be specific with numbers, dates, and user assignments
+"""
+    
+    return system_prompt
+
 # ==============================================================
 
 # ==============================================================
