@@ -72,3 +72,4 @@ prgmcopy.py
 # pyenv
 .python-version
 venv
+.venv

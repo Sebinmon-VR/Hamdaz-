@@ -1,5 +1,5 @@
 import email
-from flask import Flask, redirect, url_for, session, request, render_template, jsonify ,abort
+from flask import Flask, redirect, url_for, session, request, render_template, jsonify ,abort ,send_file
 from msal import ConfidentialClientApplication
 import requests
 import os
@@ -16,6 +16,8 @@ import openai
 import re
 import json
 import html
+from pinecone import Pinecone, ServerlessSpec
+from uuid import uuid4
 
 # ================== LOAD ENVIRONMENT ==================
 load_dotenv(override=True)
@@ -31,7 +33,7 @@ REDIRECT_URI = os.getenv("REDIRECT_URI")
 AUTHORITY = f"https://login.microsoftonline.com/{TENANT_ID}"
 SCOPE = ["User.Read"]
 
-SUPERUSERS = ["jishad@hamdaz.com", "sebin@hamdaz.com"]
+SUPERUSERS = ["jishad@hamdaz.com", "sebin@hamdaz.com","lamia@hamdaz.com"]
 approvers = ["shibit@hamdaz.com", "althaf@hamdaz.com" ,"sebin@hamdaz.com"]
 LIMITED_USERS = [""]
 
@@ -52,6 +54,12 @@ EXCLUDED_USERS = ["Sebin", "Shamshad", "Jaymon", "Hisham Arackal", "Althaf", "Ni
 
 # ✅ Initialize the OpenAI Client properly
 openai.api_key = os.getenv("OPENAI_API_KEY")
+
+PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")  
+pc = Pinecone(api_key=PINECONE_API_KEY)
+
+# Initialize the index
+index = pc.Index("hamdaz")
 
 # ==============================================================
 # Initialize global data (first load)
@@ -113,6 +121,9 @@ def background_updater():
 
             # Fetch latest SharePoint list
             tasks = fetch_sharepoint_list(SITE_DOMAIN, SITE_PATH, LIST_NAME)
+            list_columns= get_list_columns(SITE_DOMAIN , SITE_PATH , LIST_NAME)
+            
+            
             df = items_to_dataframe(tasks)
             user_analytics = generate_user_analytics(df, exclude_users=EXCLUDED_USERS)
 
@@ -141,13 +152,14 @@ def background_updater():
                 else:
                     add_item_to_sharepoint(item_fields)  
                     print(f"➕ Added new user {username} to SharePoint")
-
+            print("Indexing tasks to PineCone")
+            index_tasks()    # Update indexing for Pinecone
             print(f"[BG] Data updated successfully at {datetime.now()}", flush=True)
 
         except Exception as e:
             print("[BG] Error during update:", e)
 
-        time.sleep(200)
+        time.sleep(100)
 
 
 # ==============================================================
@@ -279,18 +291,49 @@ def teams():
 from urllib.parse import unquote
 import time
 
+def get_partnership_data_processed(search="", status="", page=1, per_page=50):
+    raw_data = get_partnership_data()# Replace with actual loading!
+    filtered = [
+        row for row in raw_data
+        if (search.lower() in row["Product"].lower() or search.lower() in row["Competitor Company"].lower())
+        and (not status or row.get("Status", "Not Started").strip() == status)
+    ]
+    total_count = len(filtered)
+    start = (page - 1) * per_page
+    end = start + per_page
+    paginated = filtered[start:end]
+    return paginated, total_count
+
+from math import ceil
+
 @app.route("/bd")
 def view_data():
-    user = session["user"]
-    data = get_partnership_data()  # fetch fresh data every time
+    user = session.get("user", "BD_USER")  # placeholder session user
+    search = request.args.get("search", "")
+    status = request.args.get("status", "")
+    page = int(request.args.get("page", 1))
+    per_page = 50
+    data, total_count = get_partnership_data_processed(search, status, page, per_page)
 
+    # Group by Product Group Number
     grouped_data = {}
     for row in data:
         key = row.get("Product Group Number", "N/A")
         grouped_data.setdefault(key, []).append(row)
 
-    return render_template("business_dev_team.html", grouped_data=grouped_data, user=user)
+    total_pages = ceil(total_count / per_page)
 
+    return render_template(
+        "business_dev_team.html",
+        grouped_data=grouped_data,
+        user=user,
+        search=search,
+        status=status,
+        page=page,
+        total_pages=total_pages,
+        per_page=per_page,
+        total_count=total_count
+    )
 
 @app.route('/competitor/<path:competitor_name>/<path:product_name>/<path:manufacturer>', methods=['GET', 'POST'])
 def competitor_profile(competitor_name, product_name, manufacturer):
@@ -357,9 +400,6 @@ def competitor_profile(competitor_name, product_name, manufacturer):
         other_products=other_products,
         user=user
     )
-
-
-
 
 @app.route("/cs")
 def cs():
@@ -806,106 +846,259 @@ def approvals():
     return render_template("pages/quote_decision.html", user=user, quote_items=quote_items)
 
 # ==============================================================
-from chatbot_service import ChatbotService
-chatbot_service = ChatbotService()
+# Global chat histories
+chat_histories = {}
+
+# Helper to get tasks for a user
+def get_tasks_for_user(username):
+    now_utc = pd.Timestamp.utcnow()
+    user_tasks = [t for t in tasks if t.get("AssignedTo", "").replace(" ", "") == username]
+    return user_tasks
+
+
+# ============================================================================
+# HELPER FUNCTIONS FOR RAG
+# ============================================================================
+def get_embeddings_batch(texts):
+    """Batch embed texts (10-100x faster than individual calls)"""
+    if not texts:
+        return []
+    
+    all_embeddings = []
+    for i in range(0, len(texts), 2048):  # OpenAI limit: 2048 texts/request
+        batch = texts[i:i+2048]
+        response = openai.Embedding.create(model="text-embedding-ada-002", input=batch)
+        all_embeddings.extend([item['embedding'] for item in response['data']])
+    
+    return all_embeddings
+
+
+def get_embedding(text):
+    """Single text embedding (use batch version when possible)"""
+    return openai.Embedding.create(model="text-embedding-ada-002", input=text)['data'][0]['embedding']
+
+
+def upsert_tasks_to_pinecone(tasks, is_admin, period_type="month"):
+    """Index tasks + analytics into Pinecone - OPTIMIZED with batch embeddings."""
+    vectors = []
+    texts_to_embed = []
+    text_metadata = []
+
+    # Prepare analytics for admins
+    if is_admin:
+        overall_analytics, per_user_analytics = get_analytics_data(df, period_type='all')
+        period_analytics, period_per_user = get_analytics_data(df, period_type=period_type)
+
+        analytics_text = json.dumps({
+            "overall_analytics": overall_analytics,
+            "per_user_analytics": per_user_analytics,
+            "period_analytics": period_analytics,
+            "period_per_user": period_per_user
+        }, indent=2)
+
+        texts_to_embed.append(analytics_text)
+        text_metadata.append({
+            "id": f"analytics-{period_type}",
+            "type": "analytics",
+            "period_type": str(period_type),
+            "text": analytics_text[:40000]
+        })
+
+
+    for task in tasks:
+        task_text = json.dumps(task, default=str)
+        assigned_to = task.get("AssignedTo", "").replace(" ", "")
+        task_id = task.get("id") or task.get("ID") or task.get("TaskID")
+
+        texts_to_embed.append(task_text)
+        text_metadata.append({
+            "id": f"task-{task_id}",
+            "type": "task",
+            "assigned_to": str(assigned_to),
+            "is_admin": bool(is_admin),
+            "full_task": task_text
+        })
+
+    embeddings = get_embeddings_batch(texts_to_embed)
+    print(f"✅ Generated {len(embeddings)} embeddings", flush=True)
+
+    # Combine embeddings with metadata
+    for i, (embedding, metadata) in enumerate(zip(embeddings, text_metadata)):
+        vectors.append({
+            "id": metadata["id"],
+            "values": embedding,
+            "metadata": {k: v for k, v in metadata.items() if k != "id"}
+        })
+
+    # Batch upsert to Pinecone
+    if vectors:
+        print(f"🔄 Upserting {len(vectors)} vectors to Pinecone...", flush=True)
+
+        batch_size = 100
+        pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
+        index = pc.Index("hamdaz")
+        for i in range(0, len(vectors), batch_size):
+            index.upsert(vectors=vectors[i:i+batch_size])
+            print(f"  ↳ Uploaded batch {i//batch_size + 1}/{(len(vectors)-1)//batch_size + 1}", flush=True)
+        print(f"✅ Successfully indexed {len(vectors)} items", flush=True)
+    else:
+        print("⚠️ No vectors to upsert", flush=True)
+
+    return True
+
+
+def query_relevant_data(user_query, username, is_admin, top_k=10):
+    """Query Pinecone for relevant tasks and analytics"""
+    query_embedding = get_embedding(user_query)
+    
+    # Admin sees all, users see only their tasks
+    filter_dict = None if is_admin else {"assigned_to": username, "type": "task"}
+    pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
+    index = pc.Index("hamdaz")
+    results = index.query(
+        vector=query_embedding,
+        top_k=top_k,
+        include_metadata=True,
+        filter=filter_dict
+    )
+    
+    tasks, analytics = [], []
+    
+    for match in results.get('matches', []):
+        meta = match.get('metadata', {})
+        
+        if meta.get('type') == 'task':
+            task_info = {
+                "score": match['score'],
+                "task": json.loads(meta.get('full_task', '{}'))
+            }
+            tasks.append(task_info)
+                
+        elif meta.get('type') == 'analytics':
+            analytics.append({
+                "score": match['score'],
+                "analytics": json.loads(meta.get('text', '{}'))
+            })
+    
+    return tasks, analytics 
+
 
 @app.route("/chatbot")
 def chatbot():
-    """Render the chatbot interface"""
     if "user" not in session:
         return redirect(url_for("login"))
     
-    user = session.get("user")
-    user_email = user.get("preferred_username") or user.get("email")
-    
-    # Initialize chat history for this user if not exists
-    if "chat_history" not in session:
-        session["chat_history"] = []
-    
-    # Check if user is admin
-    is_admin = user_email.lower() in SUPERUSERS
-    
-    return render_template(
-        "pages/chatbot.html", 
-        user=user,
-        is_admin=is_admin,
-    )
+    user = session["user"]
+    email = user.get("mail") or user.get("userPrincipalName")
 
+    # Initialize chat history if not exists
+    if email not in chat_histories:
+        chat_histories[email] = [{"role": "system", "content": "You are a helpful assistant."}]
+    
+    return render_template("pages/chatbot.html", user=user)
+
+
+def index_tasks():
+    """
+    Index all tasks to Pinecone (called from background updater).
+    """
+    try:        
+        print(f"[BG] 📊 Indexing {len(tasks)} tasks...", flush=True)
+        
+        # Use a system email for background indexing
+        system_email = "system@hamdaz.com"
+        
+        # Index all tasks as admin
+        upsert_tasks_to_pinecone(tasks, is_admin=True)
+        
+        print(f"[BG] ✅ Successfully indexed {len(tasks)} tasks", flush=True)
+        return True
+        
+    except Exception as e:
+        print(f"[BG] ❌ Error indexing tasks: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
+        return False
 
 @app.route("/chatbot/ask", methods=["POST"])
 def ask_chatbot():
-    """Handle chatbot message requests"""
     if "user" not in session:
-        return jsonify({"error": "Not authenticated"}), 401
+        return jsonify({"error": "Unauthorized"}), 401
+
+    user = session["user"]
+    email = user.get("mail") or user.get("userPrincipalName")
+    username = user.get("displayName", "").replace(" ", "")
+    is_admin_user = is_admin(email)
     
-    data = request.json
-    user_prompt = data.get("message")
-    
-    # Validate input
-    if not user_prompt or not isinstance(user_prompt, str):
-        return jsonify({"error": "Invalid message"}), 400
-    
-    # Sanitize input
-    user_prompt = user_prompt.strip()
-    if len(user_prompt) == 0:
-        return jsonify({"error": "Message cannot be empty"}), 400
-    
-    if len(user_prompt) > 2000:
-        return jsonify({"error": "Message too long. Maximum 2000 characters."}), 400
-    
+    user_prompt = request.json.get("message")
+    period_type = request.json.get("period", "month")
+
     try:
-        # Get user email
-        user_email = session["user"].get("preferred_username") or session["user"].get("email")
-        if not user_email:
-            return jsonify({"error": "User email not found"}), 400
-        
-        # Get chat history from session
-        chat_history = session.get("chat_history", [])
-        
-        # Call the ChatbotService
-        response = chatbot_service.chat(
-            user_email=user_email,
-            user_message=user_prompt,
-            chat_history=chat_history
+        # Query Pinecone
+        tasks, analytics = query_relevant_data(
+            user_prompt, username, is_admin_user, top_k=10
         )
         
-        # Handle errors
-        if not response.get("success"):
-            error_msg = response.get("error", "Failed to generate response")
-            print(f"Chatbot error for {user_email}: {error_msg}")
-            return jsonify({
-                "error": "I encountered an error. Please try again.",
-                "details": error_msg
-            }), 500
+        # Build context for AI
+        if is_admin_user:
+            # Get analytics
+            if analytics:
+                analytics_data = analytics[0]['analytics']
+                per_user_analytics = analytics_data.get('per_user_analytics', {})
+                period_per_user = analytics_data.get('period_per_user', {})
+            else:
+                _, per_user_analytics = get_analytics_data(df, period_type='all')
+                _, period_per_user = get_analytics_data(df, period_type=period_type)
+            
+            context = (
+                f"ADMIN has Access to ALL USERS\n\n"
+                f"📊 Analytics:\n{json.dumps(per_user_analytics, default=str)}\n\n"
+                f"🌐 All Tasks:\n{json.dumps([t['task'] for t in tasks], default=str)}\n\n"
+            )
+        else:
+            context = (
+                f"USER: {username}\n\n"
+                f"📋 Your Tasks:\n{json.dumps([t['task'] for t in tasks], default=str)}\n\n"
+                "Answer ONLY based on the user's tasks above."
+            ) if tasks else f"USER: {username}\n\n⚠️ No tasks found."
+
+        # Build messages
+        messages = [{"role": "system", "content": context}]
         
-        # Get the assistant's reply
-        assistant_reply = response["response"]
+        last_summary = session.get(f"{email}_last_summary")
+        if last_summary:
+            messages.append({"role": "system", "content": f"Previous: {last_summary}"})
         
-        # Update chat history in session
-        chat_history.append({"role": "user", "content": user_prompt})
-        chat_history.append({"role": "assistant", "content": assistant_reply})
+        messages.append({"role": "user", "content": user_prompt})
+
+        # Get AI response
+        response = openai.ChatCompletion.create(
+            model="gpt-4o",
+            messages=messages,
+            temperature=0.7,
+            max_tokens=5000
+        )
+        reply = response.choices[0].message.content
+
+        # Generate summary
+        summary = openai.ChatCompletion.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": "Summarize in 1-2 sentences."},
+                {"role": "user", "content": f"User: {user_prompt}\nAssistant: {reply}"}
+            ],
+            temperature=0.5,
+            max_tokens=100
+        ).choices[0].message.content
         
-        # Keep only the last N messages to prevent session from growing too large
-        session["chat_history"] = chat_history[-20:]
-        session.modified = True
-        
-        # Return response with metadata
-        return jsonify({
-            "reply": assistant_reply,
-            "metadata": {
-                "is_admin": response.get("context_used", {}).get("is_admin", False),
-                "data_sources": response.get("context_used", {}).get("data_sources", []),
-                "tokens_used": response.get("tokens_used", 0)
-            }
-        })
-        
+        session[f"{email}_last_summary"] = summary
+
+        return jsonify({"reply": reply, "summary": summary})
+    
     except Exception as e:
-        print(f"Error in ask_chatbot for user {user_email}: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({
-            "error": "An unexpected error occurred. Please try again later."
-        }), 500
+        print(f"❌ Error: {e}", flush=True)
+        return jsonify({"error": str(e)}), 500
+# ==============================================================
 
 # ==============================================================
 
@@ -932,6 +1125,242 @@ def admin_report():
     return render_template("pages/admin_report.html", user=user, overall_analytics=overall_analytics, per_user_analytics=per_user_analytics)
 
 # ==============================================================
+from PyPDF2 import PdfMerger
+import io
+DEFAULT_PDF_PATH = 'default.pdf'
+
+@app.route('/merge', methods=['GET', 'POST'])
+def merge():
+    if request.method == 'POST':
+        # Get PDFs from the form
+        uploaded_files = request.files.getlist('pdf_files')
+
+        # Prepare in-memory PDFs
+        pdf_streams = []
+        for f in uploaded_files:
+            pdf_streams.append(io.BytesIO(f.read()))
+
+        # Include default PDF if requested
+        include_default = request.form.get('include_default')
+        if include_default == 'on':
+            default_pdf_position = int(request.form.get('default_position', 0))
+            with open(DEFAULT_PDF_PATH, 'rb') as df:
+                default_pdf_stream = io.BytesIO(df.read())
+            pdf_streams.insert(default_pdf_position, default_pdf_stream)
+
+        # Merge PDFs
+        merger = PdfMerger()
+        for pdf_io in pdf_streams:
+            merger.append(pdf_io)
+
+        output_pdf = io.BytesIO()
+        merger.write(output_pdf)
+        merger.close()
+        output_pdf.seek(0)
+
+        return send_file(output_pdf, as_attachment=True, download_name='merged.pdf', mimetype='application/pdf')
+
+    return render_template('merge_tp.html' , user=session.get("user"))
+
+import PyPDF2
+# Make sure to set your OpenAI API key
+openai.api_key = os.getenv("OPENAI_API_KEY")
+CHUNK_SIZE = 3000  # characters per chunk
+
+
+@app.route("/tp")
+def tp():
+    try:
+        items = get_child_files()
+        files = []
+        for f in items:
+            if "file" in f:
+                files.append({
+                    "name": f["name"],
+                    "url": f["webUrl"],
+                    "size": f["size"],
+                    "modified": f["lastModifiedDateTime"],
+                    "id": f["id"]
+                })
+        # Default attachments for table
+        default_attachments = [
+            {"name": f["name"], "id": f["id"], "url": f["url"]}
+            for f in files
+        ]
+    except Exception as e:
+        print("Error:", e)
+        files = []
+        default_attachments = []
+
+    return render_template("tp.html", files=files, default_attachments=default_attachments, user=session.get("user"))
+
+@app.route("/download/pdf/<file_id>")
+def download_pdf(file_id):
+    
+    try:
+        docx_path = download_docx(file_id)
+        pdf_path = convert_docx_to_pdf(docx_path)
+        return send_file(pdf_path, as_attachment=True, download_name=os.path.basename(pdf_path))
+    except requests.HTTPError as e:
+        print("HTTP Error:", e)
+        return f"Graph API Error: {e}", 500
+    except Exception as e:
+        print("Error:", e)
+        return f"Error occurred: {e}", 500
+
+
+
+@app.route('/analyze', methods=['POST'])
+def analyze_document():
+    if 'pdf_file' not in request.files:
+        return jsonify({"error": "No PDF file uploaded"}), 400
+
+    pdf_file = request.files['pdf_file']
+
+    # Step 1: Extract text from PDF
+    try:
+        pdf_reader = PyPDF2.PdfReader(pdf_file)
+    except Exception as e:
+        return jsonify({"error": f"Failed to read PDF: {str(e)}"}), 400
+
+    text_content = ""
+    for page in pdf_reader.pages:
+        page_text = page.extract_text()
+        if page_text:
+            # Clean extra whitespace & preserve structure
+            page_text = "\n".join([line.strip() for line in page_text.splitlines() if line.strip()])
+            text_content += page_text + "\n"
+
+    if not text_content.strip():
+        return jsonify({"error": "No text could be extracted from PDF"}), 400
+
+    # Step 2: Split text into manageable chunks
+    chunks = [text_content[i:i+CHUNK_SIZE] for i in range(0, len(text_content), CHUNK_SIZE)]
+
+    # Step 3: Prepare final result
+    final_result = {
+        "requirements": [],
+        "attachments_needed": [],
+        "eligibility_criteria": [],
+        "deadlines": [],
+        "technical_specifications": [],
+        "other_notes": []
+    }
+
+    # Step 4: Analyze each chunk with OpenAI
+    for chunk in chunks:
+        prompt = f"""
+You are an expert RFQ/SOW analyst.
+
+Step 1: Read the document chunk below.
+
+Step 2: Extract all relevant information: requirements, attachments, eligibility criteria, deadlines, technical specifications, and other notes.
+
+Return your answer in JSON exactly like this:
+
+{{
+  "requirements": [...],
+  "attachments_needed": [...],
+  "eligibility_criteria": [...],
+  "deadlines": [...],
+  "technical_specifications": [...],
+  "other_notes": [...]
+}}
+
+If a field is missing, return an empty list.
+
+Document Text:
+{chunk}
+        """
+
+        try:
+            response = openai.ChatCompletion.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": "You are an expert RFQ/SOW analyst."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0,
+                max_tokens=2000
+            )
+
+            ai_output = response['choices'][0]['message']['content']
+            ai_output_clean = ai_output.replace("```json", "").replace("```", "").strip()
+
+            try:
+                chunk_data = json.loads(ai_output_clean)
+                # Merge chunk data into final result
+                for key in final_result.keys():
+                    if key in chunk_data and isinstance(chunk_data[key], list):
+                        final_result[key].extend(chunk_data[key])
+            except json.JSONDecodeError:
+                # fallback for unparsable chunk
+                final_result.setdefault("raw_text_chunks", []).append(ai_output_clean)
+
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
+    # Remove duplicates from lists
+    for key in final_result:
+        if isinstance(final_result[key], list):
+            final_result[key] = list(dict.fromkeys(final_result[key]))
+
+    return jsonify({"extracted_data": final_result})
+
+
+
+
+
+
+
+# # ************ NEW ROUTE HERE ************
+# @app.route("/datasheets", methods=["GET", "POST"])
+# def datasheets():
+#     results = []
+
+#     if request.method == "POST":
+#         item = request.form.get("item")
+
+#         # 1. Search web using DuckDuckGo
+#         search_urls = duckduckgo_search(f"{item} datasheet pdf")
+
+#         # 2. For each result → extract PDF/DOC links
+#         for url in search_urls:
+#             docs = extract_documents_from_page(url)
+
+#             if docs:
+#                 results.append({
+#                     "page": url,
+#                     "documents": docs
+#                 })
+#             else:
+#                 results.append({
+#                     "page": url,
+#                     "documents": []
+#                 })
+
+#         # 3. Ask AI to refine results
+#         ai_prompt = f"""
+#         Find datasheet links (PDF/DOC) for: {item}
+#         Extract ONLY URLs. Give up to 10 results.
+#         """
+#         ai_result = openai.ChatCompletion.create(
+#             model="gpt-4o-mini",
+#             messages=[{"role": "user", "content": ai_prompt}]
+#         )
+#         ai_links = re.findall(r'https?://\S+', ai_result.choices[0].message["content"])
+
+#         for link in ai_links:
+#             results.append({
+#                 "page": link,
+#                 "documents": [link] if link.endswith(("pdf", "doc", "docx")) else []
+#             })
+
+#     return render_template("datasheets.html", results=results)
+
+
+
+
 
 # ==============================================================
 # START FLASK + BACKGROUND UPDATER
@@ -939,6 +1368,7 @@ def admin_report():
 threading.Thread(target=background_updater, daemon=True).start()
 
 if __name__ == "__main__":
-    
     app.run(debug=True)
     
+
+
