@@ -33,7 +33,7 @@ REDIRECT_URI = os.getenv("REDIRECT_URI")
 AUTHORITY = f"https://login.microsoftonline.com/{TENANT_ID}"
 SCOPE = ["User.Read"]
 
-SUPERUSERS = ["jishad@hamdaz.com", "sebin@hamdaz.com","lamia@hamdaz.com" , "hisham@hamdaz.com"]
+SUPERUSERS = ["jishad@hamdaz.com","lamia@hamdaz.com" , "hisham@hamdaz.com"]
 approvers = ["shibit@hamdaz.com", "althaf@hamdaz.com" ,"sebin@hamdaz.com"]
 LIMITED_USERS = [""]
 
@@ -1281,8 +1281,6 @@ def categorize_tasks(tasks, now_utc, now_date, month_start, month_end):
     return categories
 
 
-
-
 def build_user_prompt(username, task_categories, all_tasks, now_utc, now_date, month_start, month_end):
     """
     Build system prompt for non-admin users with date-aware instructions.
@@ -1291,6 +1289,10 @@ def build_user_prompt(username, task_categories, all_tasks, now_utc, now_date, m
     # Format current date/time
     current_datetime = now_utc.strftime("%A, %B %d, %Y at %H:%M:%S UTC")
     month_name = now_utc.strftime("%B %Y")
+    
+    # ✅ FIX: Convert now_date to Timestamp for arithmetic operations
+    now_date_ts = pd.Timestamp(now_date) if isinstance(now_date, __import__('datetime').date) else now_date
+    week_end_date = (now_date_ts + pd.Timedelta(days=7)).date()
     
     # Create task summary by category
     task_summary = f"""
@@ -1326,19 +1328,23 @@ TASKS BY CATEGORY:
     # Add full task details as JSON
     task_summary += f"\n\nFULL TASK DATA (JSON):\n{json.dumps(all_tasks, default=str, indent=2)}\n"
     
+    # ✅ FIX: Convert dates properly for string formatting
+    month_start_date = month_start.date() if hasattr(month_start, 'date') else month_start
+    month_end_date = month_end.date() if hasattr(month_end, 'date') else month_end
+    
     system_prompt = f"""{task_summary}
 
 === CRITICAL INSTRUCTIONS FOR ANSWERING ===
 
 CURRENT DATE/TIME REFERENCE:
-- Today's Date: {now_date.strftime("%Y-%m-%d")}
+- Today's Date: {now_date}
 - Current Time: {now_utc.strftime("%H:%M:%S UTC")}
 - Current Month: {month_name}
 
 DATE-BASED FILTERING RULES:
 1. "Today" or "Due Today" → Tasks with BCD = {now_date}
-2. "This Week" → Tasks with BCD between {now_date} and {(now_date + pd.Timedelta(days=7)).date()}
-3. "This Month" → Tasks with BCD between {month_start.date()} and {month_end.date()}
+2. "This Week" → Tasks with BCD between {now_date} and {week_end_date}
+3. "This Month" → Tasks with BCD between {month_start_date} and {month_end_date}
 4. "Upcoming" → Tasks with BCD > {now_date}
 5. "Overdue" → Tasks with BCD < {now_date} AND SubmissionStatus ≠ "Submitted"
 6. "In Progress" → SubmissionStatus = "In Progress" or "Ongoing" AND BCD >= {now_date}
