@@ -33,7 +33,7 @@ REDIRECT_URI = os.getenv("REDIRECT_URI")
 AUTHORITY = f"https://login.microsoftonline.com/{TENANT_ID}"
 SCOPE = ["User.Read"]
 
-SUPERUSERS = ["jishad@hamdaz.com","lamia@hamdaz.com" , "hisham@hamdaz.com"]
+SUPERUSERS = ["jishad@hamdaz.com", "sebin@hamdaz.com","lamia@hamdaz.com" , "hisham@hamdaz.com"]
 approvers = ["shibit@hamdaz.com", "althaf@hamdaz.com" ,"sebin@hamdaz.com"]
 LIMITED_USERS = [""]
 
@@ -152,8 +152,8 @@ def background_updater():
                 else:
                     add_item_to_sharepoint(item_fields)  
                     print(f"➕ Added new user {username} to SharePoint")
-            print("Indexing tasks to PineCone")
-            index_tasks()    # Update indexing for Pinecone
+            # print("Indexing tasks to PineCone")
+            # index_tasks()    # Update indexing for Pinecone
             print(f"[BG] Data updated successfully at {datetime.now()}", flush=True)
 
         except Exception as e:
@@ -668,7 +668,7 @@ def quote_details(quote_id):
         return redirect(url_for("login"))
 
     user = session.get("user")
-
+    
     # Fetch quote by ID from SharePoint
     site_domain = "hamdaz1.sharepoint.com"
     site_path = "/sites/Test"
@@ -695,6 +695,7 @@ def quote_details(quote_id):
     quote["IsApproved"] = is_approved
 
     if is_approved:
+        
         print("approved")
 
     # -----------------------------
@@ -783,6 +784,53 @@ def quote_details(quote_id):
         quote['Totals'] = {}
 
     return render_template("pages/quote_details.html", quote=quote, user=user)
+
+
+@app.route("/export_quote/<quote_id>")
+def export_quote(quote_id):
+    if "user" not in session:
+        return redirect(url_for("login"))
+
+    # --- REUSE YOUR EXISTING FETCH LOGIC HERE ---
+    # (Copy the logic from quote_details to fetch and parse the quote)
+    site_domain = "hamdaz1.sharepoint.com"
+    site_path = "/sites/Test"
+    list_name = "Quotes"
+    quote_items = fetch_sharepoint_list(site_domain, site_path, list_name)
+    quote = next((q for q in quote_items if str(q.get("id")) == str(quote_id)), None)
+    
+    if not quote:
+        return "Quote not found", 404
+
+    # Fetch Customer Name
+    customer_id = quote.get("CustomerID", "")
+    customer_name = get_customer_name_from_zoho(customer_id) or ""
+    quote["CustomerName"] = customer_name
+
+    # Parse AllItems (Required for the loop)
+    import json, re, html
+    all_items_raw = quote.get("AllItems", "")
+    try:
+        match = re.search(r'\[.*\]', html.unescape(all_items_raw), re.DOTALL)
+        if match:
+            quote['AllItems_parsed'] = json.loads(match.group(0))
+        else:
+            quote['AllItems_parsed'] = []
+    except:
+        quote['AllItems_parsed'] = []
+    # ---------------------------------------------
+
+    # Generate the Excel file
+    excel_file = generate_quote_excel(quote)
+    
+    # Return as a download
+    return send_file(
+        excel_file,
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        as_attachment=True,
+        download_name=f"Quote_{quote_id}.xlsx"
+    )
+
 
 @app.route("/vendors")
 def vendors():
@@ -878,13 +926,17 @@ def get_embedding(text):
     return openai.Embedding.create(model="text-embedding-ada-002", input=text)['data'][0]['embedding']
 
 
-def upsert_tasks_to_pinecone(tasks, is_admin, period_type="month"):
-    """Index tasks + analytics into Pinecone - OPTIMIZED with batch embeddings."""
-    vectors = []
-    texts_to_embed = []
-    text_metadata = []
 
-    # Prepare analytics for admins
+def upsert_tasks_to_pinecone(tasks, is_admin, period_type="month"):
+    """Index tasks + analytics into Pinecone - only update when data changed."""
+    pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
+    index = pc.Index("hamdaz")
+
+    all_items = []   # (id, text, metadata)
+
+    # -------------------------------
+    # 1. BUILD TASKS + ANALYTICS LIST
+    # -------------------------------
     if is_admin:
         overall_analytics, per_user_analytics = get_analytics_data(df, period_type='all')
         period_analytics, period_per_user = get_analytics_data(df, period_type=period_type)
@@ -896,58 +948,101 @@ def upsert_tasks_to_pinecone(tasks, is_admin, period_type="month"):
             "period_per_user": period_per_user
         }, indent=2)
 
-        texts_to_embed.append(analytics_text)
-        text_metadata.append({
-            "id": f"analytics-{period_type}",
-            "type": "analytics",
-            "period_type": str(period_type),
-            "text": analytics_text[:40000]
-        })
-
+        all_items.append((
+            f"analytics-{period_type}",
+            analytics_text,
+            {
+                "type": "analytics",
+                "period_type": str(period_type),
+                "text": analytics_text[:40000]
+            }
+        ))
 
     for task in tasks:
         task_text = json.dumps(task, default=str)
         assigned_to = task.get("AssignedTo", "").replace(" ", "")
         task_id = task.get("id") or task.get("ID") or task.get("TaskID") or str(uuid4())
 
-        texts_to_embed.append(task_text)
-        text_metadata.append({
-            "id": f"task-{task_id}",
-            "type": "task",
-            "assigned_to": str(assigned_to),
-            "is_admin": bool(is_admin),
-            "full_task": task_text
+        all_items.append((
+            f"task-{task_id}",
+            task_text,
+            {
+                "type": "task",
+                "assigned_to": str(assigned_to),
+                "is_admin": bool(is_admin),
+                "full_task": task_text
+            }
+        ))
+
+    # Gather all ids we need to check
+    ids = [item[0] for item in all_items]
+
+    # -------------------------------------
+    # 2. FETCH EXISTING RECORDS FROM INDEX
+    # -------------------------------------
+    existing = index.fetch(ids).vectors
+    print(f"Fetched {len(existing)} existing records.", flush=True)
+
+    # -------------------------------------
+    # 3. DETERMINE WHICH ITEMS CHANGED
+    # -------------------------------------
+    to_embed = []
+    to_upsert = []
+
+    for item_id, text, metadata in all_items:
+        old = existing.get(item_id)
+
+        if not old:
+            # New record — must embed and upsert
+            to_embed.append((item_id, text, metadata))
+            continue
+
+        old_meta = old.metadata or {}
+
+        old_text = old_meta.get("full_task") or old_meta.get("text") or None
+
+
+        if old_text != text:
+            # content changed → regenerate embedding and upsert
+            to_embed.append((item_id, text, metadata))
+        else:
+            # content is identical → SKIP
+            pass
+
+    print(f"🔥 Records changed: {len(to_embed)-1}", flush=True)
+
+    if not to_embed:
+        print("✅ No changes detected — nothing to upsert.", flush=True)
+        return True
+
+    # -------------------------------------
+    # 4. BATCH GENERATE EMBEDDINGS
+    # -------------------------------------
+    texts = [x[1] for x in to_embed]
+    new_embeddings = get_embeddings_batch(texts)
+
+    # -------------------------------------
+    # 5. BUILD UPSERT PAYLOAD
+    # -------------------------------------
+    for (item_id, text, metadata), embed in zip(to_embed, new_embeddings):
+        to_upsert.append({
+            "id": item_id,
+            "values": embed,
+            "metadata": metadata
         })
 
-    embeddings = get_embeddings_batch(texts_to_embed)
-    print(f"✅ Generated {len(embeddings)} embeddings", flush=True)
+    # -------------------------------------
+    # 6. BATCH UPSERT ONLY CHANGED ITEMS
+    # -------------------------------------
+    batch_size = 100
+    for i in range(0, len(to_upsert), batch_size):
+        index.upsert(vectors=to_upsert[i:i+batch_size])
+        print(f"  ↳ Upserted batch {i//batch_size + 1}", flush=True)
 
-    # Combine embeddings with metadata
-    for i, (embedding, metadata) in enumerate(zip(embeddings, text_metadata)):
-        vectors.append({
-            "id": metadata["id"],
-            "values": embedding,
-            "metadata": {k: v for k, v in metadata.items() if k != "id"}
-        })
-
-    # Batch upsert to Pinecone
-    if vectors:
-        print(f"🔄 Upserting {len(vectors)} vectors to Pinecone...", flush=True)
-
-        batch_size = 100
-        pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
-        index = pc.Index("hamdaz")
-        for i in range(0, len(vectors), batch_size):
-            index.upsert(vectors=vectors[i:i+batch_size])
-            print(f"  ↳ Uploaded batch {i//batch_size + 1}/{(len(vectors)-1)//batch_size + 1}", flush=True)
-        print(f"✅ Successfully indexed {len(vectors)} items", flush=True)
-    else:
-        print("⚠️ No vectors to upsert", flush=True)
-
+    print(f"✅ Completed upsert of {len(to_upsert)} changed items.", flush=True)
     return True
 
-
-def query_relevant_data(user_query, username, is_admin, top_k=100):
+def query_relevant_data(user_query, username, is_admin, top_k=10):
     """Query Pinecone for relevant tasks and analytics"""
     query_embedding = get_embedding(user_query)
     
@@ -1035,404 +1130,82 @@ def ask_chatbot():
     period_type = request.json.get("period", "month")
 
     try:
-        # ============================================================================
-        # GET CURRENT DATE/TIME FOR ALL LOGIC
-        # ============================================================================
-        now_utc = pd.Timestamp.utcnow()
-        now_date = now_utc.date()
-        now_time = now_utc.time()
-        current_year = now_utc.year
-        current_month = now_utc.month
-        current_day = now_utc.day
-        
-        # Calculate month boundaries
-        month_start = pd.Timestamp(year=current_year, month=current_month, day=1)
-        if current_month == 12:
-            month_end = pd.Timestamp(year=current_year + 1, month=1, day=1) - pd.Timedelta(days=1)
-        else:
-            month_end = pd.Timestamp(year=current_year, month=current_month + 1, day=1) - pd.Timedelta(days=1)
-        
-        print(f"[CHATBOT] Current: {now_utc} | Month: {month_start.date()} to {month_end.date()}", flush=True)
-
-        # ============================================================================
-        # 1) SEMANTIC RETRIEVAL: Query Pinecone
-        # ============================================================================
-        pinecone_tasks, pinecone_analytics = query_relevant_data(
-            user_prompt, username, is_admin_user, top_k=100
+        # 1) Try semantic retrieval from Pinecone
+        tasks, analytics = query_relevant_data(
+            user_prompt, username, is_admin_user, top_k=200
         )
-        print(f"[CHATBOT] Pinecone: {len(pinecone_tasks)} tasks, {len(pinecone_analytics)} analytics", flush=True)
 
-        # ============================================================================
-        # 2) INTELLIGENT DATA PREPARATION WITH DATE LOGIC
-        # ============================================================================
-        processed_tasks = []
-        
-        if not is_admin_user:
-            # Get ALL user tasks
-            user_sp_tasks = get_tasks_for_user(username)
-            
-            # Process each task with date calculations
-            for task in user_sp_tasks:
-                task_processed = process_task_with_dates(task, now_utc, now_date)
-                processed_tasks.append(task_processed)
-            
-            print(f"[CHATBOT] Loaded {len(processed_tasks)} tasks for user {username}", flush=True)
-        else:
-            # For admin: process all tasks with date logic
-            for task_item in pinecone_tasks:
-                task = task_item.get('task', {})
-                task_processed = process_task_with_dates(task, now_utc, now_date)
-                processed_tasks.append(task_processed)
-            
-            print(f"[CHATBOT] Loaded {len(processed_tasks)} tasks for admin", flush=True)
+        # 2) FALLBACK for non-admins: if Pinecone returned no tasks, load directly from SharePoint/global cache
+        if not is_admin_user and (not tasks or len(tasks) == 0):
+            print("[CHATBOT] Pinecone returned no matches — falling back to SharePoint tasks for user", flush=True)
+            sp_tasks = get_tasks_for_user(username)
+            tasks = [{"score": 1.0, "task": t} for t in sp_tasks] if sp_tasks else []
 
-        # ============================================================================
-        # 3) SMART CATEGORIZATION BASED ON DATES & STATUS
-        # ============================================================================
-        task_categories = categorize_tasks(processed_tasks, now_utc, now_date, month_start, month_end)
-        
-        # ✅ FIX: Use correct key names
-        print(f"[CHATBOT] Task Categories:", flush=True)
-        print(f"  - Due Today: {len(task_categories.get('due_today', []))}", flush=True)
-        print(f"  - Overdue: {len(task_categories.get('overdue', []))}", flush=True)
-        print(f"  - Due This Week: {len(task_categories.get('due_this_week', []))}", flush=True)
-        print(f"  - Due Next Week: {len(task_categories.get('due_next_week', []))}", flush=True)
-        print(f"  - Due This Month: {len(task_categories.get('due_this_month', []))}", flush=True)
-        print(f"  - Upcoming: {len(task_categories.get('upcoming', []))}", flush=True)
-        print(f"  - In Progress: {len(task_categories.get('in_progress', []))}", flush=True)
-        print(f"  - Completed: {len(task_categories.get('completed', []))}", flush=True)
-        print(f"  - No Due Date: {len(task_categories.get('no_due_date', []))}", flush=True)
-
-        # ============================================================================
-        # 4) BUILD ENHANCED SYSTEM PROMPT WITH FULL CONTEXT
-        # ============================================================================
+        # 3) Build contextual system prompt
         if is_admin_user:
-            # ADMIN: Full analytics + categorized tasks
-            if pinecone_analytics:
-                analytics_data = pinecone_analytics[0].get('analytics', {})
+            # Admin: include analytics + all matched tasks
+            if analytics:
+                analytics_data = analytics[0].get('analytics', {})
+                per_user_analytics = analytics_data.get('per_user_analytics', {})
             else:
-                overall_analytics, per_user_analytics = get_analytics_data(df, period_type='all')
-                analytics_data = {"overall": overall_analytics, "per_user": per_user_analytics}
+                _, per_user_analytics = get_analytics_data(df, period_type='all')
 
-            system_prompt = build_admin_prompt(
-                analytics_data, 
-                task_categories, 
-                processed_tasks, 
-                now_utc, 
-                month_start, 
-                month_end
+            tasks_list = [t['task'] for t in tasks] if tasks else []
+            context = (
+                f"ADMIN CONTEXT\n\n"
+                f"Analytics (per user):\n{json.dumps(per_user_analytics, default=str)}\n\n"
+                f"Matched Tasks:\n{json.dumps(tasks_list, default=str)}\n\n"
+                "You may use the analytics and tasks above to answer the user's question. asosciate the data properly for better"
             )
         else:
-            # NON-ADMIN: Only their tasks with date awareness
-            system_prompt = build_user_prompt(
-                username, 
-                task_categories, 
-                processed_tasks, 
-                now_utc, 
-                now_date, 
-                month_start, 
-                month_end
-            )
+            # Non-admin: MUST answer only from the user's tasks. If no tasks, explicitly state cannot answer.
+            if tasks:
+                context = (
+                    f"USER: {username}\n\n"
+                    f"Use ONLY the following tasks to answer the question. Do NOT use any external knowledge.\n\n"
+                    f"{json.dumps([t['task'] for t in tasks], default=str)}\n\n"
+                    "INSTRUCTIONS: Answer ONLY using the information above. If the question cannot be answered from this data, reply exactly: \"I don't know based on available data.\" Keep the answer concise."
+                )
+            else:
+                context = (
+                    f"USER: {username}\n\n"
+                    "No task data is available for this user. You must reply: \"I don't know based on available data.\""
+                )
 
-        # ============================================================================
-        # 5) COMPOSE MESSAGES AND CALL GPT-4o
-        # ============================================================================
-        messages = [
-            {"role": "system", "content": system_prompt}
-        ]
-        
-        # Add conversation history if exists
+        # 4) Compose messages and call model
+        messages = [{"role": "system", "content": context}]
         last_summary = session.get(f"{email}_last_summary")
         if last_summary:
-            messages.append({
-                "role": "system", 
-                "content": f"[PREVIOUS CONTEXT]: {last_summary}"
-            })
-        
+            messages.append({"role": "system", "content": f"Previous: {last_summary}"})
         messages.append({"role": "user", "content": user_prompt})
 
-        print(f"[CHATBOT] Sending {len(messages)} messages to GPT-4o", flush=True)
-        print(f"[CHATBOT] System prompt size: {len(system_prompt)} chars", flush=True)
-        
         response = openai.ChatCompletion.create(
             model="gpt-4o",
             messages=messages,
-            temperature=0.0,
+            temperature=0.0,   # deterministic answers when relying on data
             max_tokens=8000
         )
-        
         reply = response.choices[0].message.content.strip()
-        print(f"[CHATBOT] Response generated: {len(reply)} chars", flush=True)
 
-        # ============================================================================
-        # 6) GENERATE SUMMARY FOR SESSION
-        # ============================================================================
+        # 5) Short summary for session memory
         summary_resp = openai.ChatCompletion.create(
-            model="gpt-4o-mini",
+            model="gpt-4o",
             messages=[
-                {"role": "system", "content": "Summarize in 1-2 sentences for context memory."},
-                {"role": "user", "content": f"Q: {user_prompt}\nA: {reply}"}
+                {"role": "system", "content": "Summarize in 1 sentence."},
+                {"role": "user", "content": f"User: {user_prompt}\nAssistant: {reply}"}
             ],
             temperature=0.0,
-            max_tokens=200
+            max_tokens=60
         )
         summary = summary_resp.choices[0].message.content.strip()
         session[f"{email}_last_summary"] = summary
 
-        return jsonify({
-            "reply": reply,
-            "summary": summary,
-            "debug": {
-                "current_time": now_utc.strftime("%Y-%m-%d %H:%M:%S UTC"),
-                "tasks_total": len(processed_tasks),
-                "task_categories": {k: len(v) for k, v in task_categories.items()}
-            }
-        })
+        return jsonify({"reply": reply, "summary": summary})
 
     except Exception as e:
         print(f"❌ Error in ask_chatbot: {e}", flush=True)
-        import traceback
-        traceback.print_exc()
         return jsonify({"error": str(e)}), 500
-# ============================================================================
-# HELPER FUNCTIONS FOR DATE-AWARE PROCESSING
-# ============================================================================
-
-def process_task_with_dates(task, now_utc, now_date):
-    """
-    Process a task and add calculated date fields for easy filtering.
-    """
-    task_copy = task.copy()
-    
-    # Parse BCD (Due Date)
-    bcd_str = task.get("BCD", "")
-    try:
-        bcd_date = pd.to_datetime(bcd_str).date()
-        bcd_ts = pd.to_datetime(bcd_str)
-    except:
-        bcd_date = None
-        bcd_ts = None
-    
-    # Get submission status
-    status = str(task.get("SubmissionStatus", "")).strip().lower()
-    
-    # Add calculated fields
-    task_copy["_bcd_date"] = bcd_date
-    task_copy["_bcd_timestamp"] = bcd_ts
-    task_copy["_status_lower"] = status
-    task_copy["_days_until_due"] = (bcd_date - now_date).days if bcd_date else None
-    task_copy["_is_overdue"] = bcd_date < now_date if bcd_date else False
-    task_copy["_is_due_today"] = bcd_date == now_date if bcd_date else False
-    task_copy["_is_future"] = bcd_date > now_date if bcd_date else False
-    task_copy["_is_completed"] = status == "submitted"
-    task_copy["_is_active"] = status not in ["submitted", ""] and (bcd_date is None or bcd_date >= now_date)
-    
-    return task_copy
-
-def categorize_tasks(tasks, now_utc, now_date, month_start, month_end):
-    """
-    Categorize tasks by due date and status for easy analysis.
-    """
-    categories = {
-        "overdue": [],
-        "due_today": [],
-        "due_this_week": [],
-        "due_next_week": [],
-        "due_this_month": [],
-        "upcoming": [],
-        "in_progress": [],
-        "completed": [],
-        "no_due_date": []
-    }
-    
-    # ✅ Convert all boundaries to date objects for consistency
-    today = now_date if isinstance(now_date, pd.Timestamp) else pd.Timestamp(now_date)
-    week_end_date = (today + pd.Timedelta(days=7)).date()
-    two_weeks_end_date = (today + pd.Timedelta(days=14)).date()
-    month_start_date = month_start.date() if hasattr(month_start, 'date') else month_start
-    month_end_date = month_end.date() if hasattr(month_end, 'date') else month_end
-    
-    for task in tasks:
-        bcd_date = task.get("_bcd_date")  # Already a date object from process_task_with_dates
-        status = task.get("_status_lower", "")
-        is_completed = task.get("_is_completed", False)
-        
-        if is_completed:
-            categories["completed"].append(task)
-        elif not bcd_date:
-            categories["no_due_date"].append(task)
-        elif task.get("_is_overdue"):
-            categories["overdue"].append(task)
-        elif task.get("_is_due_today"):
-            categories["due_today"].append(task)
-        elif bcd_date <= week_end_date:  # ✅ Both are date objects now
-            categories["due_this_week"].append(task)
-        elif bcd_date <= two_weeks_end_date:  # ✅ Both are date objects now
-            categories["due_next_week"].append(task)
-        elif bcd_date <= month_end_date:  # ✅ Both are date objects now
-            categories["due_this_month"].append(task)
-        else:
-            categories["upcoming"].append(task)
-        
-        # Also track active in-progress separately
-        if status in ["in progress", "in_progress", "ongoing"] and not is_completed:
-            categories["in_progress"].append(task)
-    
-    return categories
-
-
-def build_user_prompt(username, task_categories, all_tasks, now_utc, now_date, month_start, month_end):
-    """
-    Build system prompt for non-admin users with date-aware instructions.
-    """
-    
-    # Format current date/time
-    current_datetime = now_utc.strftime("%A, %B %d, %Y at %H:%M:%S UTC")
-    month_name = now_utc.strftime("%B %Y")
-    
-    # ✅ FIX: Convert now_date to Timestamp for arithmetic operations
-    now_date_ts = pd.Timestamp(now_date) if isinstance(now_date, __import__('datetime').date) else now_date
-    week_end_date = (now_date_ts + pd.Timedelta(days=7)).date()
-    
-    # Create task summary by category
-    task_summary = f"""
-=== TASK DATA FOR: {username} ===
-Current Date/Time: {current_datetime}
-Total Tasks: {len(all_tasks)}
-
-TASKS BY CATEGORY:
-"""
-    
-    for category, tasks in task_categories.items():
-        if tasks:
-            task_summary += f"\n📋 {category.upper().replace('_', ' ')} ({len(tasks)} tasks):\n"
-            for task in tasks[:10]:  # Show first 10 of each category
-                title = task.get("Title", "No Title")
-                bcd = task.get("BCD", "No Date")
-                status = task.get("SubmissionStatus", "Unknown")
-                days = task.get("_days_until_due")
-                
-                if days is not None:
-                    if days < 0:
-                        task_summary += f"  ⚠️  {title} | Due: {bcd} ({abs(days)} days OVERDUE) | Status: {status}\n"
-                    elif days == 0:
-                        task_summary += f"  🔴 {title} | Due: {bcd} (TODAY) | Status: {status}\n"
-                    else:
-                        task_summary += f"  🟡 {title} | Due: {bcd} (in {days} days) | Status: {status}\n"
-                else:
-                    task_summary += f"  ⚪ {title} | Due: {bcd} | Status: {status}\n"
-            
-            if len(tasks) > 10:
-                task_summary += f"  ... and {len(tasks) - 10} more\n"
-    
-    # Add full task details as JSON
-    task_summary += f"\n\nFULL TASK DATA (JSON):\n{json.dumps(all_tasks, default=str, indent=2)}\n"
-    
-    # ✅ FIX: Convert dates properly for string formatting
-    month_start_date = month_start.date() if hasattr(month_start, 'date') else month_start
-    month_end_date = month_end.date() if hasattr(month_end, 'date') else month_end
-    
-    system_prompt = f"""{task_summary}
-
-=== CRITICAL INSTRUCTIONS FOR ANSWERING ===
-
-CURRENT DATE/TIME REFERENCE:
-- Today's Date: {now_date}
-- Current Time: {now_utc.strftime("%H:%M:%S UTC")}
-- Current Month: {month_name}
-
-DATE-BASED FILTERING RULES:
-1. "Today" or "Due Today" → Tasks with BCD = {now_date}
-2. "This Week" → Tasks with BCD between {now_date} and {week_end_date}
-3. "This Month" → Tasks with BCD between {month_start_date} and {month_end_date}
-4. "Upcoming" → Tasks with BCD > {now_date}
-5. "Overdue" → Tasks with BCD < {now_date} AND SubmissionStatus ≠ "Submitted"
-6. "In Progress" → SubmissionStatus = "In Progress" or "Ongoing" AND BCD >= {now_date}
-7. "Completed" → SubmissionStatus = "Submitted"
-8. "New Submissions" → SubmissionStatus = "Submitted" AND BCD within {month_name}
-
-ANSWERING RULES:
-✅ ONLY use the task data provided above
-✅ Use the current date ({now_date}) for all date calculations
-✅ Be specific: include Task Title, Due Date, Days Until Due, and Status
-✅ Group results by date when relevant (Today, This Week, Upcoming, etc.)
-✅ When comparing dates, always reference the current date ({now_date})
-❌ Do NOT use external knowledge
-❌ Do NOT make assumptions
-❌ If data is unavailable, reply: "I don't have that information in your tasks."
-
-RESPONSE FORMAT:
-- Start with the task count matching the filter
-- Group tasks by date/category
-- Include specific due dates and status for each task
-- End with a summary or next steps if relevant
-"""
-    
-    return system_prompt
-
-
-def build_admin_prompt(analytics_data, task_categories, all_tasks, now_utc, month_start, month_end):
-    """
-    Build system prompt for admin users with analytics and full date awareness.
-    """
-    
-    current_datetime = now_utc.strftime("%A, %B %d, %Y at %H:%M:%S UTC")
-    now_date = now_utc.date()
-    month_name = now_utc.strftime("%B %Y")
-    
-    # Format analytics
-    analytics_json = json.dumps(analytics_data, default=str, indent=2)
-    
-    # Task summary by category
-    task_summary = f"""
-=== ADMIN CONTEXT ===
-Current Date/Time: {current_datetime}
-Month Range: {month_start.date()} to {month_end.date()}
-Total Tasks: {len(all_tasks)}
-
-TASK SUMMARY BY STATUS:
-"""
-    
-    for category, tasks in task_categories.items():
-        task_summary += f"- {category.replace('_', ' ').title()}: {len(tasks)} tasks\n"
-    
-    task_summary += f"\nFULL TASK DATA:\n{json.dumps(all_tasks, default=str, indent=2)}\n"
-    
-    system_prompt = f"""=== ADMIN FULL CONTEXT ===
-
-Current Date/Time: {current_datetime}
-Current Month: {month_name}
-
-ANALYTICS DATA:
-{analytics_json}
-
-{task_summary}
-
-DATE/TIME REFERENCE FOR ALL CALCULATIONS:
-- Today: {now_date}
-- This Month: {month_start.date()} to {month_end.date()}
-- Current Time: {now_utc.strftime("%H:%M:%S UTC")}
-
-ADMIN INSTRUCTIONS:
-✅ Use the complete analytics and task data provided
-✅ Link users to their specific tasks and metrics
-✅ For date-based queries, use {now_date} as reference
-✅ When analyzing performance, include dates and deadlines
-✅ Provide specific numbers from analytics
-✅ Group results by user, date, or status as appropriate
-✅ Compare current month ({month_name}) performance with analytics trends
-
-RESPONSE GUIDELINES:
-1. Always include specific dates (use {now_date} as baseline)
-2. For "in progress" queries: show tasks with status ≠ "Submitted" AND BCD >= {now_date}
-3. For "this month" queries: show tasks with BCD between {month_start.date()} and {month_end.date()}
-4. For "upcoming" queries: show tasks with BCD > {now_date}
-5. For analytics: reference the per_user data to show individual performance
-6. Be specific with numbers, dates, and user assignments
-"""
-    
-    return system_prompt
-
+# ...existing code...
 # ==============================================================
 
 # ==============================================================
@@ -1543,7 +1316,24 @@ def download_pdf(file_id):
         print("Error:", e)
         return f"Error occurred: {e}", 500
 
-
+# --- ADD THIS NEW ROUTE ---
+@app.route("/download/docx/<file_id>")
+def download_source_docx(file_id):
+    try:
+        # 1. Download the raw DOCX from your source (SharePoint/Graph)
+        docx_path = download_docx(file_id)
+        
+        # 2. Send the DOCX directly (NO PDF CONVERSION)
+        return send_file(
+            docx_path, 
+            as_attachment=True, 
+            download_name=os.path.basename(docx_path),
+            mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        )
+    except Exception as e:
+        print("Error downloading DOCX:", e)
+        return f"Error: {e}", 500
+    
 
 @app.route('/analyze', methods=['POST'])
 def analyze_document():

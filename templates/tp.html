@@ -2,32 +2,41 @@
 
 {% block content %}
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/3.3.2/tailwind.min.css">
+<link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
+
 <script src="https://unpkg.com/pdf-lib/dist/pdf-lib.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+<script src="https://cdn.quilljs.com/1.3.6/quill.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 
 <style>
-body { background-color: #ffffff; color: #111111; font-family: 'Segoe UI', sans-serif; }
-.drag-drop { border: 2px dashed #cbd5e1; border-radius: 8px; padding: 20px; text-align: center; cursor: pointer; transition: all 0.4s ease; font-size: 1rem; color: #475569; width: 220px; background-color: #f8fafc; }
-.drag-drop.dragover { background-color: #e2e8f0; border-color: #94a3b8; }
-.reupload-btn, button { background-color: #1f2937; color: #f9fafb; border-radius: 6px; padding: 8px 12px; cursor: pointer; transition: all 0.4s ease; }
-.reupload-btn:hover, button:hover { background-color: #374151; }
-.tab-button { padding: 0.5rem 1rem; cursor: pointer; border-bottom: 2px solid transparent; font-weight: 500; }
-.tab-button.active { border-color: #111827; font-weight: 600; color: #111827; }
-.vscode-panel { background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; overflow-y: auto; }
-.scroll-container { max-height: 60vh; overflow-y: auto; }
-.loader { border: 4px solid #f3f3f3; border-top: 4px solid #1f2937; border-radius: 50%; width: 24px; height: 24px; animation: spin 1s linear infinite; display: none; margin-left: 8px; }
-@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-.tree-node { margin-left: 16px; line-height: 1.5rem; }
-.tree-key { font-weight: 600; cursor: pointer; color: #111827; }
-.tree-key:hover { text-decoration: underline; }
-.tree-value { margin-left: 12px; color: #475569; word-break: break-word; }
-.download-btn { background-color: #10b981; color: white; padding: 6px 12px; border-radius: 6px; margin-top: 4px; cursor: pointer; transition: all 0.3s ease; }
-.download-btn:hover { background-color: #059669; }
-.draggable-file { padding: 4px 8px; margin-bottom: 4px; background-color: #e2e8f0; border-radius: 4px; cursor: grab; display:flex; justify-content:space-between; align-items:center; }
-.draggable-file.dragging { opacity: 0.5; }
-.remove-btn { margin-left: 8px; color: red; cursor:pointer; font-weight:bold; }
-#custom-attachment-popup input[type="text"] { width: 100%; }
+    body { background-color: #ffffff; color: #111111; font-family: 'Segoe UI', sans-serif; }
+    .drag-drop { border: 2px dashed #cbd5e1; border-radius: 8px; padding: 20px; text-align: center; cursor: pointer; transition: all 0.4s ease; font-size: 1rem; color: #475569; width: 220px; background-color: #f8fafc; }
+    .drag-drop.dragover { background-color: #e2e8f0; border-color: #94a3b8; }
+    .reupload-btn, button { background-color: #1f2937; color: #f9fafb; border-radius: 6px; padding: 8px 12px; cursor: pointer; transition: all 0.4s ease; }
+    .reupload-btn:hover, button:hover { background-color: #374151; }
+    .tab-button { padding: 0.5rem 1rem; cursor: pointer; border-bottom: 2px solid transparent; font-weight: 500; }
+    .tab-button.active { border-color: #111827; font-weight: 600; color: #111827; }
+    .vscode-panel { background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; overflow-y: auto; }
+    .scroll-container { max-height: 60vh; overflow-y: auto; }
+    .loader { border: 4px solid #f3f3f3; border-top: 4px solid #1f2937; border-radius: 50%; width: 24px; height: 24px; animation: spin 1s linear infinite; display: none; margin-left: 8px; }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    .tree-node { margin-left: 16px; line-height: 1.5rem; }
+    .tree-key { font-weight: 600; cursor: pointer; color: #111827; }
+    .tree-key:hover { text-decoration: underline; }
+    .tree-value { margin-left: 12px; color: #475569; word-break: break-word; }
+    .download-btn { background-color: #10b981; color: white; padding: 6px 12px; border-radius: 6px; margin-top: 4px; cursor: pointer; transition: all 0.3s ease; }
+    .download-btn:hover { background-color: #059669; }
+    .draggable-file { padding: 4px 8px; margin-bottom: 4px; background-color: #e2e8f0; border-radius: 4px; cursor: grab; display:flex; justify-content:space-between; align-items:center; }
+    .draggable-file.dragging { opacity: 0.5; }
+    .remove-btn { margin-left: 8px; color: red; cursor:pointer; font-weight:bold; }
+    
+    /* Editor Specific Styles */
+    #editor-container { height: 400px; background: white; }
+    .ql-toolbar { background: #f3f4f6; border-radius: 8px 8px 0 0; }
+    .ql-container { border-radius: 0 0 8px 8px; }
 </style>
-    <!-- Upload + Buttons -->
+
     <div class="flex items-center space-x-4 mt-4">
         <div id="pdf-drop" class="drag-drop">Drag & Drop PDF or Click</div>
         <button id="reupload-btn" class="reupload-btn hidden">⟳ Re-upload</button>
@@ -35,18 +44,15 @@ body { background-color: #ffffff; color: #111111; font-family: 'Segoe UI', sans-
         <button id="analyze-btn">Analyze PDF</button>
     </div>
 
-    <!-- Status + Loader -->
     <div class="flex justify-center items-center mt-2">
         <span id="analyze-status" class="text-gray-600 mr-2"></span>
         <div id="analyze-loader" class="loader"></div>
     </div>
 
-    <!-- PDF Preview -->
     <div id="pdf-preview-container" class="vscode-panel hidden mt-4">
         <iframe id="pdf-preview" class="w-full h-96 border rounded"></iframe>
     </div>
 
-    <!-- Tabs -->
     <div class="flex space-x-4 mt-6 border-b">
         <div id="tab-extracted" class="tab-button active">Extracted Data</div>
         <div id="tab-attachments" class="tab-button">Attachments</div>
@@ -54,21 +60,17 @@ body { background-color: #ffffff; color: #111111; font-family: 'Segoe UI', sans-
         <div id="tab-commercial" class="tab-button">Commercial Proposal</div>
     </div>
 
-    <!-- Tab Content -->
     <div class="flex flex-col mt-4 space-y-4">
 
-        <!-- Extracted Data -->
         <div id="content-extracted" class="tab-content vscode-panel scroll-container">
             <div id="extracted-data" class="space-y-2"></div>
         </div>
 
-        <!-- Attachments Table -->
         <div id="content-attachments" class="tab-content vscode-panel scroll-container hidden">
             <div class="flex justify-end mb-2">
                 <button id="add-custom-attachment" class="reupload-btn">+ Add Custom Attachment</button>
             </div>
 
-            <!-- Custom attachment popup -->
             <div id="custom-attachment-popup" class="vscode-panel p-4 mb-4 hidden border border-gray-300 rounded">
                 <div class="flex flex-col space-y-2">
                     <input type="text" id="custom-attachment-name" placeholder="Attachment Name" class="p-2 border rounded">
@@ -84,16 +86,15 @@ body { background-color: #ffffff; color: #111111; font-family: 'Segoe UI', sans-
                 <thead class="bg-gray-100">
                     <tr>
                         <th class="p-2 border-b">Attachment</th>
-                        <th class="p-2 border-b">Upload File</th>
-                        <th class="p-2 border-b text-center">Technical Proposal (TP)</th>
-                        <th class="p-2 border-b text-center">Commercial Proposal (CP)</th>
+                        <th class="p-2 border-b">Action</th>
+                        <th class="p-2 border-b text-center">TP</th>
+                        <th class="p-2 border-b text-center">CP</th>
                     </tr>
                 </thead>
                 <tbody id="attachments-table-body"></tbody>
             </table>
         </div>
 
-        <!-- Technical Proposal -->
         <div id="content-tech" class="tab-content vscode-panel scroll-container hidden">
             <div class="flex space-x-4">
                 <div id="tp-selected-files" class="w-1/2 vscode-panel scroll-container">
@@ -107,7 +108,6 @@ body { background-color: #ffffff; color: #111111; font-family: 'Segoe UI', sans-
             </div>
         </div>
 
-        <!-- Commercial Proposal -->
         <div id="content-commercial" class="tab-content vscode-panel scroll-container hidden">
             <div class="flex space-x-4">
                 <div id="cp-selected-files" class="w-1/2 vscode-panel scroll-container">
@@ -117,13 +117,33 @@ body { background-color: #ffffff; color: #111111; font-family: 'Segoe UI', sans-
                     <h3 class="font-semibold mb-2">Merged PDF</h3>
                     <iframe id="cp-merged-iframe" class="w-full h-96 border rounded"></iframe>
                     <button id="cp-download" class="download-btn">Download CP</button>
-                    
                 </div>
             </div>
         </div>
 
     </div>
 
+</div>
+
+<div id="editor-modal" class="fixed inset-0 bg-gray-900 bg-opacity-50 hidden flex items-center justify-center z-50">
+    <div class="bg-white w-3/4 h-5/6 rounded-lg shadow-lg flex flex-col p-4">
+        <div class="flex justify-between items-center mb-4 border-b pb-2">
+            <h3 class="text-xl font-bold text-gray-800">Edit Document</h3>
+            <button id="close-editor-btn" class="text-gray-500 hover:text-red-500 font-bold text-xl">&times;</button>
+        </div>
+        
+        <div class="flex-grow bg-white">
+            <div id="editor-container"></div>
+        </div>
+
+        <div class="flex justify-between items-center mt-4 pt-2 border-t">
+            <span id="editor-status" class="text-sm text-red-500 font-semibold italic"></span>
+            <div class="space-x-2">
+                <button id="cancel-edit-btn" class="px-4 py-2 bg-gray-300 hover:bg-gray-400 rounded text-gray-800">Cancel</button>
+                <button id="save-convert-btn" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded text-white font-semibold">Save & Convert to PDF</button>
+            </div>
+        </div>
+    </div>
 </div>
 
 <input type="file" id="pdf-upload" accept="application/pdf" class="hidden" />
@@ -136,13 +156,94 @@ const reuploadBtn = document.getElementById('reupload-btn');
 const pdfPreview = document.getElementById('pdf-preview');
 const pdfPreviewContainer = document.getElementById('pdf-preview-container');
 
+// --- Editor Modal Logic (Quill) ---
+const editorModal = document.getElementById('editor-modal');
+const closeEditorBtn = document.getElementById('close-editor-btn');
+const cancelEditBtn = document.getElementById('cancel-edit-btn');
+const saveConvertBtn = document.getElementById('save-convert-btn');
+const editorStatus = document.getElementById('editor-status');
+let currentEditingFileDetails = null; 
+
+// Initialize Quill
+var quill = new Quill('#editor-container', {
+    theme: 'snow',
+    modules: {
+        toolbar: [
+            ['bold', 'italic', 'underline', 'strike'],        // toggled buttons
+            ['blockquote', 'code-block'],
+            [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+            [{ 'header': [1, 2, 3, 4, 5, 6, false] }],
+            [{ 'color': [] }, { 'background': [] }],          // dropdown with defaults from theme
+            [{ 'align': [] }],
+            ['clean']                                         // remove formatting button
+        ]
+    }
+});
+
+const closeEditor = () => {
+    editorModal.classList.add('hidden');
+    quill.setText(''); // Clear editor
+    currentEditingFileDetails = null;
+    editorStatus.textContent = "";
+    saveConvertBtn.disabled = false;
+};
+
+closeEditorBtn.addEventListener('click', closeEditor);
+cancelEditBtn.addEventListener('click', closeEditor);
+
+// Save Edited HTML to PDF
+saveConvertBtn.addEventListener('click', async () => {
+    if (!currentEditingFileDetails) return;
+    
+    const btn = currentEditingFileDetails.btn;
+    const fileName = currentEditingFileDetails.name;
+    
+    // Get HTML from Quill
+    const editorContent = document.querySelector('#editor-container .ql-editor').innerHTML;
+    
+    editorStatus.textContent = "Generating PDF... Please wait.";
+    editorStatus.classList.remove('text-red-500');
+    editorStatus.classList.add('text-blue-500');
+    saveConvertBtn.disabled = true;
+
+    // HTML2PDF Options
+    const opt = {
+        margin:       0.5,
+        filename:     fileName.replace(/\.[^/.]+$/, ".pdf"),
+        image:        { type: 'jpeg', quality: 0.98 },
+        html2canvas:  { scale: 2, useCORS: true },
+        jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' }
+    };
+
+    try {
+        // Convert to PDF Blob
+        const pdfBlob = await html2pdf().set(opt).from(editorContent).output('blob');
+        const pdfFile = new File([pdfBlob], fileName.replace(/\.[^/.]+$/, ".pdf"), { type: 'application/pdf' });
+
+        // Update Attachment System
+        attachmentsFiles[fileName].file = pdfFile;
+        
+        // UI Feedback
+        btn.textContent = "Edited & Ready ✅";
+        btn.classList.remove('bg-blue-600', 'hover:bg-blue-700', 'bg-gray-800', 'download-btn'); 
+        btn.classList.add('bg-green-600', 'hover:bg-green-700', 'text-white', 'p-2', 'rounded');
+        
+        updateProposals();
+        closeEditor();
+    } catch (err) {
+        console.error(err);
+        editorStatus.classList.add('text-red-500');
+        editorStatus.textContent = "Error converting to PDF. See console.";
+        saveConvertBtn.disabled = false;
+    }
+});
+
+// --- Standard Handlers ---
 pdfDrop.addEventListener('click', () => pdfUpload.click());
 pdfDrop.addEventListener('dragover', e => { e.preventDefault(); pdfDrop.classList.add('dragover'); });
 pdfDrop.addEventListener('dragleave', e => pdfDrop.classList.remove('dragover'));
 pdfDrop.addEventListener('drop', e => { e.preventDefault(); pdfDrop.classList.remove('dragover'); handlePDF(e.dataTransfer.files[0]); });
-
 reuploadBtn.addEventListener('click', () => { pdfDrop.style.display = 'block'; pdfDrop.style.opacity = '1'; reuploadBtn.classList.add('hidden'); pdfUpload.click(); });
-
 pdfUpload.addEventListener('change', e => handlePDF(e.target.files[0]));
 
 function handlePDF(file){
@@ -150,9 +251,7 @@ function handlePDF(file){
     uploadedFile = file;
     pdfPreview.src = URL.createObjectURL(file);
     pdfPreviewContainer.classList.remove('hidden');
-    pdfDrop.style.transition = "all 0.4s ease";
-    pdfDrop.style.opacity = "0";
-    setTimeout(()=>{ pdfDrop.style.display="none"; reuploadBtn.classList.remove('hidden'); },400);
+    pdfDrop.style.display="none"; reuploadBtn.classList.remove('hidden');
 }
 
 document.getElementById('toggle-preview').addEventListener('click', () => {
@@ -221,14 +320,11 @@ function renderTree(data, parent = extractedDataContainer){
 // --- Attachments Table ---
 function renderAttachmentTable(data){
     const tableBody = document.getElementById('attachments-table-body');
-    
-    // Remove only previously rendered extracted attachments
     const existingExtracted = tableBody.querySelectorAll('.extracted-attachment-row');
     existingExtracted.forEach(r => tableBody.removeChild(r));
 
     const attachmentsNeeded = data.attachments_needed || (data.requirements && data.requirements.attachments_needed);
     if(!attachmentsNeeded || attachmentsNeeded.length===0){ 
-        // Optional: only show message if table empty
         if(tableBody.children.length === 0){
             tableBody.innerHTML = `<tr><td colspan="4" class="text-gray-500 p-2">No attachments required.</td></tr>`;
         }
@@ -237,25 +333,25 @@ function renderAttachmentTable(data){
 
     attachmentsNeeded.forEach((item, idx) => {
         const tr = document.createElement('tr');
-        tr.classList.add('extracted-attachment-row'); // mark it as extracted row
+        tr.classList.add('extracted-attachment-row');
         const tdName = document.createElement('td'); tdName.className = "p-2 border-b"; tdName.textContent = item;
         const tdFile = document.createElement('td'); tdFile.className = "p-2 border-b"; 
         const input = document.createElement('input'); input.type='file'; 
         input.addEventListener('change', e=>{
             attachmentsFiles[item]=attachmentsFiles[item]||{};
             attachmentsFiles[item].file=e.target.files[0];
-            updateProposals();
+            updateProposals(); 
         });
         tdFile.appendChild(input);
         const tdTP = document.createElement('td'); tdTP.className="p-2 border-b text-center"; const tpCheck=document.createElement('input'); tpCheck.type='checkbox'; tpCheck.addEventListener('change',updateProposals); tdTP.appendChild(tpCheck);
         const tdCP = document.createElement('td'); tdCP.className="p-2 border-b text-center"; const cpCheck=document.createElement('input'); cpCheck.type='checkbox'; cpCheck.addEventListener('change',updateProposals); tdCP.appendChild(cpCheck);
         tr.appendChild(tdName); tr.appendChild(tdFile); tr.appendChild(tdTP); tr.appendChild(tdCP);
         tableBody.appendChild(tr);
-
         attachmentsFiles[item] = attachmentsFiles[item] || { file:null, tp:tpCheck, cp:cpCheck };
     });
 }
-// --- Prefill Attachments Table from Top Files with Download & Convert ---
+
+// --- Prefill Attachments from Server (Edit Functionality) ---
 document.addEventListener('DOMContentLoaded', ()=>{
     const tableBody = document.getElementById('attachments-table-body');
     
@@ -267,12 +363,12 @@ document.addEventListener('DOMContentLoaded', ()=>{
         tr.appendChild(tdName);
 
         const tdFile = document.createElement('td'); tdFile.className="p-2 border-b text-center";
-        const downloadBtn = document.createElement('button');
-        downloadBtn.textContent = "Download & Convert";
-        downloadBtn.className = "download-btn";
-        downloadBtn.dataset.fileId = "{{ f.id }}";
-        downloadBtn.dataset.fileName = "{{ f.name }}";
-        tdFile.appendChild(downloadBtn);
+        const editBtn = document.createElement('button');
+        editBtn.textContent = "Edit & Attach";
+        editBtn.className = "download-btn";
+        editBtn.dataset.fileId = "{{ f.id }}";
+        editBtn.dataset.fileName = "{{ f.name }}";
+        tdFile.appendChild(editBtn);
         tr.appendChild(tdFile);
 
         const tdTP = document.createElement('td'); tdTP.className="p-2 border-b text-center";
@@ -284,25 +380,53 @@ document.addEventListener('DOMContentLoaded', ()=>{
         tdCP.appendChild(cpCheck); tr.appendChild(tdCP);
 
         tableBody.appendChild(tr);
-
         attachmentsFiles["{{ f.name }}"]={ file:null, tp:tpCheck, cp:cpCheck };
 
-        // --- Download & Convert handler ---
-        downloadBtn.addEventListener('click', async ()=>{
-            downloadBtn.disabled = true; downloadBtn.textContent="Downloading...";
+
+        
+        // --- Click Handler: Download -> Check for DOCX -> Convert to HTML -> Open Editor ---
+        editBtn.addEventListener('click', async ()=>{
+            editBtn.disabled = true; 
+            editBtn.textContent="Loading...";
+            
             try {
-                const res = await fetch(`/download/pdf/${downloadBtn.dataset.fileId}`);
-                if(!res.ok) throw new Error("Download failed");
-                const blob = await res.blob();
-                const pdfFile = new File([blob], downloadBtn.dataset.fileName.replace(/\.[^/.]+$/, ".pdf"), {type:'application/pdf'});
-                attachmentsFiles[downloadBtn.dataset.fileName].file = pdfFile;
-                downloadBtn.textContent="file added ✅";
-                updateProposals();
+                // IMPORTANT: Ensure your server returns the raw DOCX file at this endpoint
+                const res = await fetch(`/download/pdf/${editBtn.dataset.fileId}`);
+                
+                if(!res.ok) throw new Error(`Server Error: ${res.status}`);
+                
+                const arrayBuffer = await res.arrayBuffer();
+                
+                // CHECK IF FILE IS ACTUALLY A DOCX (ZIP)
+                // DOCX/ZIP files start with 'PK' (0x50 0x4B)
+                const arr = new Uint8Array(arrayBuffer).subarray(0, 2);
+                if (arr[0] !== 0x50 || arr[1] !== 0x4B) {
+                   throw new Error("The downloaded file does not look like a valid DOCX/ZIP file. Did the server send a PDF?");
+                }
+
+                // Convert DOCX to HTML using Mammoth
+                const result = await mammoth.convertToHtml({arrayBuffer: arrayBuffer});
+                const rawHtml = result.value; 
+                
+                // Set content in Quill
+                quill.clipboard.dangerouslyPasteHTML(rawHtml);
+                
+                currentEditingFileDetails = {
+                    name: editBtn.dataset.fileName,
+                    id: editBtn.dataset.fileId,
+                    btn: editBtn
+                };
+                
+                editorModal.classList.remove('hidden');
+
             } catch(err){
                 console.error(err);
-                alert("Failed to download/convert file");
-                downloadBtn.textContent="Download & Convert";
-            } finally { downloadBtn.disabled=false; }
+                alert("Error: " + err.message);
+                editBtn.textContent="Edit & Attach";
+            } finally { 
+                editBtn.disabled=false; 
+                if (editBtn.textContent === "Loading...") editBtn.textContent="Edit & Attach";
+            }
         });
 
     {% endfor %}
@@ -315,15 +439,13 @@ const customNameInput = document.getElementById('custom-attachment-name');
 const customFileInput = document.getElementById('custom-attachment-file');
 const customAddBtn = document.getElementById('custom-attachment-add');
 const customCancelBtn = document.getElementById('custom-attachment-cancel');
-
 addCustomBtn.addEventListener('click', ()=> customPopup.classList.remove('hidden'));
 customCancelBtn.addEventListener('click', ()=> { customPopup.classList.add('hidden'); customNameInput.value=''; customFileInput.value=''; });
-
 customAddBtn.addEventListener('click', ()=> {
     const name = customNameInput.value.trim();
     const file = customFileInput.files[0];
     if(!name || !file){ alert("Please provide name and file"); return; }
-
+    
     const tableBody = document.getElementById('attachments-table-body');
     const tr = document.createElement('tr');
     const tdName = document.createElement('td'); tdName.className="p-2 border-b"; tdName.textContent=name;
@@ -334,61 +456,12 @@ customAddBtn.addEventListener('click', ()=> {
     const tdCP = document.createElement('td'); tdCP.className="p-2 border-b text-center"; const cpCheck=document.createElement('input'); cpCheck.type='checkbox'; cpCheck.addEventListener('change',updateProposals); tdCP.appendChild(cpCheck);
     tr.appendChild(tdName); tr.appendChild(tdFile); tr.appendChild(tdTP); tr.appendChild(tdCP);
     tableBody.appendChild(tr);
-
     attachmentsFiles[name] = { file:file, tp:tpCheck, cp:cpCheck };
     customPopup.classList.add('hidden'); customNameInput.value=''; customFileInput.value='';
     updateProposals();
 });
 
 // --- Drag & Drop, Remove, Merge, Download ---
-function enableDragAndSort(containerId) {
-    const container = document.getElementById(containerId);
-
-    container.addEventListener("dragstart", (e) => {
-        if (e.target.classList.contains("draggable-file")) {
-            e.target.classList.add("dragging");
-        }
-    });
-
-    container.addEventListener("dragend", (e) => {
-        if (e.target.classList.contains("draggable-file")) {
-            e.target.classList.remove("dragging");
-            updateProposals(); // re-generate merged PDFs
-        }
-    });
-
-    container.addEventListener("dragover", (e) => {
-        e.preventDefault();
-        const dragging = container.querySelector(".dragging");
-        if (!dragging) return;
-
-        const after = getDragAfterElement(container, e.clientY);
-        if (after == null) {
-            container.appendChild(dragging);
-        } else {
-            container.insertBefore(dragging, after);
-        }
-    });
-
-    function getDragAfterElement(container, y) {
-        const elements = [...container.querySelectorAll(".draggable-file:not(.dragging)")];
-
-        return elements.reduce(
-            (closest, child) => {
-                const box = child.getBoundingClientRect();
-                const offset = y - (box.top + box.height / 2);
-
-                if (offset < 0 && offset > closest.offset) {
-                    return { offset: offset, element: child };
-                }
-                return closest;
-            },
-            { offset: Number.NEGATIVE_INFINITY, element: null }
-        ).element;
-    }
-}
-
-
 function makeRemovable(containerId){
     const container = document.getElementById(containerId);
     container.addEventListener('click', e=>{
@@ -405,22 +478,18 @@ function makeRemovable(containerId){
 }
 makeRemovable('tp-selected-files');
 makeRemovable('cp-selected-files');
+
 function updateProposals(){
     const tpDiv = document.getElementById('tp-selected-files'); 
     const tpIframe = document.getElementById('tp-merged-iframe');
     const cpDiv = document.getElementById('cp-selected-files'); 
     const cpIframe = document.getElementById('cp-merged-iframe');
 
-    // --- Instead of clearing innerHTML, remember existing order ---
-    function getCurrentOrder(container){
-        return [...container.querySelectorAll('.draggable-file')].map(d => d.dataset.name);
-    }
-
+    function getCurrentOrder(container){ return [...container.querySelectorAll('.draggable-file')].map(d => d.dataset.name); }
     const tpOrder = getCurrentOrder(tpDiv);
     const cpOrder = getCurrentOrder(cpDiv);
 
     tpDiv.innerHTML=""; cpDiv.innerHTML="";
-
     const tpFiles=[]; const cpFiles=[];
 
     for(const [name,obj] of Object.entries(attachmentsFiles)){
@@ -429,7 +498,6 @@ function updateProposals(){
     }
 
     function renderDraggableFiles(files, container, previousOrder=[]){
-        // Sort files according to previous drag order if possible
         files.sort((a,b)=>{
             const aIndex = previousOrder.indexOf(a.name);
             const bIndex = previousOrder.indexOf(b.name);
@@ -438,48 +506,33 @@ function updateProposals(){
             if(bIndex===-1) return -1;
             return aIndex - bIndex;
         });
-
         files.forEach(f=>{
             const div = document.createElement('div');
             div.className='draggable-file flex justify-between items-center';
             div.setAttribute('draggable','true');
             div.dataset.name=f.name;
-
             const span = document.createElement('span'); span.textContent=f.name;
-
             const removeBtn = document.createElement('button'); 
             removeBtn.textContent='✕'; 
             removeBtn.className='remove-btn ml-2 text-red-600 font-bold';
             removeBtn.dataset.name=f.name;
-
             div.appendChild(span); div.appendChild(removeBtn);
             container.appendChild(div);
-
-            // Bind drag events individually
             div.addEventListener('dragstart', e=> div.classList.add('dragging'));
-            div.addEventListener('dragend', e=>{
-                div.classList.remove('dragging'); 
-                updateProposals(); // regenerate merged PDFs
-            });
+            div.addEventListener('dragend', e=>{ div.classList.remove('dragging'); updateProposals(); });
         });
-
-        // Enable container dragover
         container.addEventListener('dragover', e=>{
             e.preventDefault();
             const dragging = container.querySelector('.dragging');
             if(!dragging) return;
-
             const elements = [...container.querySelectorAll('.draggable-file:not(.dragging)')];
             const afterElement = elements.reduce((closest, child)=>{
                 const box = child.getBoundingClientRect();
                 const offset = e.clientY - (box.top + box.height/2);
-                if(offset < 0 && offset > closest.offset){
-                    return { offset: offset, element: child };
-                } return closest;
+                if(offset < 0 && offset > closest.offset) return { offset: offset, element: child };
+                return closest;
             }, { offset: Number.NEGATIVE_INFINITY, element: null }).element;
-
-            if(!afterElement) container.appendChild(dragging);
-            else container.insertBefore(dragging, afterElement);
+            if(!afterElement) container.appendChild(dragging); else container.insertBefore(dragging, afterElement);
         });
     }
 
@@ -501,20 +554,21 @@ function updateProposals(){
 
     mergedTPBlob = mergeFiles(tpFiles);
     mergedCPBlob = mergeFiles(cpFiles);
-
-    mergedTPBlob.then(blob=> tpIframe.src = URL.createObjectURL(blob));
-    mergedCPBlob.then(blob=> cpIframe.src = URL.createObjectURL(blob));
+    mergedTPBlob.then(blob=> tpIframe.src = blob ? URL.createObjectURL(blob) : "");
+    mergedCPBlob.then(blob=> cpIframe.src = blob ? URL.createObjectURL(blob) : "");
 }
 
 // --- Download ---
 document.getElementById('tp-download').addEventListener('click', async ()=>{
     if(!mergedTPBlob) return alert("No TP merged file");
     const blob = await mergedTPBlob;
+    if(!blob) return;
     const a = document.createElement('a'); a.href=URL.createObjectURL(blob); a.download="Technical_Proposal.pdf"; a.click();
 });
 document.getElementById('cp-download').addEventListener('click', async ()=>{
     if(!mergedCPBlob) return alert("No CP merged file");
     const blob = await mergedCPBlob;
+    if(!blob) return;
     const a = document.createElement('a'); a.href=URL.createObjectURL(blob); a.download="Commercial_Proposal.pdf"; a.click();
 });
 </script>

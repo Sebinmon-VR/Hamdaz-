@@ -1580,12 +1580,109 @@ def download_docx(file_id):
 
     return temp_docx
 
+# def convert_docx_to_pdf(input_docx):
+#     temp_pdf = tempfile.mktemp(suffix=".pdf")
+#     convert(input_docx, temp_pdf)
+#     return temp_pdf
+
+import pythoncom
+import tempfile
+from docx2pdf import convert
+
 def convert_docx_to_pdf(input_docx):
+    # 1. Initialize Windows COM for this Flask thread
+    pythoncom.CoInitialize()
+    
     temp_pdf = tempfile.mktemp(suffix=".pdf")
-    convert(input_docx, temp_pdf)
+    
+    try:
+        convert(input_docx, temp_pdf)
+    except Exception as e:
+        raise e
+    finally:
+        # 2. Release resources
+        pythoncom.CoUninitialize()
+        
     return temp_pdf
 
 
+import io
+def generate_quote_excel(quote):
+    # 1. Define the columns exactly as they appear in your sample file
+    columns = [
+        'Quote Date', 'Expiry Date', 'Quote Number', 'Quote Status', 'Customer Name', 
+        'VAT Treatment', 'Place Of Supply', 'Is Inclusive Tax', 'Project Name', 
+        'Project ID', 'PurchaseOrder', 'Currency Code', 'Exchange Rate', 'Discount Type', 
+        'Is Discount Before Tax', 'Entity Discount Percent', 'Entity Discount Amount', 
+        'Item Name', 'SKU', 'Account', 'Item Desc', 'Tax Registration Number', 
+        'Quantity', 'Usage unit', 'Item Price', 'Discount', 'Discount Amount', 
+        'Item Tax', 'Item Tax %', 'Item Tax Type', 'Out of Scope Reason', 
+        'Item Tax Exemption Reason', 'Item Type', 'Template Name', 'Sales person', 
+        'Notes', 'Terms & Conditions'
+    ]
+    
+    rows = []
+    items = quote.get('AllItems_parsed', [])
 
+    # 2. Iterate through items to build rows
+    for item in items:
+        # Handle potential None values safely
+        qty = float(item.get('Quantity', 1) or 1)
+        rate = float(item.get('Rate', 0) or 0)
+        discount = float(item.get('Discount', 0) or 0)
+        tax_percent = float(item.get('Tax', 0) or 0)
+        
+        row = {
+            'Quote Date': str(quote.get('QuoteDate', ''))[:10],
+            'Expiry Date': str(quote.get('ExpiryDate', ''))[:10],
+            'Quote Number': quote.get('id', ''),  # Or quote.get('QuoteID')
+            'Quote Status': quote.get('ApprovalStatus', 'Draft'),
+            'Customer Name': quote.get('CustomerName', ''),
+            'VAT Treatment': 'vat registered',    # Default value based on sample
+            'Place Of Supply': '',
+            'Is Inclusive Tax': 'false',          # Default to false
+            'Project Name': '',
+            'Project ID': '',
+            'PurchaseOrder': '',
+            'Currency Code': quote.get('Currency', 'USD'),
+            'Exchange Rate': 1.0,
+            'Discount Type': 'item_level',
+            'Is Discount Before Tax': 'true',
+            'Entity Discount Percent': 0.0,
+            'Entity Discount Amount': 0.0,
+            
+            # Item Mapping
+            'Item Name': item.get('ItemDetails', 'Service'), # Using ItemDetails as Name
+            'SKU': item.get('Brand', ''),                    # Mapping Brand to SKU
+            'Account': 'Sales',                              # Default Sales Account
+            'Item Desc': item.get('ItemDetails', ''),        # Full description
+            'Tax Registration Number': '',
+            'Quantity': qty,
+            'Usage unit': '',
+            'Item Price': rate,
+            'Discount': discount,
+            'Discount Amount': discount,                     # Assuming fixed amount discount
+            'Item Tax': 'Standard Rate' if tax_percent > 0 else '',
+            'Item Tax %': tax_percent,
+            'Item Tax Type': 'ItemAmount' if tax_percent > 0 else '',
+            'Out of Scope Reason': '',
+            'Item Tax Exemption Reason': '',
+            'Item Type': 'service',
+            'Template Name': 'Standard Template',
+            'Sales person': quote.get('QuoteCreator', ''),
+            'Notes': quote.get('Notes', ''),
+            'Terms & Conditions': quote.get('PaymentTerms', '')
+        }
+        rows.append(row)
 
-
+    # 3. Create DataFrame
+    df = pd.DataFrame(rows, columns=columns)
+    
+    # 4. Write to Excel BytesIO buffer
+    output = io.BytesIO()
+    # Use 'xlsxwriter' for better formatting options, or default 'openpyxl'
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        df.to_excel(writer, index=False, sheet_name='Estimates')
+    
+    output.seek(0)
+    return output

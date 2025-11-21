@@ -19,6 +19,7 @@
                 style="background-color: {% if quote.ApprovalStatus == 'Approved' %}#d1fae5{% elif quote.ApprovalStatus == 'Rejected' %}#fee2e2{% else %}#fef3c7{% endif %};">
                 {{ quote.ApprovalStatus }}
             </span>
+
         </div>
         <div><strong>Decision By :</strong> {{ quote.ApprovedBy }}</div>
     </div>
@@ -39,6 +40,10 @@
             <span class="text-gray-500">No attachments available.</span>
             {% endfor %}
         </div>
+        <a href="{{ url_for('export_quote', quote_id=quote.id) }}"
+            class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">
+            Export to Excel
+        </a>
     </div>
     <h2 class="text-xl font-semibold mb-2 mt-3">Items</h2>
     <div class="overflow-x-auto">
