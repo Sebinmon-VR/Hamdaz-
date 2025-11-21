@@ -42,4 +42,4 @@ pinecone == 7.3.0
 
 
 
-pywin32==227
+pywin32==306
