@@ -89,7 +89,8 @@ def fetch_sales_orders():
 # def fetch_vendors():
 #     return fetch_data("vendors", "vendors")
 
-
+def fetch_purchases():
+    return fetch_data("purchaseorders", "purchaseorders")
 
 # =======================
 # STRUCTURE DATA FUNCTIONS
@@ -237,4 +238,14 @@ def get_customer_name_from_zoho(customer_id):
     except Exception as e:
         print(f"⚠️ Error fetching customer name from Zoho: {e}")
         return "Unknown Customer"
+
+
+# purchases = fetch_purchases()
+# print(f"Fetched {len(purchases)} purchase orders from Zoho Books.")
+# print(purchases[:1])  # Print first 2 purchase orders for inspection
+
+# sales_orders = fetch_sales_orders()
+# print(f"Fetched {len(sales_orders)} sales orders from Zoho Books.")
+# print(sales_orders[:1])  # Print first 2 sales orders for inspection
+
 

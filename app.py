@@ -1334,15 +1334,15 @@ def download_source_docx(file_id):
         print("Error downloading DOCX:", e)
         return f"Error: {e}", 500
     
-
 @app.route('/analyze', methods=['POST'])
 def analyze_document():
+    # --- Input Validation ---
     if 'pdf_file' not in request.files:
         return jsonify({"error": "No PDF file uploaded"}), 400
 
     pdf_file = request.files['pdf_file']
-
-    # Step 1: Extract text from PDF
+    
+    # --- Step 1: Extract text from PDF ---
     try:
         pdf_reader = PyPDF2.PdfReader(pdf_file)
     except Exception as e:
@@ -1359,27 +1359,29 @@ def analyze_document():
     if not text_content.strip():
         return jsonify({"error": "No text could be extracted from PDF"}), 400
 
-    # Step 2: Split text into manageable chunks
+    # --- Step 2: Split text into manageable chunks ---
     chunks = [text_content[i:i+CHUNK_SIZE] for i in range(0, len(text_content), CHUNK_SIZE)]
 
-    # Step 3: Prepare final result
+    # --- Step 3: Prepare final result (UPDATED) ---
     final_result = {
         "requirements": [],
         "attachments_needed": [],
         "eligibility_criteria": [],
         "deadlines": [],
         "technical_specifications": [],
-        "other_notes": []
+        "other_notes": [],
+        "required_items_needed": [] 
     }
 
-    # Step 4: Analyze each chunk with OpenAI
+    # --- Step 4: Analyze each chunk with OpenAI ---
     for chunk in chunks:
         prompt = f"""
 You are an expert RFQ/SOW analyst.
 
 Step 1: Read the document chunk below.
 
-Step 2: Extract all relevant information: requirements, attachments, eligibility criteria, deadlines, technical specifications, and other notes.
+Step 2: Extract all relevant information: requirements, attachments, eligibility criteria, deadlines, technical specifications, **required items needed**, and other notes.
+# 👆 Instruction updated
 
 Return your answer in JSON exactly like this:
 
@@ -1389,7 +1391,9 @@ Return your answer in JSON exactly like this:
   "eligibility_criteria": [...],
   "deadlines": [...],
   "technical_specifications": [...],
-  "other_notes": [...]
+  "other_notes": [...],
+  "required_items_needed": [...]
+  
 }}
 
 If a field is missing, return an empty list.
@@ -1399,8 +1403,9 @@ Document Text:
         """
 
         try:
+            # NOTE: Ensure 'openai' library is configured before running.
             response = openai.ChatCompletion.create(
-                model="gpt-4o-mini",
+                model="gpt-4o",
                 messages=[
                     {"role": "system", "content": "You are an expert RFQ/SOW analyst."},
                     {"role": "user", "content": prompt}
@@ -1415,6 +1420,7 @@ Document Text:
             try:
                 chunk_data = json.loads(ai_output_clean)
                 # Merge chunk data into final result
+                # This loop handles all keys, including the new one
                 for key in final_result.keys():
                     if key in chunk_data and isinstance(chunk_data[key], list):
                         final_result[key].extend(chunk_data[key])
@@ -1423,19 +1429,75 @@ Document Text:
                 final_result.setdefault("raw_text_chunks", []).append(ai_output_clean)
 
         except Exception as e:
-            return jsonify({"error": str(e)}), 500
+            # Handle potential API errors (e.g., network, rate limit)
+            return jsonify({"error": f"OpenAI API Error: {str(e)}"}), 500
 
+    # --- Step 5: Final Cleanup and Return ---
     # Remove duplicates from lists
     for key in final_result:
         if isinstance(final_result[key], list):
+            # Using dict.fromkeys to efficiently remove duplicates while preserving order
             final_result[key] = list(dict.fromkeys(final_result[key]))
 
     return jsonify({"extracted_data": final_result})
 
 
 
+@app.route('/find_distributors', methods=['POST'])
+def find_distributors():
+    try:
+        data = request.get_json()
+        item_name = data.get('item_name')
+        location = data.get('location') # Expected to be 'UAE'
 
+        if not item_name:
+            return jsonify({"error": "Item name is required"}), 400
 
+        # This query uses the OpenAI model to perform the search/analysis
+        prompt = f"""
+        Find and list at least 3 authorized distributors or major retailers for '{item_name}' in the {location}.
+        For each distributor, provide their official name and a direct link to their company profile or a relevant product page.
+
+        Return your answer in JSON exactly like this:
+
+        {{
+          "distributors": [
+            {{
+              "name": "Distributor Name 1",
+              "link": "https://profile.link.1"
+            }},
+            {{
+              "name": "Distributor Name 2",
+              "link": "https://profile.link.2"
+            }}
+          ]
+        }}
+        If no distributors are found, return an empty list for 'distributors'.
+        """
+        
+        response = openai.ChatCompletion.create(
+            model="gpt-4o", # Use a model with strong web-browsing capabilities
+            messages=[
+                {"role": "system", "content": "You are a specialized procurement agent who searches the web for product distributors and returns results in a clean JSON format."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0,
+            max_tokens=1000
+        )
+
+        ai_output = response['choices'][0]['message']['content']
+        ai_output_clean = ai_output.replace("```json", "").replace("```", "").strip()
+
+        try:
+            # Parse and return the JSON directly to the frontend
+            distributor_data = json.loads(ai_output_clean)
+            return jsonify(distributor_data), 200
+        except json.JSONDecodeError:
+            return jsonify({"error": "AI returned unparsable JSON response.", "raw_output": ai_output_clean}), 500
+
+    except Exception as e:
+        # Catch API key errors, network errors, etc.
+        return jsonify({"error": f"Failed to find distributors: {str(e)}"}), 500
 
 
 # # ************ NEW ROUTE HERE ************

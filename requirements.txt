@@ -42,4 +42,4 @@ pinecone == 7.3.0
 
 # pythoncom == 227
 
-pywin32
+# pywin32

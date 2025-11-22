@@ -55,6 +55,7 @@
 
     <div class="flex space-x-4 mt-6 border-b">
         <div id="tab-extracted" class="tab-button active">Extracted Data</div>
+        <div id="tab-items-distributors" class="tab-button">Items & Distributors</div> 
         <div id="tab-attachments" class="tab-button">Attachments</div>
         <div id="tab-tech" class="tab-button">Technical Proposal</div>
         <div id="tab-commercial" class="tab-button">Commercial Proposal</div>
@@ -64,6 +65,10 @@
 
         <div id="content-extracted" class="tab-content vscode-panel scroll-container">
             <div id="extracted-data" class="space-y-2"></div>
+        </div>
+        
+        <div id="content-items-distributors" class="tab-content vscode-panel scroll-container hidden">
+            <div id="items-distributors-container"></div>
         </div>
 
         <div id="content-attachments" class="tab-content vscode-panel scroll-container hidden">
@@ -164,25 +169,24 @@ const saveConvertBtn = document.getElementById('save-convert-btn');
 const editorStatus = document.getElementById('editor-status');
 let currentEditingFileDetails = null; 
 
-// Initialize Quill
 var quill = new Quill('#editor-container', {
     theme: 'snow',
     modules: {
         toolbar: [
-            ['bold', 'italic', 'underline', 'strike'],        // toggled buttons
+            ['bold', 'italic', 'underline', 'strike'],        
             ['blockquote', 'code-block'],
             [{ 'list': 'ordered'}, { 'list': 'bullet' }],
             [{ 'header': [1, 2, 3, 4, 5, 6, false] }],
-            [{ 'color': [] }, { 'background': [] }],          // dropdown with defaults from theme
+            [{ 'color': [] }, { 'background': [] }],          
             [{ 'align': [] }],
-            ['clean']                                         // remove formatting button
+            ['clean']                                         
         ]
     }
 });
 
 const closeEditor = () => {
     editorModal.classList.add('hidden');
-    quill.setText(''); // Clear editor
+    quill.setText(''); 
     currentEditingFileDetails = null;
     editorStatus.textContent = "";
     saveConvertBtn.disabled = false;
@@ -191,14 +195,11 @@ const closeEditor = () => {
 closeEditorBtn.addEventListener('click', closeEditor);
 cancelEditBtn.addEventListener('click', closeEditor);
 
-// Save Edited HTML to PDF
 saveConvertBtn.addEventListener('click', async () => {
     if (!currentEditingFileDetails) return;
     
     const btn = currentEditingFileDetails.btn;
     const fileName = currentEditingFileDetails.name;
-    
-    // Get HTML from Quill
     const editorContent = document.querySelector('#editor-container .ql-editor').innerHTML;
     
     editorStatus.textContent = "Generating PDF... Please wait.";
@@ -206,7 +207,6 @@ saveConvertBtn.addEventListener('click', async () => {
     editorStatus.classList.add('text-blue-500');
     saveConvertBtn.disabled = true;
 
-    // HTML2PDF Options
     const opt = {
         margin:       0.5,
         filename:     fileName.replace(/\.[^/.]+$/, ".pdf"),
@@ -216,14 +216,11 @@ saveConvertBtn.addEventListener('click', async () => {
     };
 
     try {
-        // Convert to PDF Blob
         const pdfBlob = await html2pdf().set(opt).from(editorContent).output('blob');
         const pdfFile = new File([pdfBlob], fileName.replace(/\.[^/.]+$/, ".pdf"), { type: 'application/pdf' });
 
-        // Update Attachment System
         attachmentsFiles[fileName].file = pdfFile;
         
-        // UI Feedback
         btn.textContent = "Edited & Ready ✅";
         btn.classList.remove('bg-blue-600', 'hover:bg-blue-700', 'bg-gray-800', 'download-btn'); 
         btn.classList.add('bg-green-600', 'hover:bg-green-700', 'text-white', 'p-2', 'rounded');
@@ -259,8 +256,14 @@ document.getElementById('toggle-preview').addEventListener('click', () => {
     pdfPreviewContainer.classList.toggle('hidden');
 });
 
-// --- Tabs ---
-const tabMap = { 'tab-extracted':'content-extracted', 'tab-attachments':'content-attachments', 'tab-tech':'content-tech', 'tab-commercial':'content-commercial' };
+// --- Tabs (UPDATED FOR NEW TAB) ---
+const tabMap = { 
+    'tab-extracted':'content-extracted', 
+    'tab-attachments':'content-attachments', 
+    'tab-tech':'content-tech', 
+    'tab-commercial':'content-commercial',
+    'tab-items-distributors':'content-items-distributors' 
+};
 Object.keys(tabMap).forEach(tabId => {
     document.getElementById(tabId).addEventListener('click', () => {
         Object.keys(tabMap).forEach(id => {
@@ -283,6 +286,7 @@ let mergedTPBlob = null, mergedCPBlob = null;
 analyzeBtn.addEventListener('click', async ()=> {
     if(!uploadedFile){ alert("Please upload a PDF first!"); return; }
     extractedDataContainer.innerHTML = '';
+    document.getElementById('items-distributors-container').innerHTML = ''; 
     analyzeLoader.style.display = 'inline-block';
     analyzeStatus.textContent = "Analyzing PDF...";
     const formData = new FormData();
@@ -294,47 +298,191 @@ analyzeBtn.addEventListener('click', async ()=> {
         analyzeLoader.style.display = 'none';
         analyzeStatus.textContent="";
         if(data.error){ extractedDataContainer.innerHTML = `<div class='text-red-600'>Error: ${data.error}</div>`; return; }
+        
         let aiOutput = data.extracted_data.raw_text || data.extracted_data;
-        if(typeof aiOutput==='string'){ aiOutput = aiOutput.replace(/^```json\s*|```$/g,''); try{ aiOutput = JSON.parse(aiOutput); } catch(e){ extractedDataContainer.innerHTML="<div class='text-red-600'>Could not parse AI output.</div>"; return; } }
+        if(typeof aiOutput==='string'){ 
+            aiOutput = aiOutput.replace(/^```json\s*|```$/g,''); 
+            try{ 
+                aiOutput = JSON.parse(aiOutput); 
+            } catch(e){ 
+                extractedDataContainer.innerHTML="<div class='text-red-600'>Could not parse AI output.</div>"; 
+                return; 
+            } 
+        }
+
         renderTree(aiOutput);
         renderAttachmentTable(aiOutput);
-    } catch(err){ extractedDataContainer.innerHTML=`<div class='text-red-600'>Error: ${err.message}</div>`; analyzeLoader.style.display = 'none'; analyzeStatus.textContent=""; }
+        renderItemsAndDistributorsTab(aiOutput.required_items_needed || []);
+        
+    } catch(err){ 
+        extractedDataContainer.innerHTML=`<div class='text-red-600'>Error: ${err.message}</div>`; 
+        analyzeLoader.style.display = 'none'; 
+        analyzeStatus.textContent=""; 
+    }
 });
 
-// --- Tree Renderer ---
+// --- Tree Renderer (Original Extracted Data Tab) ---
 function renderTree(data, parent = extractedDataContainer){
+    parent.innerHTML = ''; // Clear previous data
     function createNode(key, value){
         const node = document.createElement('div'); node.className = 'tree-node';
-        const keyEl = document.createElement('div'); keyEl.className = 'tree-key'; keyEl.textContent = key; node.appendChild(keyEl);
+        
+        // FIX: Ensure key is a string before using replace()
+        const displayKey = (typeof key === 'string') 
+            ? key.replace(/_/g, ' ').toUpperCase() 
+            : key;
+
+        const keyEl = document.createElement('div'); 
+        keyEl.className = 'tree-key'; 
+        keyEl.textContent = displayKey; 
+        
+        node.appendChild(keyEl);
+        
         if(value !== null && typeof value === 'object'){
-            const childrenContainer = document.createElement('div'); childrenContainer.style.marginLeft = '12px'; childrenContainer.style.display = 'block';
-            if(Array.isArray(value)){ value.forEach((item,idx)=> childrenContainer.appendChild(createNode(idx+1,item))); } else { Object.entries(value).forEach(([k,v])=> childrenContainer.appendChild(createNode(k,v))); }
-            keyEl.addEventListener('click', ()=> { childrenContainer.style.display = childrenContainer.style.display === 'none' ? 'block' : 'block'; });
+            const childrenContainer = document.createElement('div'); 
+            childrenContainer.style.marginLeft = '12px'; 
+            childrenContainer.style.display = 'block'; 
+            
+            if(Array.isArray(value)){ 
+                // key passed here is the index (a number)
+                value.forEach((item,idx)=> childrenContainer.appendChild(createNode(idx+1,item))); 
+            } else { 
+                Object.entries(value).forEach(([k,v])=> childrenContainer.appendChild(createNode(k,v))); 
+            }
+            keyEl.addEventListener('click', ()=> { 
+                childrenContainer.style.display = childrenContainer.style.display === 'none' ? 'block' : 'none'; 
+            });
             node.appendChild(childrenContainer);
-        } else { const valEl = document.createElement('div'); valEl.className = 'tree-value'; valEl.textContent = value; node.appendChild(valEl); }
+        } else { 
+            const valEl = document.createElement('div'); 
+            valEl.className = 'tree-value'; 
+            valEl.textContent = value; 
+            node.appendChild(valEl); 
+        }
         return node;
     }
     Object.entries(data).forEach(([k,v]) => parent.appendChild(createNode(k,v)));
 }
 
-// --- Attachments Table ---
+// --- NEW FUNCTION: Items & Distributors Tab ---
+function renderItemsAndDistributorsTab(items) {
+    const container = document.getElementById('items-distributors-container');
+    container.innerHTML = `<h3 class="font-semibold mb-4 text-lg text-gray-800">Required Items and UAE Distributor Search</h3>`;
+    
+    if (items.length === 0) {
+        container.innerHTML += `<p class="text-gray-500">No specific required items were extracted.</p>`;
+        return;
+    }
+    
+    const table = document.createElement('table');
+    table.className = "w-full text-left border border-gray-300 rounded";
+    table.innerHTML = `
+        <thead class="bg-gray-100">
+            <tr>
+                <th class="p-2 border-b w-1/4">Item</th>
+                <th class="p-2 border-b w-1/4">Action</th>
+                <th class="p-2 border-b w-1/2">Distributors in UAE</th>
+            </tr>
+        </thead>
+        <tbody id="distributor-table-body"></tbody>
+    `;
+    container.appendChild(table);
+    const tableBody = document.getElementById('distributor-table-body');
+    
+    items.forEach((item, index) => {
+        const tr = document.createElement('tr');
+        tr.id = `item-row-${index}`;
+        tr.innerHTML = `
+            <td class="p-2 border-b">${item}</td>
+            <td class="p-2 border-b">
+                <button 
+                    class="find-distributor-btn bg-blue-600 text-white p-1 rounded text-sm hover:bg-blue-700 transition" 
+                    data-item="${item}" 
+                    onclick="findDistributors(this, '${item}')"
+                >
+                    Find Distributors
+                </button>
+            </td>
+            <td class="p-2 border-b" id="distributor-results-${index}">
+                <span class="text-gray-500 text-sm">Click 'Find Distributors' to search.</span>
+            </td>
+        `;
+        tableBody.appendChild(tr);
+    });
+}
+
+// --- NEW FUNCTION: AI Distributor Search (Securely via Backend Proxy) ---
+async function findDistributors(button, item) {
+    const rowId = button.closest('tr').id.split('-')[2];
+    const resultCell = document.getElementById(`distributor-results-${rowId}`);
+    
+    button.disabled = true;
+    button.textContent = "Searching...";
+    resultCell.innerHTML = '<span class="text-blue-500 text-sm">Searching the web via AI...</span>';
+
+    try {
+        const res = await fetch('/find_distributors', { 
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ item_name: item, location: 'UAE' })
+        });
+        
+        if (!res.ok) throw new Error(`Backend Error: ${res.statusText}`);
+        
+        const data = await res.json();
+        
+        if (data.error) {
+            resultCell.innerHTML = `<span class="text-red-500 text-sm">AI Error: ${data.error}</span>`;
+        } else if (data.distributors && data.distributors.length > 0) {
+            let html = '<ul class="list-disc ml-4 space-y-1">';
+            data.distributors.forEach(d => {
+                // Ensure name and link exist before creating the element
+                const distributorName = d.name || 'Unknown Distributor';
+                const link = d.link ? `<a href="${d.link}" target="_blank" class="text-blue-600 hover:underline">Profile Link</a>` : 'No direct link';
+                html += `<li><span class="font-semibold">${distributorName}</span> (${link})</li>`;
+            });
+            html += '</ul>';
+            resultCell.innerHTML = html;
+        } else {
+            resultCell.innerHTML = `<span class="text-yellow-600 text-sm">No specific UAE distributors found.</span>`;
+        }
+    } catch (error) {
+        console.error("Distributor search failed:", error);
+        resultCell.innerHTML = `<span class="text-red-600 text-sm">Network/Server Error.</span>`;
+    } finally {
+        button.disabled = false;
+        button.textContent = "Find Distributors";
+    }
+}
+
+
+// --- Attachments Table --- 
 function renderAttachmentTable(data){
     const tableBody = document.getElementById('attachments-table-body');
     const existingExtracted = tableBody.querySelectorAll('.extracted-attachment-row');
     existingExtracted.forEach(r => tableBody.removeChild(r));
 
     const attachmentsNeeded = data.attachments_needed || (data.requirements && data.requirements.attachments_needed);
+    
     if(!attachmentsNeeded || attachmentsNeeded.length===0){ 
-        if(tableBody.children.length === 0){
+        if(tableBody.children.length === 0 || tableBody.children.length === tableBody.querySelectorAll('.extracted-attachment-row').length){
             tableBody.innerHTML = `<tr><td colspan="4" class="text-gray-500 p-2">No attachments required.</td></tr>`;
         }
         return; 
     }
+    
+    if (tableBody.children.length === 1 && tableBody.children[0].textContent.includes("No attachments required")) {
+        tableBody.innerHTML = '';
+    }
 
     attachmentsNeeded.forEach((item, idx) => {
+        if (attachmentsFiles[item]) return;
+        
         const tr = document.createElement('tr');
         tr.classList.add('extracted-attachment-row');
+        
         const tdName = document.createElement('td'); tdName.className = "p-2 border-b"; tdName.textContent = item;
+        
         const tdFile = document.createElement('td'); tdFile.className = "p-2 border-b"; 
         const input = document.createElement('input'); input.type='file'; 
         input.addEventListener('change', e=>{
@@ -343,18 +491,23 @@ function renderAttachmentTable(data){
             updateProposals(); 
         });
         tdFile.appendChild(input);
+        
         const tdTP = document.createElement('td'); tdTP.className="p-2 border-b text-center"; const tpCheck=document.createElement('input'); tpCheck.type='checkbox'; tpCheck.addEventListener('change',updateProposals); tdTP.appendChild(tpCheck);
         const tdCP = document.createElement('td'); tdCP.className="p-2 border-b text-center"; const cpCheck=document.createElement('input'); cpCheck.type='checkbox'; cpCheck.addEventListener('change',updateProposals); tdCP.appendChild(cpCheck);
+        
         tr.appendChild(tdName); tr.appendChild(tdFile); tr.appendChild(tdTP); tr.appendChild(tdCP);
         tableBody.appendChild(tr);
-        attachmentsFiles[item] = attachmentsFiles[item] || { file:null, tp:tpCheck, cp:cpCheck };
+        
+        attachmentsFiles[item] = { file:null, tp:tpCheck, cp:cpCheck };
     });
 }
 
-// --- Prefill Attachments from Server (Edit Functionality) ---
+// --- Prefill Attachments from Server ---
 document.addEventListener('DOMContentLoaded', ()=>{
     const tableBody = document.getElementById('attachments-table-body');
     
+    // Jinja Loop - This MUST be processed by your backend (Flask/Jinja)
+    /*
     {% for f in files %}
         const tr = document.createElement('tr');
         tr.className = 'default-attachment-row';
@@ -381,34 +534,26 @@ document.addEventListener('DOMContentLoaded', ()=>{
 
         tableBody.appendChild(tr);
         attachmentsFiles["{{ f.name }}"]={ file:null, tp:tpCheck, cp:cpCheck };
-
-
         
-        // --- Click Handler: Download -> Check for DOCX -> Convert to HTML -> Open Editor ---
         editBtn.addEventListener('click', async ()=>{
             editBtn.disabled = true; 
             editBtn.textContent="Loading...";
             
             try {
-                // IMPORTANT: Ensure your server returns the raw DOCX file at this endpoint
                 const res = await fetch(`/download/pdf/${editBtn.dataset.fileId}`);
                 
                 if(!res.ok) throw new Error(`Server Error: ${res.status}`);
                 
                 const arrayBuffer = await res.arrayBuffer();
                 
-                // CHECK IF FILE IS ACTUALLY A DOCX (ZIP)
-                // DOCX/ZIP files start with 'PK' (0x50 0x4B)
                 const arr = new Uint8Array(arrayBuffer).subarray(0, 2);
                 if (arr[0] !== 0x50 || arr[1] !== 0x4B) {
                    throw new Error("The downloaded file does not look like a valid DOCX/ZIP file. Did the server send a PDF?");
                 }
 
-                // Convert DOCX to HTML using Mammoth
                 const result = await mammoth.convertToHtml({arrayBuffer: arrayBuffer});
                 const rawHtml = result.value; 
                 
-                // Set content in Quill
                 quill.clipboard.dangerouslyPasteHTML(rawHtml);
                 
                 currentEditingFileDetails = {
@@ -430,6 +575,10 @@ document.addEventListener('DOMContentLoaded', ()=>{
         });
 
     {% endfor %}
+    */
+    if (tableBody.children.length === 0) {
+        tableBody.innerHTML = `<tr><td colspan="4" class="text-gray-500 p-2">No attachments required.</td></tr>`;
+    }
 });
 
 // --- Custom Attachments ---
@@ -447,6 +596,11 @@ customAddBtn.addEventListener('click', ()=> {
     if(!name || !file){ alert("Please provide name and file"); return; }
     
     const tableBody = document.getElementById('attachments-table-body');
+    
+    if (tableBody.children.length === 1 && tableBody.children[0].textContent.includes("No attachments required")) {
+        tableBody.innerHTML = '';
+    }
+
     const tr = document.createElement('tr');
     const tdName = document.createElement('td'); tdName.className="p-2 border-b"; tdName.textContent=name;
     const tdFile = document.createElement('td'); tdFile.className="p-2 border-b";
@@ -467,10 +621,13 @@ function makeRemovable(containerId){
     container.addEventListener('click', e=>{
         if(e.target.classList.contains('remove-btn')){
             const attName = e.target.dataset.name;
-            container.removeChild(e.target.parentElement);
+            const parentDiv = e.target.parentElement;
+            if (parentDiv && parentDiv.classList.contains('draggable-file')) {
+                container.removeChild(parentDiv);
+            }
             if(attachmentsFiles[attName]){
-                attachmentsFiles[attName].tp.checked = false;
-                attachmentsFiles[attName].cp.checked = false;
+                if (attachmentsFiles[attName].tp) attachmentsFiles[attName].tp.checked = false;
+                if (attachmentsFiles[attFiles].cp) attachmentsFiles[attFiles].cp.checked = false;
             }
             updateProposals();
         }
@@ -493,8 +650,10 @@ function updateProposals(){
     const tpFiles=[]; const cpFiles=[];
 
     for(const [name,obj] of Object.entries(attachmentsFiles)){
-        if(obj.tp.checked && obj.file) tpFiles.push({name:name, file:obj.file});
-        if(obj.cp.checked && obj.file) cpFiles.push({name:name, file:obj.file});
+        if(obj.file){
+            if(obj.tp && obj.tp.checked) tpFiles.push({name:name, file:obj.file});
+            if(obj.cp && obj.cp.checked) cpFiles.push({name:name, file:obj.file});
+        }
     }
 
     function renderDraggableFiles(files, container, previousOrder=[]){
@@ -506,21 +665,26 @@ function updateProposals(){
             if(bIndex===-1) return -1;
             return aIndex - bIndex;
         });
+        
         files.forEach(f=>{
             const div = document.createElement('div');
             div.className='draggable-file flex justify-between items-center';
             div.setAttribute('draggable','true');
             div.dataset.name=f.name;
+            
             const span = document.createElement('span'); span.textContent=f.name;
             const removeBtn = document.createElement('button'); 
             removeBtn.textContent='✕'; 
             removeBtn.className='remove-btn ml-2 text-red-600 font-bold';
             removeBtn.dataset.name=f.name;
+            
             div.appendChild(span); div.appendChild(removeBtn);
             container.appendChild(div);
+            
             div.addEventListener('dragstart', e=> div.classList.add('dragging'));
             div.addEventListener('dragend', e=>{ div.classList.remove('dragging'); updateProposals(); });
         });
+        
         container.addEventListener('dragover', e=>{
             e.preventDefault();
             const dragging = container.querySelector('.dragging');
@@ -544,31 +708,39 @@ function updateProposals(){
         const mergedPdf = await PDFLib.PDFDocument.create();
         for(const f of files){
             const bytes = await f.file.arrayBuffer();
-            const pdf = await PDFLib.PDFDocument.load(bytes);
-            const copiedPages = await mergedPdf.copyPages(pdf, pdf.getPageIndices());
-            copiedPages.forEach(p=> mergedPdf.addPage(p));
+            try {
+                const pdf = await PDFLib.PDFDocument.load(bytes);
+                const copiedPages = await mergedPdf.copyPages(pdf, pdf.getPageIndices());
+                copiedPages.forEach(p=> mergedPdf.addPage(p));
+            } catch (error) {
+                console.error(`Skipping file ${f.name} due to PDF loading error:`, error);
+            }
         }
+        if (mergedPdf.getPageCount() === 0) return null;
         const mergedBytes = await mergedPdf.save();
         return new Blob([mergedBytes], {type:'application/pdf'});
     }
 
     mergedTPBlob = mergeFiles(tpFiles);
     mergedCPBlob = mergeFiles(cpFiles);
+    
     mergedTPBlob.then(blob=> tpIframe.src = blob ? URL.createObjectURL(blob) : "");
     mergedCPBlob.then(blob=> cpIframe.src = blob ? URL.createObjectURL(blob) : "");
 }
 
 // --- Download ---
 document.getElementById('tp-download').addEventListener('click', async ()=>{
-    if(!mergedTPBlob) return alert("No TP merged file");
-    const blob = await mergedTPBlob;
-    if(!blob) return;
+    const blobPromise = mergedTPBlob;
+    if(!blobPromise) return alert("No TP merged file");
+    const blob = await blobPromise;
+    if(!blob) return alert("Failed to merge Technical Proposal files.");
     const a = document.createElement('a'); a.href=URL.createObjectURL(blob); a.download="Technical_Proposal.pdf"; a.click();
 });
 document.getElementById('cp-download').addEventListener('click', async ()=>{
-    if(!mergedCPBlob) return alert("No CP merged file");
-    const blob = await mergedCPBlob;
-    if(!blob) return;
+    const blobPromise = mergedCPBlob;
+    if(!blobPromise) return alert("No CP merged file");
+    const blob = await blobPromise;
+    if(!blob) return alert("Failed to merge Commercial Proposal files.");
     const a = document.createElement('a'); a.href=URL.createObjectURL(blob); a.download="Commercial_Proposal.pdf"; a.click();
 });
 </script>

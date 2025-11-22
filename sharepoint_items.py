@@ -314,6 +314,9 @@ def compute_user_analytics(df):
         }
 
     return analytics
+
+
+
 def compute_user_analytics_with_last_date(df, EXCLUDED_USERS, period=None):
     """
     Compute user analytics with optional period filtering.
