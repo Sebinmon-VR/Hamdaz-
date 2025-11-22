@@ -121,8 +121,8 @@ def background_updater():
 
             # Fetch latest SharePoint list
             tasks = fetch_sharepoint_list(SITE_DOMAIN, SITE_PATH, LIST_NAME)
-            list_columns= get_list_columns(SITE_DOMAIN , SITE_PATH , LIST_NAME)
-            
+            # list_columns= get_list_columns(SITE_DOMAIN , SITE_PATH , LIST_NAME)
+        
             
             df = items_to_dataframe(tasks)
             user_analytics = generate_user_analytics(df, exclude_users=EXCLUDED_USERS)
@@ -1302,19 +1302,19 @@ def tp():
 
     return render_template("tp.html", files=files, default_attachments=default_attachments, user=session.get("user"))
 
-@app.route("/download/pdf/<file_id>")
-def download_pdf(file_id):
+# @app.route("/download/pdf/<file_id>")
+# def download_pdf(file_id):
     
-    try:
-        docx_path = download_docx(file_id)
-        pdf_path = convert_docx_to_pdf(docx_path)
-        return send_file(pdf_path, as_attachment=True, download_name=os.path.basename(pdf_path))
-    except requests.HTTPError as e:
-        print("HTTP Error:", e)
-        return f"Graph API Error: {e}", 500
-    except Exception as e:
-        print("Error:", e)
-        return f"Error occurred: {e}", 500
+#     try:
+#         docx_path = download_docx(file_id)
+#         pdf_path = convert_docx_to_pdf(docx_path)
+#         return send_file(pdf_path, as_attachment=True, download_name=os.path.basename(pdf_path))
+#     except requests.HTTPError as e:
+#         print("HTTP Error:", e)
+#         return f"Graph API Error: {e}", 500
+#     except Exception as e:
+#         print("Error:", e)
+#         return f"Error occurred: {e}", 500
 
 # --- ADD THIS NEW ROUTE ---
 @app.route("/download/docx/<file_id>")

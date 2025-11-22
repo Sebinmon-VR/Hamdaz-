@@ -293,6 +293,7 @@ analyzeBtn.addEventListener('click', async ()=> {
     formData.append('pdf_file', uploadedFile);
 
     try{
+        // NOTE: This fetch remains for analysis, as it is a complex AI task requiring the backend.
         const res = await fetch('/analyze',{method:'POST', body:formData});
         const data = await res.json();
         analyzeLoader.style.display = 'none';
@@ -365,6 +366,49 @@ function renderTree(data, parent = extractedDataContainer){
 }
 
 // --- NEW FUNCTION: Items & Distributors Tab ---
+async function findDistributors(button, item) {
+    const rowId = button.closest('tr').id.split('-')[2];
+    const resultCell = document.getElementById(`distributor-results-${rowId}`);
+    
+    button.disabled = true;
+    button.textContent = "Searching...";
+    resultCell.innerHTML = '<span class="text-blue-500 text-sm">Searching the web via AI...</span>';
+
+    try {
+        const res = await fetch('/find_distributors', { 
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ item_name: item, location: 'UAE' })
+        });
+        
+        if (!res.ok) throw new Error(`Backend Error: ${res.statusText}`);
+        
+        const data = await res.json();
+        
+        if (data.error) {
+            resultCell.innerHTML = `<span class="text-red-500 text-sm">AI Error: ${data.error}</span>`;
+        } else if (data.distributors && data.distributors.length > 0) {
+            let html = '<ul class="list-disc ml-4 space-y-1">';
+            data.distributors.forEach(d => {
+                // Ensure name and link exist before creating the element
+                const distributorName = d.name || 'Unknown Distributor';
+                const link = d.link ? `<a href="${d.link}" target="_blank" class="text-blue-600 hover:underline">Profile Link</a>` : 'No direct link';
+                html += `<li><span class="font-semibold">${distributorName}</span> (${link})</li>`;
+            });
+            html += '</ul>';
+            resultCell.innerHTML = html;
+        } else {
+            resultCell.innerHTML = `<span class="text-yellow-600 text-sm">No specific UAE distributors found.</span>`;
+        }
+    } catch (error) {
+        console.error("Distributor search failed:", error);
+        resultCell.innerHTML = `<span class="text-red-600 text-sm">Network/Server Error.</span>`;
+    } finally {
+        button.disabled = false;
+        button.textContent = "Find Distributors";
+    }
+}
+
 function renderItemsAndDistributorsTab(items) {
     const container = document.getElementById('items-distributors-container');
     container.innerHTML = `<h3 class="font-semibold mb-4 text-lg text-gray-800">Required Items and UAE Distributor Search</h3>`;
@@ -409,50 +453,6 @@ function renderItemsAndDistributorsTab(items) {
         `;
         tableBody.appendChild(tr);
     });
-}
-
-// --- NEW FUNCTION: AI Distributor Search (Securely via Backend Proxy) ---
-async function findDistributors(button, item) {
-    const rowId = button.closest('tr').id.split('-')[2];
-    const resultCell = document.getElementById(`distributor-results-${rowId}`);
-    
-    button.disabled = true;
-    button.textContent = "Searching...";
-    resultCell.innerHTML = '<span class="text-blue-500 text-sm">Searching the web via AI...</span>';
-
-    try {
-        const res = await fetch('/find_distributors', { 
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ item_name: item, location: 'UAE' })
-        });
-        
-        if (!res.ok) throw new Error(`Backend Error: ${res.statusText}`);
-        
-        const data = await res.json();
-        
-        if (data.error) {
-            resultCell.innerHTML = `<span class="text-red-500 text-sm">AI Error: ${data.error}</span>`;
-        } else if (data.distributors && data.distributors.length > 0) {
-            let html = '<ul class="list-disc ml-4 space-y-1">';
-            data.distributors.forEach(d => {
-                // Ensure name and link exist before creating the element
-                const distributorName = d.name || 'Unknown Distributor';
-                const link = d.link ? `<a href="${d.link}" target="_blank" class="text-blue-600 hover:underline">Profile Link</a>` : 'No direct link';
-                html += `<li><span class="font-semibold">${distributorName}</span> (${link})</li>`;
-            });
-            html += '</ul>';
-            resultCell.innerHTML = html;
-        } else {
-            resultCell.innerHTML = `<span class="text-yellow-600 text-sm">No specific UAE distributors found.</span>`;
-        }
-    } catch (error) {
-        console.error("Distributor search failed:", error);
-        resultCell.innerHTML = `<span class="text-red-600 text-sm">Network/Server Error.</span>`;
-    } finally {
-        button.disabled = false;
-        button.textContent = "Find Distributors";
-    }
 }
 
 
@@ -506,8 +506,7 @@ function renderAttachmentTable(data){
 document.addEventListener('DOMContentLoaded', ()=>{
     const tableBody = document.getElementById('attachments-table-body');
     
-    // Jinja Loop - This MUST be processed by your backend (Flask/Jinja)
-    /*
+    // Jinja Loop (Requires server-side rendering to work)
     {% for f in files %}
         const tr = document.createElement('tr');
         tr.className = 'default-attachment-row';
@@ -519,7 +518,7 @@ document.addEventListener('DOMContentLoaded', ()=>{
         const editBtn = document.createElement('button');
         editBtn.textContent = "Edit & Attach";
         editBtn.className = "download-btn";
-        editBtn.dataset.fileId = "{{ f.id }}";
+        editBtn.dataset.fileId = "{{ f.id }}"; // <-- Retaining the file ID for the backend fetch
         editBtn.dataset.fileName = "{{ f.name }}";
         tdFile.appendChild(editBtn);
         tr.appendChild(tdFile);
@@ -540,17 +539,24 @@ document.addEventListener('DOMContentLoaded', ()=>{
             editBtn.textContent="Loading...";
             
             try {
-                const res = await fetch(`/download/pdf/${editBtn.dataset.fileId}`);
+                // *** NEW FRONTEND DOWNLOAD LOGIC ***
+                // 1. Fetch the raw DOCX binary file content directly from the backend
+                const res = await fetch(`/download/docx/${editBtn.dataset.fileId}`); 
                 
-                if(!res.ok) throw new Error(`Server Error: ${res.status}`);
+                if(!res.ok) {
+                    throw new Error(`Server Error: Failed to download DOCX. Status: ${res.status}`);
+                }
                 
+                // 2. Get the file content as an ArrayBuffer (binary data)
                 const arrayBuffer = await res.arrayBuffer();
                 
+                // 3. Check for DOCX signature (PK)
                 const arr = new Uint8Array(arrayBuffer).subarray(0, 2);
                 if (arr[0] !== 0x50 || arr[1] !== 0x4B) {
-                   throw new Error("The downloaded file does not look like a valid DOCX/ZIP file. Did the server send a PDF?");
+                   throw new Error("Invalid file format. Expected a DOCX or ZIP file, but the file signature is incorrect.");
                 }
 
+                // 4. Convert DOCX/ZIP to HTML for the Quill editor
                 const result = await mammoth.convertToHtml({arrayBuffer: arrayBuffer});
                 const rawHtml = result.value; 
                 
@@ -566,7 +572,7 @@ document.addEventListener('DOMContentLoaded', ()=>{
 
             } catch(err){
                 console.error(err);
-                alert("Error: " + err.message);
+                alert("Error: " + err.message + "\n\n(HINT: Ensure your backend's /download/docx route returns the raw DOCX binary file.)");
                 editBtn.textContent="Edit & Attach";
             } finally { 
                 editBtn.disabled=false; 
@@ -575,7 +581,7 @@ document.addEventListener('DOMContentLoaded', ()=>{
         });
 
     {% endfor %}
-    */
+    
     if (tableBody.children.length === 0) {
         tableBody.innerHTML = `<tr><td colspan="4" class="text-gray-500 p-2">No attachments required.</td></tr>`;
     }

@@ -958,8 +958,8 @@ def get_list_columns(site_domain, site_path, list_name):
     response = requests.get(url, headers=headers)
     response.raise_for_status()
     columns = response.json().get("value", [])
-    for col in columns:
-        print(f"Display Name: {col['displayName']}, Internal Name: {col['name']}")
+    # for col in columns:
+    #     print(f"Display Name: {col['displayName']}, Internal Name: {col['name']}")
     return columns
 
 
@@ -1588,25 +1588,25 @@ def download_docx(file_id):
 #     convert(input_docx, temp_pdf)
 #     return temp_pdf
 
-import pythoncom
-import tempfile
-from docx2pdf import convert
+# import pythoncom
+# import tempfile
+# from docx2pdf import convert
 
-def convert_docx_to_pdf(input_docx):
-    # 1. Initialize Windows COM for this Flask thread
-    pythoncom.CoInitialize()
+# def convert_docx_to_pdf(input_docx):
+#     # 1. Initialize Windows COM for this Flask thread
+#     pythoncom.CoInitialize()
     
-    temp_pdf = tempfile.mktemp(suffix=".pdf")
+#     temp_pdf = tempfile.mktemp(suffix=".pdf")
     
-    try:
-        convert(input_docx, temp_pdf)
-    except Exception as e:
-        raise e
-    finally:
-        # 2. Release resources
-        pythoncom.CoUninitialize()
+#     try:
+#         convert(input_docx, temp_pdf)
+#     except Exception as e:
+#         raise e
+#     finally:
+#         # 2. Release resources
+#         pythoncom.CoUninitialize()
         
-    return temp_pdf
+#     return temp_pdf
 
 
 import io
