@@ -1689,3 +1689,16 @@ def generate_quote_excel(quote):
     
     output.seek(0)
     return output
+
+
+
+def fetch_user_planner_tasks():
+    access_token = get_access_token()
+    headers = {"Authorization": f"Bearer {access_token}"}
+    url = "https://graph.microsoft.com/v1.0/me/planner/tasks"
+    resp = requests.get(url, headers=headers)
+    resp.raise_for_status()
+    tasks = resp.json().get("value", [])
+    
+    return tasks
+

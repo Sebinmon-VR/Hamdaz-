@@ -33,7 +33,7 @@ REDIRECT_URI = os.getenv("REDIRECT_URI")
 AUTHORITY = f"https://login.microsoftonline.com/{TENANT_ID}"
 SCOPE = ["User.Read"]
 
-SUPERUSERS = ["jishad@hamdaz.com", "sebin@hamdaz.com","lamia@hamdaz.com" , "hisham@hamdaz.com" , "hello@hamdaz.com"]
+SUPERUSERS = ["jishad@hamdaz.com","lamia@hamdaz.com" ,"sebin@hamdaz.com", "hisham@hamdaz.com" , "hello@hamdaz.com"]
 approvers = ["shibit@hamdaz.com", "althaf@hamdaz.com" ,"sebin@hamdaz.com"]
 LIMITED_USERS = [""]
 
@@ -214,8 +214,10 @@ def index():
             elif excel_role == "customer success":
                 app.jinja_env.globals.update(excel_role="cs")
                 dashboard_role = "customer_success_dashboard"
+            elif excel_role == "ai":
+                dashboard_role = "admin_dashboard"
+                app.jinja_env.globals.update(excel_role="ai")
             else:
-                
                 dashboard_role = "user_dashboard"
 
         period_type = request.args.get('period', 'month')
@@ -1544,6 +1546,18 @@ def find_distributors():
 #             })
 
 #     return render_template("datasheets.html", results=results)
+
+
+
+
+@app.route("/ai_tasks")
+def ai_tasks():
+    if "user" not in session:
+        return redirect(url_for('login'))
+    user = session.get("user")
+    tasks = fetch_user_planner_tasks()
+    return render_template("pages/ai_tasks.html", user=user, tasks=tasks)
+
 
 
 
