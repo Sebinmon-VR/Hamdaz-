@@ -41,19 +41,21 @@
 
     </div>
 
-    <div class="second_section" style="width: 100%; height:300px; display: flex;">
+    <div class="second_section" style="width: 100%; display: flex; gap: 20px; align-items: flex-start; margin-top: 30px;">
 
+        <!-- Active tasks column (lists scroll independently) -->
         <div class="active_tasks"
-            style="width: 45%; margin-left: 30px;margin-top: 35px; background: #ffffff; height: 200px; box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1); padding-left: 20px; padding-top: 20px;">
+            style="width: 45%; margin-left: 30px; background: #ffffff; box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1); padding: 20px; border-radius: 6px;">
             
             <div class="due_today">
                 <h4 style="font-size: 18px; font-weight: 600; margin-bottom: 10px;">Due Today</h4>
                 {% if due_today_tasks_count == 0 %}
                     <p style="color: #888;">No tasks due today.</p>
                 {% else %}
-                    <ul style="list-style-type: none; padding: 0;">
+                    <!-- make this list scrollable -->
+                    <ul style="list-style-type: none; padding: 0; margin: 0; max-height: 160px; overflow-y: auto; padding-right: 8px;">
                         {% for task in user_analytics.DueTodayTasks %}
-                        <li style="background: #f9f9f9; margin-bottom: 10px; padding: 10px; border-radius: 5px; box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);">
+                        <li style="background: #f9f9f9; margin-bottom: 10px; padding: 10px; border-radius: 5px; box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);">
                             <a href="{{ url_for('task_details', title=task.Title) }}" style="text-decoration: none; color: inherit;">
                                 <strong>{{ task.Title }}</strong><br>
                                 Due: {{ task.DueDate }}<br>
@@ -65,14 +67,15 @@
                 {% endif %}
             </div>
 
-            <div class="on_going" style="margin-top: 20px;">
+            <div class="on_going" style="margin-top: 18px;">
                 <h4 style="font-size: 18px; font-weight: 600; margin-bottom: 10px;">Ongoing Tasks</h4>
                 {% if ongoing_tasks_count == 0 %}
                     <p style="color: #888;">No ongoing tasks.</p>
                 {% else %}
-                    <ul style="list-style-type: none; padding: 0;">
+                    <!-- make this list scrollable -->
+                    <ul style="list-style-type: none; padding: 0; margin: 0; max-height: 160px; overflow-y: auto; padding-right: 8px;">
                         {% for task in user_analytics.OngoingTasks %}
-                        <li style="background: #f9f9f9; margin-bottom: 10px; padding: 10px; border-radius: 5px; box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);">
+                        <li style="background: #f9f9f9; margin-bottom: 10px; padding: 10px; border-radius: 5px; box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);">
                             <a href="{{ url_for('task_details', title=task.Title) }}" style="text-decoration: none; color: inherit;">
                                 <strong>{{ task.Title }}</strong><br>
                                 Due: {{ task.DueDate }}<br>
@@ -86,8 +89,9 @@
 
         </div>
 
+        <!-- Performance column (keeps original look) -->
         <div class="performance"
-            style="width: 45%; margin-left: 30px;margin-top: 35px; background: #ffffff; height: 200px; box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1); padding-left: 20px; padding-top: 20px;">
+            style="width: 45%; margin-left: 0; background: #ffffff; box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1); padding: 20px; border-radius: 6px;">
             <h4 style="font-size: 18px; font-weight: 600; margin-bottom: 10px;">Performance Overview</h4>
             {% set total_tasks = user_analytics.TotalTasks %}
             {% set completed = user_analytics.CompletedTasksCount %}
@@ -121,7 +125,7 @@
 
     </div>
 
-    <div class="user_tasks" style="width: 100%; background: #ffffff; box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1); margin-top: 30px;">
+    <div class="user_tasks" style="width: 100%; background: #ffffff; box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1); margin-top: 30px; padding-bottom: 20px;">
         <h4 style="font-size: 18px; font-weight: 600; margin-bottom: 10px; margin-left: 35px; margin-top: 20px;">All Tasks</h4>
         {% if user_analytics.user_tasks|length == 0 %}
             <p style="color: #888; margin-left: 35px;">No tasks assigned.</p>
