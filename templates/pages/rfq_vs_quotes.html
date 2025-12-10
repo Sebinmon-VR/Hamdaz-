@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>RFQ vs. Quote Comparator</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .container { max-width: 600px; margin: auto; padding: 20px; border: 1px solid #ccc; border-radius: 8px; }
+        .file-input-group { margin-bottom: 15px; padding: 10px; border: 1px solid #eee; border-radius: 4px; }
+        #message { margin-top: 20px; padding: 10px; border: 1px solid #ddd; border-radius: 4px; background-color: #f9f9f9; }
+        .success { color: green; }
+        .error { color: red; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>📂 Dual File Upload & Comparison</h2>
+        <form id="dual-upload-form">
+            <div class="file-input-group">
+                <label for="rfq-file">1. **RFQ File** (Excel/CSV/PDF):</label>
+                <input type="file" id="rfq-file" name="rfq_data" required>
+            </div>
+            
+            <div class="file-input-group">
+                <label for="quote-file">2. **Quote File** (Excel/CSV/PDF):</label>
+                <input type="file" id="quote-file" name="quote_data" required>
+            </div>
+            
+            <button type="submit">🚀 Upload and Compare</button>
+        </form>
+        
+        <div id="message"></div>
+    </div>
+
+    <script>
+        document.getElementById('dual-upload-form').addEventListener('submit', function(event) {
+            event.preventDefault(); 
+
+            const rfqFile = document.getElementById('rfq-file').files[0];
+            const quoteFile = document.getElementById('quote-file').files[0];
+            const messageElement = document.getElementById('message');
+
+            messageElement.innerHTML = '<h4>⏳ Uploading and Processing...</h4>';
+
+            if (!rfqFile || !quoteFile) {
+                messageElement.innerHTML = '<h4 class="error">❌ Please select both RFQ and Quote files.</h4>';
+                return;
+            }
+
+            // Create FormData to structure the files for the Flask route
+            const formData = new FormData();
+            formData.append('rfq_data', rfqFile);
+            formData.append('quote_data', quoteFile);
+
+            // Send the AJAX request to the Flask POST route
+            fetch('/rfq_vs_quotes', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => {
+                // Handle non-OK status codes (400, 500)
+                if (!response.ok) {
+                    return response.json().then(err => { 
+                        throw new Error(err.message || `HTTP Error ${response.status}`); 
+                    });
+                }
+                return response.json();
+            })
+            .then(data => {
+                // Successful Response Handler
+                
+                let resultHTML = `<h3 class="success">✅ ${data.message}</h3>`;
+
+                if (data.comparison_result) {
+                    resultHTML += '<h4>📋 Comparison Details:</h4><ul>';
+                    
+                    // Iterate and display the comparison results from the Python dictionary
+                    for (const [key, value] of Object.entries(data.comparison_result)) {
+                        // Clean up key name for display (e.g., 'rfq_items_count' -> 'Rfq Items Count')
+                        const displayKey = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                        
+                        resultHTML += `<li><strong>${displayKey}:</strong> ${value}</li>`;
+                    }
+                    resultHTML += '</ul>';
+                }
+                
+                messageElement.innerHTML = resultHTML;
+            })
+            .catch(error => {
+                // Display fetch/server errors
+                console.error('Fetch Error:', error);
+                messageElement.innerHTML = `<h3 class="error">❌ ${error.message}</h3>`;
+            });
+        });
+    </script>
+</body>
+</html>

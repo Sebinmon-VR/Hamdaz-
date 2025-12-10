@@ -1548,21 +1548,163 @@ def find_distributors():
 #     return render_template("datasheets.html", results=results)
 
 
+# @app.route("/ai_tasks")
+# def ai_tasks():
+#     if "user" not in session:
+#         return redirect(url_for('login'))
+#     user = session.get("user")
+#     tasks = fetch_user_planner_tasks()
+#     return render_template("pages/ai_tasks.html", user=user, tasks=tasks)
 
 
-@app.route("/ai_tasks")
-def ai_tasks():
-    if "user" not in session:
-        return redirect(url_for('login'))
-    user = session.get("user")
-    tasks = fetch_user_planner_tasks()
-    return render_template("pages/ai_tasks.html", user=user, tasks=tasks)
+from werkzeug.datastructures import FileStorage
+def get_file_extension(filename):
+    """Returns the file extension in lowercase."""
+    return filename.rsplit('.', 1)[-1].lower() if '.' in filename else ''
 
 
+from pypdf import PdfReader # <-- This line is CRITICAL and must be at the top!
 
+@app.route('/rfq_vs_quotes', methods=['GET'])
+def load_page():
+    """Renders the HTML file uploader page."""
+    # Assumes HTML file is at 'templates/pages/rfq_vs_quotes.html'
+    return render_template("pages/rfq_vs_quotes.html", user=session.get("user"))
 
+@app.route('/rfq_vs_quotes', methods=['POST'])
+def process_files():
+    """
+    Handles file upload, parses content (PDF, Excel, CSV), sends text to GPT-4o 
+    for comparison, and returns a structured JSON result.
+    """
+    # 1. Input Validation and File Fetching
+    if 'rfq_data' not in request.files or 'quote_data' not in request.files:
+        return jsonify({'message': 'Missing one or both files in the request'}), 400
 
+    rfq_file: FileStorage = request.files['rfq_data']
+    quote_file: FileStorage = request.files['quote_data']
+    
+    if rfq_file.filename == '' or quote_file.filename == '':
+        return jsonify({'message': 'One or more files have no filename'}), 400
 
+    try:
+        # --- CONSOLIDATED LOGIC: FILE PARSING (Inside the route) ---
+        
+        def parse_file_content_internal(file: FileStorage) -> str:
+            """Reads and parses file content into a single string for AI analysis."""
+            ext = get_file_extension(file.filename)
+            file_bytes = file.stream.read()
+
+            if ext in ['xlsx', 'xls', 'csv']:
+                # Handle Excel/CSV using Pandas
+                file_stream = io.BytesIO(file_bytes)
+                
+                if ext == 'csv':
+                    df = pd.read_csv(file_stream)
+                else:
+                    df = pd.read_excel(file_stream)
+                
+                # Convert DataFrame to Markdown format for clear input to the AI model
+                return df.to_markdown(index=False) 
+
+            elif ext == 'pdf':
+                # --- PDF Text Extraction Implementation ---
+                reader = PdfReader(io.BytesIO(file_bytes))
+                text = ""
+                for page in reader.pages:
+                    page_text = page.extract_text()
+                    if page_text:
+                        text += page_text + "\n\n" # Separate pages with double newline
+                
+                if not text.strip():
+                    # Fallback for scanned/image-only PDFs
+                    return f"PDF CONTENT ERROR: Text extraction failed for {file.filename} (might be scanned image). AI will only process the filename."
+                    
+                return text.strip()
+
+            elif ext in ['txt']:
+                # Simple text file
+                return file_bytes.decode('utf-8')
+                
+            else:
+                raise ValueError(f"Unsupported file type: .{ext}")
+
+        # Execute parsing
+        rfq_text = parse_file_content_internal(rfq_file)
+        quote_text = parse_file_content_internal(quote_file)
+        
+        # --- CONSOLIDATED LOGIC: AI COMPARISON ---
+        
+        openai.api_key = os.getenv("OPENAI_API_KEY")
+        if not openai.api_key:
+            return jsonify({'message': "Configuration Error: OPENAI_API_KEY not set."}), 500
+
+        json_structure = {
+            "items_requested": "[list of items requested in RFQ]",
+            "items_quoted": "[list of items quoted]",
+            "differences_in_items": "[list of differences in items, including alternates or EOL items]",
+            "discrepancies": "[list of pricing/term discrepancies]",
+            "potential_issues": "[list of potential issues, e.g., EOL parts]",
+            "summary": "summary of differences"
+        }
+        
+        prompt_content = f"""
+        You are an expert in analyzing RFQ and Quote documents.
+        Given the following RFQ and Quote texts, identify discrepancies. 
+        - Make sure the quoted items are the same as the requested items in the RFQ.
+        - If items are different, highlight the differences.
+        - If the items are alternatives, mention that.
+        - If end-of-life (EOL) items are quoted, mention that.
+        - If the RFQ contained an EOL item and an alternative was quoted, mention that.
+
+        Provide the results **strictly** in the following JSON format: {json.dumps(json_structure, indent=2)}
+
+        RFQ Text:
+        ---
+        {rfq_text}
+        ---
+        Quote Text:
+        ---
+        {quote_text}
+        ---
+        """
+        
+        response = openai.ChatCompletion.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", 
+                 "content": "You are a specialized JSON output assistant. Your only task is to analyze the provided texts and return the analysis strictly as a single JSON object. DO NOT include any text outside the JSON object."},
+                {"role": "user", "content": prompt_content}
+            ],
+            temperature=0,
+            max_tokens=1500,
+            response_format={"type": "json_object"}
+        )
+        
+        json_string = response.choices[0].message.content
+        comparison_result_dict = json.loads(json_string)
+        
+        # 4. Return result
+        if "error" in comparison_result_dict:
+             return jsonify({
+                'message': 'AI Comparison Failed',
+                'comparison_result': comparison_result_dict
+            }), 500
+
+        return jsonify({
+            'message': f'Files processed and compared successfully: {rfq_file.filename} vs {quote_file.filename}',
+            'comparison_result': comparison_result_dict
+        }), 200
+        
+    except ValueError as ve:
+        return jsonify({'message': f'File Processing Error (Unsupported Type/Content): {str(ve)}'}), 400
+    except json.JSONDecodeError as e:
+        return jsonify({'message': f'AI Model Error: Failed to parse JSON response. Details: {str(e)}'}), 500
+    except openai.error.OpenAIError as e:
+        return jsonify({'message': f'OpenAI API Error: {str(e)}'}), 500
+    except Exception as e:
+        print(f"Error during file processing: {e}")
+        return jsonify({'message': f'Internal Server Error: {str(e)}'}), 500
 # ==============================================================
 # START FLASK + BACKGROUND UPDATER
 # ==============================================================
@@ -1571,4 +1713,5 @@ threading.Thread(target=background_updater, daemon=True).start()
 if __name__ == "__main__":
     app.run(debug=True)
     
+
 

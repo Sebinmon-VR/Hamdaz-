@@ -1702,3 +1702,156 @@ def fetch_user_planner_tasks():
     
     return tasks
 
+def get_user_teams_chats():
+    access_token=get_access_token()
+    headers = {
+        "Authorization": f"Bearer {access_token}"
+    }
+
+    # Step 1: Get all chats for the user
+    chat_list_url = f"{GRAPH_API_ENDPOINT}/users/{ONEDRIVE_USER_ID}/chats"
+    chat_list_response = requests.get(chat_list_url, headers=headers)
+    chat_list_response.raise_for_status()
+    chats = chat_list_response.json().get("value", [])
+
+    all_chat_messages = {}
+
+    # Step 2: Iterate each chat and fetch messages
+    for chat in chats:
+        chat_id = chat["id"]
+        messages_url = f"{GRAPH_API_ENDPOINT}/chats/{chat_id}/messages"
+        messages_response = requests.get(messages_url, headers=headers)
+        messages_response.raise_for_status()
+
+        all_chat_messages[chat_id] = messages_response.json().get("value", [])
+
+    return all_chat_messages
+
+# def compare_rfq_and_quote(rfq_text, quote_text):
+#     """
+#     Compares RFQ and Quote text using GPT-4o, enforces JSON output, 
+#     and returns the result as a Python dictionary.
+#     """
+#     # Ensure API Key is set
+#     openai.api_key = os.getenv("OPENAI_API_KEY")
+#     if not openai.api_key:
+#         raise EnvironmentError("OPENAI_API_KEY not found in environment variables.")
+
+#     # Define the desired JSON structure clearly in the prompt and system message
+#     json_structure = {
+#         "items_requested": "[list of items requested in RFQ]",
+#         "items_quoted": "[list of items quoted]",
+#         "differences_in_items": "[list of differences in items, including alternates or EOL items]",
+#         "discrepancies": "[list of pricing/term discrepancies]",
+#         "potential_issues": "[list of potential issues, e.g., EOL parts]",
+#         "summary": "summary of differences"
+#     }
+    
+#     # Use f-string for the prompt for readability
+#     prompt_content = f"""
+#     You are an expert in analyzing RFQ and Quote documents.
+#     Given the following RFQ and Quote texts, identify discrepancies in pricing, terms, and item specifications. 
+#     - Make sure the quoted items are the same as the requested items in the RFQ.
+#     - If items are different, highlight the differences.
+#     - If the items are alternatives, mention that.
+#     - If end-of-life (EOL) items are quoted, mention that.
+#     - If the RFQ contained an EOL item and an alternative was quoted, mention that.
+
+#     Provide the results **strictly** in the following JSON format: {json.dumps(json_structure, indent=2)}
+
+#     RFQ Text:
+#     ---
+#     {rfq_text}
+#     ---
+#     Quote Text:
+#     ---
+#     {quote_text}
+#     ---
+#     """
+    
+#     try:
+#         response = openai.ChatCompletion.create(
+#             model="gpt-4o",
+#             messages=[
+#                 {"role": "system", 
+#                  "content": "You are a specialized JSON output assistant. Your only task is to analyze the provided texts and return the analysis strictly as a single JSON object. DO NOT include any text outside the JSON object."},
+#                 {"role": "user", "content": prompt_content}
+#             ],
+#             temperature=0,
+#             max_tokens=1500,
+#             # CRITICAL: Enforce JSON response format
+#             response_format={"type": "json_object"}
+#         )
+        
+#         # The response message content is now guaranteed (or highly likely) to be a JSON string
+#         json_string = response.choices[0].message.content
+        
+#         # Parse the JSON string into a Python dictionary
+#         result_dict = json.loads(json_string)
+        
+#         return result_dict
+        
+#     except openai.error.OpenAIError as e:
+#         # Handle API errors gracefully
+#         print(f"OpenAI API Error: {e}")
+#         return {"error": "OpenAI API call failed", "details": str(e)}
+#     except json.JSONDecodeError as e:
+#         # Handle cases where the model did not return valid JSON
+#         print(f"JSON Decoding Error: {e}")
+#         print(f"Raw response: {json_string}")
+#         return {"error": "Failed to parse JSON response from AI model", "details": str(e)}
+#     except Exception as e:
+#         # Handle other unexpected errors
+#         print(f"An unexpected error occurred: {e}")
+#         return {"error": "An internal error occurred", "details": str(e)}
+    
+    
+# from werkzeug.datastructures import FileStorage
+
+# def get_file_extension(filename):
+#     """Returns the file extension in lowercase."""
+#     return filename.rsplit('.', 1)[-1].lower() if '.' in filename else ''
+
+# def parse_file_content(file: FileStorage):
+#     """
+#     Reads the file stream and parses content into a readable/structured format.
+#     Returns the parsed data (e.g., DataFrame or String) or raises an error.
+#     """
+#     ext = get_file_extension(file.filename)
+#     file_bytes = file.stream.read()
+
+#     if ext in ['xlsx', 'xls', 'csv']:
+#         # Handle Excel/CSV files using Pandas
+#         file_stream = io.BytesIO(file_bytes)
+        
+#         if ext == 'csv':
+#             # Assuming standard CSV encoding
+#             return pd.read_csv(file_stream)
+#         else:
+#             # Assumes Excel file
+#             return pd.read_excel(file_stream)
+    
+#     elif ext == 'pdf':
+#         # --- PDF Parsing Placeholder ---
+#         # NOTE: PDF parsing is complex and requires an external library.
+#         # This is a placeholder; you must implement the PDF text extraction here.
+        
+#         # Example using pypdf:
+#         # reader = PdfReader(io.BytesIO(file_bytes))
+#         # text = ""
+#         # for page in reader.pages:
+#         #     text += page.extract_text()
+#         # return text 
+        
+#         # For demonstration, we'll return a simple message if the file is PDF
+#         return f"PDF data (requires parsing): {file.filename}" 
+
+#     elif ext in ['txt']:
+#         # Simple text file
+#         return file_bytes.decode('utf-8')
+        
+#     else:
+#         raise ValueError(f"Unsupported file type: .{ext}")
+
+
+

@@ -749,5 +749,9 @@ document.getElementById('cp-download').addEventListener('click', async ()=>{
     if(!blob) return alert("Failed to merge Commercial Proposal files.");
     const a = document.createElement('a'); a.href=URL.createObjectURL(blob); a.download="Commercial_Proposal.pdf"; a.click();
 });
+
+
+
+
 </script>
 {% endblock %}
