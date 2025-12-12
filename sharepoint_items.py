@@ -1855,3 +1855,37 @@ def get_user_teams_chats():
 
 
 
+
+# def user_chat():
+#     url = f"https://graph.microsoft.com/v1.0/users/{ONEDRIVE_USER_ID}/chats"
+    
+#     access_token = get_access_token()
+#     headers ={
+#             "Authorization": f"Bearer {access_token}"
+#         }
+#     resp = requests.get(url, headers=headers)
+#     resp.raise_for_status()
+#     chats = resp.json().get("value", [])
+#     return chats
+
+
+def save_distributors_data_to_sharepoint(distributors_data):
+    """
+    Saves distributors data to SharePoint list 'DistributorsData'.
+    Each distributor is a separate item.
+    """
+    access_token = get_access_token()
+    site_id = get_site_id(access_token, "hamdaz1.sharepoint.com", "/sites/Test")
+    list_id = get_list_id(access_token, site_id, "DistributorsData")
+
+    url = f"{GRAPH_API_ENDPOINT}/sites/{site_id}/lists/{list_id}/items"
+    headers = {"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"}
+
+    for distributor in distributors_data:
+        payload = {"fields": distributor}
+        resp = requests.post(url, headers=headers, json=payload)
+        resp.raise_for_status()
+
+    print(f"✅ Saved {len(distributors_data)} distributors to SharePoint.")
+
+

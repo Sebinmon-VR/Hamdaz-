@@ -33,7 +33,7 @@ REDIRECT_URI = os.getenv("REDIRECT_URI")
 AUTHORITY = f"https://login.microsoftonline.com/{TENANT_ID}"
 SCOPE = ["User.Read"]
 
-SUPERUSERS = ["jishad@hamdaz.com","lamia@hamdaz.com" , "hisham@hamdaz.com" , "hello@hamdaz.com"]
+SUPERUSERS = ["jishad@hamdaz.com","lamia@hamdaz.com" , "hisham@hamdaz.com" , "hello@hamdaz.com","sebin@hamdaz.com"]
 approvers = ["shibit@hamdaz.com", "althaf@hamdaz.com" ,"sebin@hamdaz.com"]
 LIMITED_USERS = [""]
 
@@ -153,7 +153,7 @@ def background_updater():
                     add_item_to_sharepoint(item_fields)  
                     print(f"➕ Added new user {username} to SharePoint")
             # print("Indexing tasks to PineCone")
-            # index_tasks()    # Update indexing for Pinecone
+            # index_tasks()    # Update indexing for Pinecone  
             print(f"[BG] Data updated successfully at {datetime.now()}", flush=True)
 
         except Exception as e:
@@ -1705,6 +1705,12 @@ def process_files():
     except Exception as e:
         print(f"Error during file processing: {e}")
         return jsonify({'message': f'Internal Server Error: {str(e)}'}), 500
+    
+    
+# need to add a route to save the DistributorsData to shgarepoint list -->  get data from html  page form and save to sharepoint list
+
+
+
 # ==============================================================
 # START FLASK + BACKGROUND UPDATER
 # ==============================================================
