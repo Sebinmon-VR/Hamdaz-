@@ -49,7 +49,7 @@ GRAPH_API_ENDPOINT = "https://graph.microsoft.com/v1.0"
 SITE_DOMAIN = "hamdaz1.sharepoint.com"
 SITE_PATH = "/sites/ProposalTeam"
 LIST_NAME = "Proposals"
-EXCLUDED_USERS = ["Sebin", "Shamshad", "Jaymon", "Hisham Arackal", "Althaf", "Nidal", "Nayif Muhammed S", "Afthab"]
+EXCLUDED_USERS = ["Sebin", "Shamshad", "Jaymon", "Hisham Arackal", "Althaf","Nidal", "Nayif Muhammed S", "Afthab" , "Krishnendhu" ]
 
 
 # ✅ Initialize the OpenAI Client properly
@@ -1708,6 +1708,7 @@ def process_files():
     
     
 # need to add a route to save the DistributorsData to shgarepoint list -->  get data from html  page form and save to sharepoint list
+
 
 
 

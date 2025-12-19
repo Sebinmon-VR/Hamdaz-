@@ -56,11 +56,7 @@
             z-index: 1;
         }
 
-        /* Company logo */
-        .logo {
-            width: 100px;
-          
-        }
+ 
 
         /* Heading */
         .login-container h2 {
@@ -100,6 +96,28 @@
             font-size: 13px;
             color: #666;
         }
+         @keyframes fadeUp {
+            from {
+                opacity: 0;
+                transform: translateY(15px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .logo {
+            width: 120px;
+            margin-bottom: 20px;
+            animation: float 4s infinite ease-in-out;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-6px); }
+        }
+
     </style>
 </head>
 
