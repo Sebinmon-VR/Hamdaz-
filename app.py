@@ -49,7 +49,7 @@ GRAPH_API_ENDPOINT = "https://graph.microsoft.com/v1.0"
 SITE_DOMAIN = "hamdaz1.sharepoint.com"
 SITE_PATH = "/sites/ProposalTeam"
 LIST_NAME = "Proposals"
-EXCLUDED_USERS = ["Sebin", "Shamshad", "Jaymon", "Hisham Arackal", "Althaf","Nidal", "Nayif Muhammed S", "Afthab" , "Krishnendhu" , "jasna" ]
+EXCLUDED_USERS = ["Sebin", "Shamshad", "Jaymon", "Hisham Arackal", "Althaf","Nidal", "Nayif Muhammed S", "Afthab" , "Krishnendu" , "Jasna" ]
 
 
 # ✅ Initialize the OpenAI Client properly
