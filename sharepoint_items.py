@@ -1583,6 +1583,35 @@ def download_docx(file_id):
 
     return temp_docx
 
+
+def download_file(file_id):
+    """
+    Downloads a file from OneDrive using file ID.
+    Returns the path to the temporary file and the original filename.
+    """
+    access_token = get_onedrive_access_token()
+    
+    # 1. Get file metadata to find the original name
+    meta_url = f"https://graph.microsoft.com/v1.0/users/{ONEDRIVE_PRIMARY_USER_ID}/drive/items/{file_id}"
+    headers = {"Authorization": f"Bearer {access_token}"}
+    meta_response = requests.get(meta_url, headers=headers)
+    meta_response.raise_for_status()
+    file_name = meta_response.json().get("name")
+    
+    # 2. Get file content
+    content_url = f"https://graph.microsoft.com/v1.0/users/{ONEDRIVE_PRIMARY_USER_ID}/drive/items/{file_id}/content"
+    content_response = requests.get(content_url, headers=headers)
+    content_response.raise_for_status()
+
+    # 3. Save to a temporary file with original extension
+    _, extension = os.path.splitext(file_name)
+    temp_file = tempfile.mktemp(suffix=extension)
+    with open(temp_file, "wb") as f:
+        f.write(content_response.content)
+
+    return temp_file, file_name
+
+
 # def convert_docx_to_pdf(input_docx):
 #     temp_pdf = tempfile.mktemp(suffix=".pdf")
 #     convert(input_docx, temp_pdf)
@@ -1889,3 +1918,9 @@ def save_distributors_data_to_sharepoint(distributors_data):
     print(f"✅ Saved {len(distributors_data)} distributors to SharePoint.")
 
 
+# -----------------------------------------------------------------------------------------------------------
+
+
+
+
+# -----------------------------------------------------------------------------------------------------------

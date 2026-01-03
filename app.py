@@ -1304,19 +1304,6 @@ def tp():
 
     return render_template("tp.html", files=files, default_attachments=default_attachments, user=session.get("user"))
 
-# @app.route("/download/pdf/<file_id>")
-# def download_pdf(file_id):
-    
-#     try:
-#         docx_path = download_docx(file_id)
-#         pdf_path = convert_docx_to_pdf(docx_path)
-#         return send_file(pdf_path, as_attachment=True, download_name=os.path.basename(pdf_path))
-#     except requests.HTTPError as e:
-#         print("HTTP Error:", e)
-#         return f"Graph API Error: {e}", 500
-#     except Exception as e:
-#         print("Error:", e)
-#         return f"Error occurred: {e}", 500
 
 # --- ADD THIS NEW ROUTE ---
 @app.route("/download/docx/<file_id>")
@@ -1335,6 +1322,21 @@ def download_source_docx(file_id):
     except Exception as e:
         print("Error downloading DOCX:", e)
         return f"Error: {e}", 500
+
+@app.route("/download/file/<file_id>")
+def download_file_from_onedrive(file_id):
+    try:
+        file_path, file_name = download_file(file_id)
+        return send_file(
+            file_path,
+            as_attachment=True,
+            download_name=file_name
+        )
+    except Exception as e:
+        print("Error downloading file:", e)
+        return f"Error: {e}", 500
+    
+    
     
 @app.route('/analyze', methods=['POST'])
 def analyze_document():
@@ -1709,8 +1711,14 @@ def process_files():
     
 # need to add a route to save the DistributorsData to shgarepoint list -->  get data from html  page form and save to sharepoint list
 
-
-
+# @app.route('/assist_rfq', methods=['GET', 'POST'])
+# def assist():
+#     if "user" not in session:
+#         return redirect(url_for('login'))
+#     user = session.get("user")
+#     if request.method == "POST":
+        
+#     return render_template("pages/assist.html", user=user)  
 
 # ==============================================================
 # START FLASK + BACKGROUND UPDATER

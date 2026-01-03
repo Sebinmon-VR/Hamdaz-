@@ -503,89 +503,139 @@ function renderAttachmentTable(data){
 }
 
 // --- Prefill Attachments from Server ---
-document.addEventListener('DOMContentLoaded', ()=>{
+document.addEventListener('DOMContentLoaded', () => {
+    const filesData = {{ files | tojson }};
     const tableBody = document.getElementById('attachments-table-body');
-    
-    // Jinja Loop (Requires server-side rendering to work)
-    {% for f in files %}
+
+    if (!filesData || filesData.length === 0) {
+        tableBody.innerHTML = `<tr><td colspan="4" class="text-gray-500 p-2">No default attachments found.</td></tr>`;
+        return;
+    }
+
+    filesData.forEach(file => {
         const tr = document.createElement('tr');
         tr.className = 'default-attachment-row';
 
-        const tdName = document.createElement('td'); tdName.className="p-2 border-b"; tdName.textContent="{{ f.name }}";
+        const fileName = file.name;
+        const fileId = file.id;
+
+        const tdName = document.createElement('td');
+        tdName.className = "p-2 border-b";
+        tdName.textContent = fileName;
         tr.appendChild(tdName);
 
-        const tdFile = document.createElement('td'); tdFile.className="p-2 border-b text-center";
+        const tdFile = document.createElement('td');
+        tdFile.className = "p-2 border-b text-center";
         const editBtn = document.createElement('button');
-        editBtn.textContent = "Edit & Attach";
+
+        if (fileName.toLowerCase().endsWith('.pdf')) {
+            editBtn.textContent = "View PDF";
+        } else if (fileName.toLowerCase().endsWith('.docx')) {
+            editBtn.textContent = "Edit & Attach";
+        } else {
+            editBtn.textContent = "Download";
+        }
+
         editBtn.className = "download-btn";
-        editBtn.dataset.fileId = "{{ f.id }}"; // <-- Retaining the file ID for the backend fetch
-        editBtn.dataset.fileName = "{{ f.name }}";
+        editBtn.dataset.fileId = file.id;
+        editBtn.dataset.fileName = fileName;
         tdFile.appendChild(editBtn);
         tr.appendChild(tdFile);
 
-        const tdTP = document.createElement('td'); tdTP.className="p-2 border-b text-center";
-        const tpCheck=document.createElement('input'); tpCheck.type='checkbox'; tpCheck.addEventListener('change', updateProposals);
-        tdTP.appendChild(tpCheck); tr.appendChild(tdTP);
+        const tdTP = document.createElement('td');
+        tdTP.className = "p-2 border-b text-center";
+        const tpCheck = document.createElement('input');
+        tpCheck.type = 'checkbox';
+        tpCheck.dataset.fileId = fileId;
+        tpCheck.dataset.fileName = fileName;
+        tpCheck.addEventListener('change', handleDefaultAttachmentCheck);
+        tdTP.appendChild(tpCheck);
+        tr.appendChild(tdTP);
 
-        const tdCP = document.createElement('td'); tdCP.className="p-2 border-b text-center";
-        const cpCheck=document.createElement('input'); cpCheck.type='checkbox'; cpCheck.addEventListener('change', updateProposals);
-        tdCP.appendChild(cpCheck); tr.appendChild(tdCP);
+        const tdCP = document.createElement('td');
+        tdCP.className = "p-2 border-b text-center";
+        const cpCheck = document.createElement('input');
+        cpCheck.type = 'checkbox';
+        cpCheck.dataset.fileId = fileId;
+        cpCheck.dataset.fileName = fileName;
+        cpCheck.addEventListener('change', handleDefaultAttachmentCheck);
+        tdCP.appendChild(cpCheck);
+        tr.appendChild(tdCP);
 
         tableBody.appendChild(tr);
-        attachmentsFiles["{{ f.name }}"]={ file:null, tp:tpCheck, cp:cpCheck };
-        
-        editBtn.addEventListener('click', async ()=>{
-            editBtn.disabled = true; 
-            editBtn.textContent="Loading...";
-            
-            try {
-                // *** NEW FRONTEND DOWNLOAD LOGIC ***
-                // 1. Fetch the raw DOCX binary file content directly from the backend
-                const res = await fetch(`/download/docx/${editBtn.dataset.fileId}`); 
-                
-                if(!res.ok) {
-                    throw new Error(`Server Error: Failed to download DOCX. Status: ${res.status}`);
-                }
-                
-                // 2. Get the file content as an ArrayBuffer (binary data)
-                const arrayBuffer = await res.arrayBuffer();
-                
-                // 3. Check for DOCX signature (PK)
-                const arr = new Uint8Array(arrayBuffer).subarray(0, 2);
-                if (arr[0] !== 0x50 || arr[1] !== 0x4B) {
-                   throw new Error("Invalid file format. Expected a DOCX or ZIP file, but the file signature is incorrect.");
-                }
+        attachmentsFiles[fileName] = { file: null, tp: tpCheck, cp: cpCheck, isLoading: false };
 
-                // 4. Convert DOCX/ZIP to HTML for the Quill editor
-                const result = await mammoth.convertToHtml({arrayBuffer: arrayBuffer});
-                const rawHtml = result.value; 
-                
-                quill.clipboard.dangerouslyPasteHTML(rawHtml);
-                
-                currentEditingFileDetails = {
-                    name: editBtn.dataset.fileName,
-                    id: editBtn.dataset.fileId,
-                    btn: editBtn
-                };
-                
-                editorModal.classList.remove('hidden');
+        editBtn.addEventListener('click', async () => {
+            const fileId = editBtn.dataset.fileId;
+            const currentFileName = editBtn.dataset.fileName;
 
-            } catch(err){
-                console.error(err);
-                alert("Error: " + err.message + "\n\n(HINT: Ensure your backend's /download/docx route returns the raw DOCX binary file.)");
-                editBtn.textContent="Edit & Attach";
-            } finally { 
-                editBtn.disabled=false; 
-                if (editBtn.textContent === "Loading...") editBtn.textContent="Edit & Attach";
+            if (currentFileName.toLowerCase().endsWith('.pdf')) {
+                window.open(`/download/file/${fileId}`, '_blank');
+                return;
             }
-        });
 
-    {% endfor %}
-    
-    if (tableBody.children.length === 0) {
-        tableBody.innerHTML = `<tr><td colspan="4" class="text-gray-500 p-2">No attachments required.</td></tr>`;
-    }
+            if (currentFileName.toLowerCase().endsWith('.docx')) {
+                editBtn.disabled = true;
+                editBtn.textContent = "Loading...";
+                try {
+                    const res = await fetch(`/download/docx/${fileId}`);
+                    if (!res.ok) throw new Error(`Server Error: Failed to download DOCX. Status: ${res.status}`);
+                    const arrayBuffer = await res.arrayBuffer();
+                    const arr = new Uint8Array(arrayBuffer).subarray(0, 2);
+                    if (arr[0] !== 0x50 || arr[1] !== 0x4B) throw new Error("Invalid file format. Expected a DOCX or ZIP file.");
+                    const result = await mammoth.convertToHtml({ arrayBuffer: arrayBuffer });
+                    quill.clipboard.dangerouslyPasteHTML(result.value);
+                    currentEditingFileDetails = { name: currentFileName, id: fileId, btn: editBtn };
+                    editorModal.classList.remove('hidden');
+                } catch (err) {
+                    console.error(err);
+                    alert("Error: " + err.message);
+                    editBtn.textContent = "Edit & Attach";
+                } finally {
+                    editBtn.disabled = false;
+                    if (editBtn.textContent === "Loading...") editBtn.textContent = "Edit & Attach";
+                }
+                return;
+            }
+
+            window.location.href = `/download/file/${fileId}`;
+        });
+    });
 });
+
+async function handleDefaultAttachmentCheck(event) {
+    const checkbox = event.target;
+    const fileName = checkbox.dataset.fileName;
+    const fileId = checkbox.dataset.fileId;
+    const attachment = attachmentsFiles[fileName];
+
+    if (checkbox.checked && !attachment.file && !attachment.isLoading) {
+        attachment.isLoading = true;
+        const loaderSpan = document.createElement('span');
+        loaderSpan.className = 'loader ml-2';
+        loaderSpan.style.display = 'inline-block';
+        loaderSpan.style.width = '16px';
+        loaderSpan.style.height = '16px';
+        checkbox.parentElement.appendChild(loaderSpan);
+
+        try {
+            const res = await fetch(`/download/file/${fileId}`);
+            if (!res.ok) throw new Error(`Failed to download file: ${res.statusText}`);
+            const blob = await res.blob();
+            attachment.file = new File([blob], fileName, { type: blob.type });
+        } catch (error) {
+            console.error('Error fetching attachment file:', error);
+            checkbox.checked = false; 
+        } finally {
+            attachment.isLoading = false;
+            checkbox.parentElement.removeChild(loaderSpan);
+            updateProposals();
+        }
+    } else {
+        updateProposals();
+    }
+}
+
 
 // --- Custom Attachments ---
 const addCustomBtn = document.getElementById('add-custom-attachment');
@@ -633,7 +683,7 @@ function makeRemovable(containerId){
             }
             if(attachmentsFiles[attName]){
                 if (attachmentsFiles[attName].tp) attachmentsFiles[attName].tp.checked = false;
-                if (attachmentsFiles[attFiles].cp) attachmentsFiles[attFiles].cp.checked = false;
+                if (attachmentsFiles[attName].cp) attachmentsFiles[attName].cp.checked = false;
             }
             updateProposals();
         }
@@ -652,7 +702,8 @@ function updateProposals(){
     const tpOrder = getCurrentOrder(tpDiv);
     const cpOrder = getCurrentOrder(cpDiv);
 
-    tpDiv.innerHTML=""; cpDiv.innerHTML="";
+    tpDiv.innerHTML="<h3 class='font-semibold mb-2'>Selected Files (Drag to Reorder)</h3>"; 
+    cpDiv.innerHTML="<h3 class='font-semibold mb-2'>Selected Files (Drag to Reorder)</h3>";
     const tpFiles=[]; const cpFiles=[];
 
     for(const [name,obj] of Object.entries(attachmentsFiles)){
@@ -713,6 +764,7 @@ function updateProposals(){
         if(files.length===0) return null;
         const mergedPdf = await PDFLib.PDFDocument.create();
         for(const f of files){
+            if (!f.file) continue;
             const bytes = await f.file.arrayBuffer();
             try {
                 const pdf = await PDFLib.PDFDocument.load(bytes);
@@ -727,25 +779,27 @@ function updateProposals(){
         return new Blob([mergedBytes], {type:'application/pdf'});
     }
 
-    mergedTPBlob = mergeFiles(tpFiles);
-    mergedCPBlob = mergeFiles(cpFiles);
-    
-    mergedTPBlob.then(blob=> tpIframe.src = blob ? URL.createObjectURL(blob) : "");
-    mergedCPBlob.then(blob=> cpIframe.src = blob ? URL.createObjectURL(blob) : "");
+    Promise.resolve(mergeFiles(tpFiles)).then(blob => {
+        mergedTPBlob = blob;
+        tpIframe.src = blob ? URL.createObjectURL(blob) : "";
+    });
+
+    Promise.resolve(mergeFiles(cpFiles)).then(blob => {
+        mergedCPBlob = blob;
+        cpIframe.src = blob ? URL.createObjectURL(blob) : "";
+    });
 }
 
 // --- Download ---
 document.getElementById('tp-download').addEventListener('click', async ()=>{
-    const blobPromise = mergedTPBlob;
-    if(!blobPromise) return alert("No TP merged file");
-    const blob = await blobPromise;
+    if(!mergedTPBlob) return alert("No TP merged file");
+    const blob = await mergedTPBlob;
     if(!blob) return alert("Failed to merge Technical Proposal files.");
     const a = document.createElement('a'); a.href=URL.createObjectURL(blob); a.download="Technical_Proposal.pdf"; a.click();
 });
 document.getElementById('cp-download').addEventListener('click', async ()=>{
-    const blobPromise = mergedCPBlob;
-    if(!blobPromise) return alert("No CP merged file");
-    const blob = await blobPromise;
+    if(!mergedCPBlob) return alert("No CP merged file");
+    const blob = await mergedCPBlob;
     if(!blob) return alert("Failed to merge Commercial Proposal files.");
     const a = document.createElement('a'); a.href=URL.createObjectURL(blob); a.download="Commercial_Proposal.pdf"; a.click();
 });
