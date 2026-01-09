@@ -26,15 +26,15 @@ app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "supersecretkey123")
 
 # ---------------- Azure AD Config ----------------
-CLIENT_ID = os.getenv("CLIENT_ID")
+CLIENT_ID = os.getenv("CLIENT_ID")  
 CLIENT_SECRET = os.getenv("CLIENT_SECRET")
 TENANT_ID = os.getenv("TENANT_ID")
 REDIRECT_URI = os.getenv("REDIRECT_URI")
 AUTHORITY = f"https://login.microsoftonline.com/{TENANT_ID}"
 SCOPE = ["User.Read"]
 
-SUPERUSERS = ["jishad@hamdaz.com","lamia@hamdaz.com" , "hisham@hamdaz.com" , "hello@hamdaz.com","sebin@hamdaz.com"]
-approvers = ["shibit@hamdaz.com", "althaf@hamdaz.com" ,"sebin@hamdaz.com"]
+SUPERUSERS = ["jishad@hamdaz.com", "hisham@hamdaz.com" , "sebin@hamdaz.com" , "sujeel@hamdaz.com","shibit@hamdaz.com", "althaf@hamdaz.com"]
+approvers = ["shibit@hamdaz.com", "althaf@hamdaz.com" ,"sebin@hamdaz.com" , "sujeel@hamdaz.com"]
 LIMITED_USERS = [""]
 
 # Initialize MSAL
@@ -49,7 +49,7 @@ GRAPH_API_ENDPOINT = "https://graph.microsoft.com/v1.0"
 SITE_DOMAIN = "hamdaz1.sharepoint.com"
 SITE_PATH = "/sites/ProposalTeam"
 LIST_NAME = "Proposals"
-EXCLUDED_USERS = ["Sebin", "Shamshad", "Jaymon", "Hisham Arackal", "Althaf","Nidal", "Nayif Muhammed S", "Afthab" , "Krishnendu" , "Jasna" ]
+EXCLUDED_USERS = ["Sebin", "Shamshad", "Jaymon", "Hisham Arackal", "Althaf","Nidal", "Nayif Muhammed S", "Afthab" , "Krishnendu" , "Jasna" ,"Dhamodharan K" ]
 
 
 # ✅ Initialize the OpenAI Client properly
