@@ -49,7 +49,7 @@ GRAPH_API_ENDPOINT = "https://graph.microsoft.com/v1.0"
 SITE_DOMAIN = "hamdaz1.sharepoint.com"
 SITE_PATH = "/sites/ProposalTeam"
 LIST_NAME = "Proposals"
-EXCLUDED_USERS = ["Sebin", "Shamshad", "Jaymon", "Hisham Arackal", "Althaf","Nidal", "Nayif Muhammed S", "Afthab" , "Krishnendu" ,"Dhamodharan K" , "Rameesa" ]
+EXCLUDED_USERS = excludeusers_from_sl() 
 
 
 # ✅ Initialize the OpenAI Client properly
@@ -130,9 +130,13 @@ def background_updater():
             # Calculate priority score and rank
             user_analytics = calculate_priority_score(user_analytics)
             user_analytics = assign_priority_rank(user_analytics)
+            
+            
 
             # Fetch existing SharePoint items
             existing_items = get_existing_useranalytics_items()
+            
+            # jobcount= user_with_jobs_ls() ////
 
             for _, row in user_analytics.iterrows():
                 username = row["User"]
@@ -140,7 +144,8 @@ def background_updater():
                     "Username": username,
                     "ActiveTasks": int(row["OngoingTasksCount"]),
                     "RecentDate": row["LastAssignedDate"].isoformat() if isinstance(row["LastAssignedDate"], datetime) else row["LastAssignedDate"],
-                    "Priority": int(row["PriorityRank"])
+                    "Priority": int(row["PriorityRank"]),
+                    # "jobcount": int(jobcount.get(username, 0)) ////
                 }
 
                 # ✅ Use safe helper to find existing user

@@ -1729,7 +1729,101 @@ def save_distributors_data_to_sharepoint(distributors_data):
 
 # -----------------------------------------------------------------------------------------------------------
 
+def excludeusers_from_sl():
+    access_token = get_access_token()
+    site_id = get_site_id(access_token, "hamdaz1.sharepoint.com", "/sites/Test")
+    list_id = get_list_id(access_token, site_id, "excludeusers")
+    url = f"{GRAPH_API_ENDPOINT}/sites/{site_id}/lists/{list_id}/items?expand=fields"
+    headers = {"Authorization": f"Bearer {access_token}"}
+    all_items = []
+    while url:
+        resp = requests.get(url, headers=headers)
+        resp.raise_for_status()
+        data = resp.json()
+        all_items.extend(data.get("value", []))
+        url = data.get("@odata.nextLink")  # Fetch next page if exists
+    excluded_users = [item['fields']['Usernames'].strip() for item in all_items]
+    # print(excluded_users)
+    return excluded_users
 
+def user_with_jobs_ls():
+    access_token = get_access_token()
+    site_id = get_site_id(access_token, "hamdaz1.sharepoint.com", "/sites/Test")
+    list_id = get_list_id(access_token, site_id, "useranalytics")
+    url = f"{GRAPH_API_ENDPOINT}/sites/{site_id}/lists/{list_id}/items?expand=fields"
+    headers = {"Authorization": f"Bearer {access_token}"}
+    all_items = []
+    while url:
+        resp = requests.get(url, headers=headers)
+        resp.raise_for_status()
+        data = resp.json()
+        all_items.extend(data.get("value", []))
+        url = data.get("@odata.nextLink")  # Fetch next page if exists
+    users_and_jobs = {item['fields']['Username'].strip(): item['fields']['Jobs'] for item in all_items}
+    users_and_jobscount = {item['fields']['Username'].strip(): len([job for job in item['fields']['Jobs'].split(",") if job.strip()]) for item in all_items}
+    print(users_and_jobscount)
+    return users_and_jobscount
 
+# def check_user_have_two_jobs(username):
+#     users_and_jobs = user_with_jobs_ls()
+#     jobs = users_and_jobs.get(username.strip(), "")
+#     if jobs:
+#         jobs_list = [job.strip() for job in jobs.split(",") if job.strip()]
+#         print(jobs_list)
+#         print(len(jobs_list))
+#         return len(jobs_list) >= 2
+#     return False
 
 # -----------------------------------------------------------------------------------------------------------
+
+def get_users_with_priority():
+    access_token = get_access_token()
+    site_id = get_site_id(access_token, "hamdaz1.sharepoint.com", "/sites/Test")
+    list_id = get_list_id(access_token, site_id, "useranalytics")
+    url = f"{GRAPH_API_ENDPOINT}/sites/{site_id}/lists/{list_id}/items?expand=fields"
+    headers = {"Authorization": f"Bearer {access_token}"}
+    all_items = []
+    while url:
+        resp = requests.get(url, headers=headers)
+        resp.raise_for_status()
+        data = resp.json()
+        all_items.extend(data.get("value", []))
+        url = data.get("@odata.nextLink")  # Fetch next page if exists
+        username_and_priority = {item['fields']['Username'].strip(): item['fields']['Priority'] for item in all_items}
+        print(username_and_priority)
+    return username_and_priority
+
+
+def get_users_sawpcount():
+    access_token = get_access_token()
+    site_id = get_site_id(access_token, "hamdaz1.sharepoint.com", "/sites/Test")
+    list_id = get_list_id(access_token, site_id, "useranalytics")
+    url = f"{GRAPH_API_ENDPOINT}/sites/{site_id}/lists/{list_id}/items?expand=fields"
+    headers = {"Authorization": f"Bearer {access_token}"}
+    all_items = []
+    while url:
+        resp = requests.get(url, headers=headers)
+        resp.raise_for_status()
+        data = resp.json()
+        all_items.extend(data.get("value", []))
+        url = data.get("@odata.nextLink")  # Fetch next page if exists
+    users_and_sawpcount = {item['fields']['Username'].strip(): item['fields']['swapcounter'] for item in all_items}
+    print(users_and_sawpcount)
+    return users_and_sawpcount
+
+
+
+
+def swp():
+    up=get_users_with_priority()
+    uj=user_with_jobs_ls()
+    swpc = get_users_sawpcount()
+
+    
+    
+    
+    
+    
+
+    
+
