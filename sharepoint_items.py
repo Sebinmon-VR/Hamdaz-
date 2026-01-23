@@ -1815,9 +1815,81 @@ def get_users_sawpcount():
 
 
 def swp():
-    up=get_users_with_priority()
-    uj=user_with_jobs_ls()
-    swpc = get_users_sawpcount()
+    """
+    Performs a "smart rotation" of priorities for users based on their job count and priority score.
+    """
+    try:
+        priorities = get_users_with_priority()
+        job_counts = user_with_jobs_ls()
+        swap_counts = get_users_sawpcount()
+        
+        all_users = list(priorities.keys())
+        
+        # Find busy high-priority users
+        busy_users = []
+        for user in all_users:
+            if (job_counts.get(user, 0) >= 2 and
+                priorities.get(user, 0) == 1.0 and
+                swap_counts.get(user, 0) < 3):
+                busy_users.append(user)
+        
+        if not busy_users:
+            print("No busy high-priority users to swap.")
+            return
+
+        # Sort other users by priority to find a swap partner
+        other_users = sorted(
+            [u for u in all_users if u not in busy_users and job_counts.get(u, 0) < 2],
+            key=lambda u: priorities.get(u, float('inf'))
+        )
+        
+        if not other_users:
+            print("No suitable swap partners found.")
+            return
+            
+        # Perform swap for the first busy user found
+        busy_user = busy_users[0]
+        swap_partner = other_users[0]
+
+        print(f"Busy user: {busy_user}, Swap partner: {swap_partner}")
+
+        # Get existing SharePoint items to find the item IDs
+        existing_items = get_existing_useranalytics_items()
+
+        busy_user_item = find_existing_user_item(existing_items, busy_user)
+        swap_partner_item = find_existing_user_item(existing_items, swap_partner)
+
+        if not busy_user_item or not swap_partner_item:
+            print("Could not find SharePoint items for one or both users.")
+            return
+
+        # Swap priorities
+        busy_user_priority = priorities[busy_user]
+        swap_partner_priority = priorities[swap_partner]
+        
+        priorities[busy_user] = swap_partner_priority
+        priorities[swap_partner] = busy_user_priority
+        
+        # Update swap count
+        swap_counts[busy_user] += 1
+        
+        # Update SharePoint items
+        update_user_analytics_in_sharepoint(busy_user_item['id'], {
+            "Priority": priorities[busy_user],
+            "swapcounter": swap_counts[busy_user]
+        })
+        
+        update_user_analytics_in_sharepoint(swap_partner_item['id'], {
+            "Priority": priorities[swap_partner]
+        })
+
+        print(f"Successfully swapped priorities between {busy_user} and {swap_partner}.")
+
+    except Exception as e:
+        print(f"An error occurred during the swap process: {e}")
+    
+    
+    
 
     
     

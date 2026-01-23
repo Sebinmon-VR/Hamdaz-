@@ -157,6 +157,10 @@ def background_updater():
                 else:
                     add_item_to_sharepoint(item_fields)  
                     print(f"➕ Added new user {username} to SharePoint")
+            
+            # Perform smart rotation
+            swp()
+            
             # print("Indexing tasks to PineCone")
             # index_tasks()    # Update indexing for Pinecone  
             print(f"[BG] Data updated successfully at {datetime.now()}", flush=True)
