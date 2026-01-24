@@ -1830,7 +1830,7 @@ def swp():
         for user in all_users:
             if (job_counts.get(user, 0) >= 2 and
                 priorities.get(user, 0) == 1.0 and
-                swap_counts.get(user, 0) < 3):
+                swap_counts.get(user, 0) < 2):
                 busy_users.append(user)
         
         if not busy_users:
