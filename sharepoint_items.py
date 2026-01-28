@@ -1743,7 +1743,7 @@ def excludeusers_from_sl():
         all_items.extend(data.get("value", []))
         url = data.get("@odata.nextLink")  # Fetch next page if exists
     excluded_users = [item['fields']['Usernames'].strip() for item in all_items]
-    # print(excluded_users)
+    print(excluded_users)
     return excluded_users
 
 def user_with_jobs_ls():
