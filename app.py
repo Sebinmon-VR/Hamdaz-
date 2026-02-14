@@ -18,6 +18,7 @@ import json
 import html
 from pinecone import Pinecone, ServerlessSpec
 from uuid import uuid4
+# from openai import OpenAI
 
 # ================== LOAD ENVIRONMENT ==================
 load_dotenv(override=True)
@@ -1312,7 +1313,7 @@ def tp():
         default_attachments = []
 
     return render_template("tp.html", files=files, default_attachments=default_attachments, user=session.get("user"))
-
+# ddlf
 
 # --- ADD THIS NEW ROUTE ---
 @app.route("/download/docx/<file_id>")
@@ -1513,60 +1514,6 @@ def find_distributors():
         return jsonify({"error": f"Failed to find distributors: {str(e)}"}), 500
 
 
-# # ************ NEW ROUTE HERE ************
-# @app.route("/datasheets", methods=["GET", "POST"])
-# def datasheets():
-#     results = []
-
-#     if request.method == "POST":
-#         item = request.form.get("item")
-
-#         # 1. Search web using DuckDuckGo
-#         search_urls = duckduckgo_search(f"{item} datasheet pdf")
-
-#         # 2. For each result → extract PDF/DOC links
-#         for url in search_urls:
-#             docs = extract_documents_from_page(url)
-
-#             if docs:
-#                 results.append({
-#                     "page": url,
-#                     "documents": docs
-#                 })
-#             else:
-#                 results.append({
-#                     "page": url,
-#                     "documents": []
-#                 })
-
-#         # 3. Ask AI to refine results
-#         ai_prompt = f"""
-#         Find datasheet links (PDF/DOC) for: {item}
-#         Extract ONLY URLs. Give up to 10 results.
-#         """
-#         ai_result = openai.ChatCompletion.create(
-#             model="gpt-4o-mini",
-#             messages=[{"role": "user", "content": ai_prompt}]
-#         )
-#         ai_links = re.findall(r'https?://\S+', ai_result.choices[0].message["content"])
-
-#         for link in ai_links:
-#             results.append({
-#                 "page": link,
-#                 "documents": [link] if link.endswith(("pdf", "doc", "docx")) else []
-#             })
-
-#     return render_template("datasheets.html", results=results)
-
-
-# @app.route("/ai_tasks")
-# def ai_tasks():
-#     if "user" not in session:
-#         return redirect(url_for('login'))
-#     user = session.get("user")
-#     tasks = fetch_user_planner_tasks()
-#     return render_template("pages/ai_tasks.html", user=user, tasks=tasks)
-
 
 from werkzeug.datastructures import FileStorage
 def get_file_extension(filename):
@@ -1728,6 +1675,50 @@ def process_files():
 #     if request.method == "POST":
         
 #     return render_template("pages/assist.html", user=user)  
+
+# ==============================================================
+
+# @app.route("/assistant" , methods=["GET"])
+# def assistant():
+#     if "user" not in session:
+#         return redirect(url_for('login'))
+#     return render_template("pages/assistant.html", user=session.get("user"))
+
+
+
+# client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+
+# @app.route('/process-agent', methods=['POST'])
+# def process():
+#     data = request.json
+#     pdf_text = data.get('text', '')
+
+#     if not pdf_text:
+#         return jsonify({"error": "No text provided"}), 400
+
+#     try:
+#         # Standard OpenAI Chat Completion call
+#         response = client.chat.completions.create(
+#             model="gpt-4o",
+#             messages=[
+#                 {"role": "system", "content": "You are a data extraction expert. Extract the items, quantities, and requirements from the following quotation text and return them as a structured list."},
+#                 {"role": "user", "content": pdf_text}
+#             ],
+#             temperature=0.2 # Lower temperature for more accurate extraction
+#         )
+
+#         # Get the text response from the model
+#         ai_output = response.choices[0].message.content
+
+#         return jsonify({
+#             "status": "success",
+#             "output": ai_output
+#         })
+
+#     except Exception as e:
+#         print(f"OpenAI Error: {e}")
+#         return jsonify({"error": "Failed to process text with AI"}), 500
 
 # ==============================================================
 # START FLASK + BACKGROUND UPDATER

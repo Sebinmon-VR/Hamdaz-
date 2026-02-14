@@ -1,0 +1,179 @@
+{% macro render_card(vs ,visibility ,title, progress_outof, progress, Priority, agent_color, agent_name) %}
+<style>
+    .mini-card {
+        width: 260px;
+        background: white;
+        border-radius: 16px;
+        padding: 16px;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+        border: 1px solid #e5e7eb;
+        font-family: sans-serif;
+        font-size: 13px;
+        opacity: 0.1;
+        transition: 1s;
+
+    }
+
+    .mini-card:hover {
+        transition: 1s;
+        opacity: 1 ;
+    }
+
+    .m-header {
+        display: flex;
+        align-items: center;
+        margin-bottom: 12px;
+        gap: 8px;
+    }
+
+    .m-title {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-weight: bold;
+    }
+
+    .m-progress {
+        background: #f9fafb;
+        border: 1px solid #eee;
+        border-radius: 20px;
+        padding: 4px 10px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 12px;
+    }
+
+    .m-bar {
+        flex: 1;
+        height: 6px;
+        background: #eee;
+        border-radius: 10px;
+        overflow: hidden;
+    }
+
+    .m-fill {
+        height: 100%;
+        background: #22c55e;
+        width: {{progress}};
+        transition : width 0.3s ease-in-out;
+
+    }
+
+    .m-list {
+        position: relative;
+        margin-left: 5px;
+        margin-bottom: 12px;
+    }
+
+    .m-list::before {
+        content: '';
+        position: absolute;
+        left: 7px;
+        top: 10px;
+        bottom: 10px;
+        width: 1px;
+        background: #eee;
+    }
+
+    .m-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 8px;
+        position: relative;
+    }
+
+    .m-dot {
+        
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        background: #4b5563;
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 8px;
+        z-index: 1;
+    
+    }
+
+    .m-dot.empty {
+        background: white;
+        border: 1px solid #ccc;
+    }
+
+    .m-badge {
+        padding: 2px 8px;
+        border-radius: 6px;
+        font-size: 10px;
+        font-weight: bold;
+    }
+
+    .m-row {
+        display: flex;
+        justify-content: space-between;
+        margin-top: 6px;
+    }
+
+    .agent {
+        margin-top: 10px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .agcr {
+        width: 20px;
+        border-radius: 50%;
+        height: 20px;
+        background: #d9d9d9;
+    }
+    .crimg { 
+        width: 40px;
+        height: 30px;
+        background-repeat: no-repeat;
+        background-size: cover;
+        background-position: center;
+        border-radius: 50%;
+        transition: 1s ;
+        visibility: hidden;
+    }
+
+</style>
+
+<div class="mini-card" style="opacity: {{visibility}};  ">
+
+    <div class="m-header">
+        <div class="small_circular_progress">
+            <img class="crimg" src="https://i.pinimg.com/originals/ee/7a/ce/ee7acee141cf774b5511f8c3cb0e0016.gif" alt="" style="visibility: {{ vs}};">
+        </div>
+        <div class="m-title"><span>⬢</span>{{title}}</div>
+
+    </div>
+
+    <div class="m-progress">
+        <span style="font-size:10px; color:#666">{{progress_outof}}</span>
+        <div class="m-bar">
+            <div class="m-fill"></div>
+        </div>
+        <span style="font-size:10px; font-weight:bold">{{progress}}</span>
+    </div>
+
+
+
+    <div class="m-row">
+        <span style="color:#888">Priority</span>
+        <span class="m-badge" style="background:#fee2e2; color:#b91c1c">{{Priority}}</span>
+    </div>
+
+    <div class="agent">
+        <div class="agcr" style="background-color: {{agent_color}}"></div>
+        <span>{{agent_name}}</span>
+    </div>
+
+
+</div>
+
+{% endmacro %}

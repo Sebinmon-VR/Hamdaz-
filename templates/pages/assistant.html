@@ -1,0 +1,67 @@
+
+{% import "pages/components/progress.html" as components %}
+
+
+
+
+
+
+
+<div style="max-width: 400px; font-family: sans-serif; padding: 2rem;">
+    <form id="agentForm">
+        <div style="border: 2px dashed #ccc; padding: 2rem; border-radius: 8px; text-align: center;">
+            <input type="file" id="pdfInput" accept=".pdf" required>
+        </div>
+        <button type="submit" style="width: 100%; margin-top: 1rem; padding: 12px; background: #000; color: #fff; border: none; border-radius: 6px; cursor: pointer;">
+            Run AI Agent
+        </button>
+    </form>
+    <div id="output" style="margin-top: 1.5rem; font-size: 0.9rem; white-space: pre-wrap;"></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
+<script>
+    const pdfjsLib = window['pdfjs-dist/build/pdf'];
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
+
+    document.getElementById('agentForm').onsubmit = async (e) => {
+        e.preventDefault();
+        const file = document.getElementById('pdfInput').files[0];
+        const out = document.getElementById('output');
+        
+        out.innerText = "Extracting & Analyzing...";
+
+        // 1. Extract text locally
+        const reader = new FileReader();
+        reader.onload = async function() {
+            const pdf = await pdfjsLib.getDocument(new Uint8Array(this.result)).promise;
+            let text = "";
+            for (let i = 1; i <= pdf.numPages; i++) {
+                const page = await pdf.getPage(i);
+                const content = await page.getTextContent();
+                text += content.items.map(s => s.str).join(" ");
+            }
+
+            // 2. Call route directly using a relative path
+            const res = await fetch('/process-agent', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text })
+            });
+            
+            const data = await res.json();
+            out.innerText = data.output;
+        };
+        reader.readAsArrayBuffer(file);
+    };
+</script>
+
+
+
+<div style="display: flex; flex-wrap: wrap;">
+    {{ components.render_card(vs="visible" , visibility="1", title="text extraction", progress_outof="1/5",
+    progress="30%" , Priority="high", agent_color="orange", agent_name="textextraction") }}
+
+    {{ components.render_card( title="text extraction", progress_outof="1/5", progress="30%" , Priority="high",
+    agent_color="#4b5563", agent_name="textextraction") }}
+</div>
