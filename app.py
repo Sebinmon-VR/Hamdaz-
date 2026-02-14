@@ -1664,61 +1664,33 @@ def process_files():
         print(f"Error during file processing: {e}")
         return jsonify({'message': f'Internal Server Error: {str(e)}'}), 500
     
-    
-# need to add a route to save the DistributorsData to shgarepoint list -->  get data from html  page form and save to sharepoint list
-
-# @app.route('/assist_rfq', methods=['GET', 'POST'])
-# def assist():
-#     if "user" not in session:
-#         return redirect(url_for('login'))
-#     user = session.get("user")
-#     if request.method == "POST":
-        
-#     return render_template("pages/assist.html", user=user)  
-
 # ==============================================================
 
-# @app.route("/assistant" , methods=["GET"])
-# def assistant():
-#     if "user" not in session:
-#         return redirect(url_for('login'))
-#     return render_template("pages/assistant.html", user=session.get("user"))
+
+@app.route('/test_metadata', methods=['POST'])
+def metadata_test():
+    # If the other code sends JSON (e.g., requests.post(url, json=data))
+    if request.is_json:
+        data = request.get_json()
+    # If the other code sends Form data (e.g., requests.post(url, data=data))
+    else:
+        data = request.form.to_dict()
+
+    print(f"Received data: {data}")
+    
+    return jsonify({"status": "success", "received": data}), 200
 
 
 
-# client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 
-# @app.route('/process-agent', methods=['POST'])
-# def process():
-#     data = request.json
-#     pdf_text = data.get('text', '')
 
-#     if not pdf_text:
-#         return jsonify({"error": "No text provided"}), 400
 
-#     try:
-#         # Standard OpenAI Chat Completion call
-#         response = client.chat.completions.create(
-#             model="gpt-4o",
-#             messages=[
-#                 {"role": "system", "content": "You are a data extraction expert. Extract the items, quantities, and requirements from the following quotation text and return them as a structured list."},
-#                 {"role": "user", "content": pdf_text}
-#             ],
-#             temperature=0.2 # Lower temperature for more accurate extraction
-#         )
 
-#         # Get the text response from the model
-#         ai_output = response.choices[0].message.content
 
-#         return jsonify({
-#             "status": "success",
-#             "output": ai_output
-#         })
 
-#     except Exception as e:
-#         print(f"OpenAI Error: {e}")
-#         return jsonify({"error": "Failed to process text with AI"}), 500
+   
+    
 
 # ==============================================================
 # START FLASK + BACKGROUND UPDATER
