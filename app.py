@@ -1394,8 +1394,7 @@ You are an expert RFQ/SOW analyst.
 
 Step 1: Read the document chunk below.
 
-Step 2: Extract all relevant information: requirements, attachments, eligibility criteria, deadlines, technical specifications, **required items needed**, and other notes.
-# 👆 Instruction updated
+Step 2: Extract all relevant information. For "required_items_needed", you MUST classify each item as "product", "service", or "note".
 
 Return your answer in JSON exactly like this:
 
@@ -1406,8 +1405,10 @@ Return your answer in JSON exactly like this:
   "deadlines": [...],
   "technical_specifications": [...],
   "other_notes": [...],
-  "required_items_needed": [...]
-  
+  "required_items_needed": [
+      {{ "name": "Item Name 1", "type": "product" }},
+      {{ "name": "A general note about delivery", "type": "note" }}
+  ]
 }}
 
 If a field is missing, return an empty list.
@@ -1450,8 +1451,29 @@ Document Text:
     # Remove duplicates from lists
     for key in final_result:
         if isinstance(final_result[key], list):
-            # Using dict.fromkeys to efficiently remove duplicates while preserving order
-            final_result[key] = list(dict.fromkeys(final_result[key]))
+            if key == 'required_items_needed':
+                # Handle list of dicts: remove duplicates based on 'name'
+                seen = set()
+                unique_items = []
+                for item in final_result[key]:
+                    # Ensure item is a dictionary and has a 'name'
+                    if isinstance(item, dict) and 'name' in item:
+                        if item['name'] not in seen:
+                            unique_items.append(item)
+                            seen.add(item['name'])
+                    elif isinstance(item, str): # Keep strings if they appear
+                        if item not in seen:
+                            unique_items.append({"name": item, "type": "product"}) # Convert to new format
+                            seen.add(item)
+                final_result[key] = unique_items
+            else:
+                # Using dict.fromkeys to efficiently remove duplicates while preserving order for hashable types
+                try:
+                    final_result[key] = list(dict.fromkeys(final_result[key]))
+                except TypeError:
+                    # Fallback for lists with unhashable types that are not 'required_items_needed'
+                    # This is a safe fallback, though not expected with current prompt
+                    pass
 
     return jsonify({"extracted_data": final_result})
 

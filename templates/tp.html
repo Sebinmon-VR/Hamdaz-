@@ -436,19 +436,27 @@ function renderItemsAndDistributorsTab(items) {
     items.forEach((item, index) => {
         const tr = document.createElement('tr');
         tr.id = `item-row-${index}`;
+        
+        const itemName = item.name || item; // Handle both old and new format for safety
+        const itemType = item.type || 'product'; // Default to product if type is missing
+
+        const isNote = itemType === 'note';
+
         tr.innerHTML = `
-            <td class="p-2 border-b">${item}</td>
+            <td class="p-2 border-b">${itemName}</td>
             <td class="p-2 border-b">
+                ${!isNote ? `
                 <button 
                     class="find-distributor-btn bg-blue-600 text-white p-1 rounded text-sm hover:bg-blue-700 transition" 
-                    data-item="${item}" 
-                    onclick="findDistributors(this, '${item}')"
+                    data-item="${itemName}" 
+                    onclick="findDistributors(this, '${itemName}')"
                 >
                     Find Distributors
                 </button>
+                ` : ''}
             </td>
             <td class="p-2 border-b" id="distributor-results-${index}">
-                <span class="text-gray-500 text-sm">Click 'Find Distributors' to search.</span>
+                ${!isNote ? `<span class="text-gray-500 text-sm">Click 'Find Distributors' to search.</span>` : ''}
             </td>
         `;
         tableBody.appendChild(tr);
