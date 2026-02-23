@@ -19,7 +19,7 @@ import html
 from pinecone import Pinecone, ServerlessSpec
 from uuid import uuid4
 # from openai import OpenAI
-
+from assistant import *
 # ================== LOAD ENVIRONMENT ==================
 load_dotenv(override=True)
 
@@ -1704,7 +1704,9 @@ def metadata_test():
 
 
 
-
+# @app.route('/assist')
+# def assist():
+    
 
 
 

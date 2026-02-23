@@ -324,9 +324,12 @@ def compute_user_analytics_with_last_date(df, EXCLUDED_USERS, period=None):
 
     if df.empty or 'AssignedTo' not in df.columns:
         return {}
+    # Normalize for exclusion
+    exclude_users_normalized = [str(u).strip().lower() for u in EXCLUDED_USERS]
+
 
     # ✅ Make a copy to avoid SettingWithCopyWarning
-    df = df[~df['AssignedTo'].isin(EXCLUDED_USERS)].copy()
+    df = df[~df['AssignedTo'].fillna('').astype(str).str.strip().str.lower().isin(exclude_users_normalized)].copy()
     if df.empty:
         return {}
 
@@ -447,7 +450,9 @@ def generate_user_analytics(df, user_column='AssignedTo', status_column='Status'
     now_utc = pd.Timestamp.now(tz='UTC')
 
     # Filter out excluded users
-    df_filtered = df[~df[user_column].isin(exclude_users)]
+    exclude_users_normalized = [str(u).strip().lower() for u in exclude_users]
+    df_filtered = df[~df[user_column].fillna('').astype(str).str.strip().str.lower().isin(exclude_users_normalized)]
+
 
     # Group by user
     grouped = df_filtered.groupby(user_column)
