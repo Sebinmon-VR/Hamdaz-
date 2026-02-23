@@ -1,12 +1,269 @@
 {% extends "base.html" %}
 {% block content %}
+<link rel="stylesheet"
+    href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" />
+
+<div class="dashboard-wrapper">
+    <div class="compact-grid">
+        {% for task in tasks %}
+        <div class="task-mini-card">
+            <div class="mini-header">
+                <span class="status-pill">Step {{ task.steps_completed | int }} / {{ task.total_steps | int }}</span>
+                <div class="priority-indicator {{ task.Priority|default('high') }}"></div>
+            </div>
+
+            <div class="mini-body">
+                <h5 class="mini-title">{{ task.Title }}</h5>
+                <div class="assignee-wrap">
+                    <div class="mini-avatar">{{ task.AssignedTo[:1] | upper }}</div>
+                    <span>{{ task.AssignedTo }}</span>
+                </div>
+            </div>
+
+            <div class="mini-stepper">
+                {% set total = task.total_steps | int %}
+                {% set current = task.steps_completed | int %}
+
+                {% for i in range(1, total + 1) %}
+                <div class="step-dot 
+                        {{ 'completed' if i < current }}
+                        {{ 'active' if i == current }}">
+                </div>
+
+                {% if not loop.last %}
+                <div class="step-line {{ 'completed' if i < current }}"></div>
+                {% endif %}
+                {% endfor %}
+            </div>
+
+            <div class="mini-footer">
+                <div class="stat">
+                    <span class="label">Deadline</span>
+                    <span class="value">{{ task.due }}</span>
+                </div>
+                <div class="stat align-right">
+                    <span class="label">Job Status</span>
+                    <span class="value">{{ task.jobsatus }}</span>
+                </div>
+            </div>
+
+            <div class="mini-overlay">
+                <button class="quick-view">Open<span class="material-symbols-outlined">open_in_new_down</span> </button>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
 
 
-<h2>Upload rfq </h2>
-<form action="{{ url_for('assist_rfq') }}" method="post" enctype="multipart/form-data">
-    <input type="file" name="rfq_file" required>
-    <input type="submit" value="Upload RFQ">
-    
-</form>
 
+
+
+
+
+<style>
+    :root {
+        --text-main: #2d3436;
+        --text-sub: #636e72;
+        --accent: #0984e3;
+        --success: #00b894;
+        --border: #edf2f7;
+    }
+
+    .dashboard-wrapper {
+        padding: 20px;
+        background: #ffffff66;
+        /* Clean white background */
+        font-family: 'Inter', -apple-system, system-ui, sans-serif;
+    }
+
+    .compact-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+        gap: 16px;
+    }
+
+    .task-mini-card {
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 16px;
+        position: relative;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        background: #fff;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        height: 180px;
+    }
+
+    .task-mini-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 12px 24px rgba(0, 0, 0, 0.06);
+        border-color: var(--accent);
+    }
+
+    /* Header */
+    .mini-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 8px;
+    }
+
+    .status-pill {
+        font-size: 9px;
+        text-transform: uppercase;
+        font-weight: 800;
+        letter-spacing: 0.5px;
+        color: var(--accent);
+        background: #e1f5fe;
+        padding: 2px 8px;
+        border-radius: 4px;
+    }
+
+    .priority-indicator {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: #ff7675;
+        box-shadow: 0 0 6px #ff7675;
+    }
+
+    /* Body */
+    .mini-title {
+        font-size: 0.95rem;
+        font-weight: 600;
+        margin: 0 0 4px 0;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        color: var(--text-main);
+    }
+
+    .assignee-wrap {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.8rem;
+        color: var(--text-sub);
+    }
+
+    .mini-avatar {
+        width: 20px;
+        height: 20px;
+        background: #f1f2f6;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 9px;
+        font-weight: bold;
+        color: var(--accent);
+    }
+
+    /* THE DYNAMIC STEPPER */
+    .mini-stepper {
+        display: flex;
+        align-items: center;
+        margin: 15px 0;
+        padding: 0 2px;
+    }
+
+    .step-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #dfe6e9;
+        flex-shrink: 0;
+        transition: all 0.3s ease;
+    }
+
+    .step-dot.completed {
+        background: var(--success);
+    }
+
+    .step-dot.active {
+        background: var(--accent);
+        transform: scale(1.4);
+        box-shadow: 0 0 8px rgba(9, 132, 227, 0.4);
+    }
+
+    .step-line {
+        flex-grow: 1;
+        height: 2px;
+        background: #dfe6e9;
+        margin: 0 2px;
+    }
+
+    .step-line.completed {
+        background: var(--success);
+    }
+
+    /* Footer */
+    .mini-footer {
+        display: flex;
+        justify-content: space-between;
+        border-top: 1px solid var(--border);
+        padding-top: 10px;
+    }
+
+    .stat {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .stat.align-right {
+        text-align: right;
+    }
+
+    .stat .label {
+        font-size: 9px;
+        color: var(--text-sub);
+        text-transform: uppercase;
+        margin-bottom: 2px;
+    }
+
+    .stat .value {
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--text-main);
+    }
+
+    /* Hover Overlay */
+    .mini-overlay {
+        position: absolute;
+        inset: 0;
+        background: rgba(255, 255, 255, 0.85);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        opacity: 0;
+        transition: opacity 0.2s ease;
+        backdrop-filter: blur(2px);
+    }
+
+    .task-mini-card:hover .mini-overlay {
+        opacity: 1;
+
+    }
+    .mini-overlay button {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 15px;
+
+    }
+    .quick-view {
+        background: var(--accent);
+        color: white;
+        border: none;
+        padding: 8px 16px;
+        border-radius: 8px;
+        font-size: 11px;
+        font-weight: 600;
+        cursor: pointer;
+        box-shadow: 0 4px 10px rgba(9, 132, 227, 0.2);
+    }
+</style>
 {% endblock %}

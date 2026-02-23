@@ -50,6 +50,8 @@ GRAPH_API_ENDPOINT = "https://graph.microsoft.com/v1.0"
 SITE_DOMAIN = "hamdaz1.sharepoint.com"
 SITE_PATH = "/sites/ProposalTeam"
 LIST_NAME = "Proposals"
+test_path = "/sites/Test"
+test_proposals_list = "testproposals"
 EXCLUDED_USERS = excludeusers_from_sl() 
 
 
@@ -1704,8 +1706,21 @@ def metadata_test():
 
 
 
-# @app.route('/assist')
-# def assist():
+@app.route('/assist')
+def assist():
+    user=session.get("user")
+    if not user:
+        return redirect(url_for('login'))
+    
+    user_name = user.get("displayName").replace(" ", "")
+    
+    tasks = fetch_sharepoint_list(SITE_DOMAIN, test_path, test_proposals_list)
+    df = items_to_dataframe(tasks)
+    
+    user_items =[t for t in tasks if t.get("AssignedTo", "").replace(" ", "") == user_name]
+    print(f"User {user_name} has {len(user_items)} assigned items.", flush=True)
+    
+    return render_template("assist.html", user=user, tasks=user_items)
     
 
 

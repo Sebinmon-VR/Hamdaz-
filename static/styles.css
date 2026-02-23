@@ -54,17 +54,38 @@ nav {
 
 main {
     margin-left: 200px;
-    /* match sidebar width */
     margin-top: 60px;
-
-       background-image: url('https://www.transparenttextures.com/patterns/skulls.png');
-
     min-height: calc(100vh - 60px);
+    width: calc(100% - 200px); /* Adjusted to match your margin-left */
+    position: relative; /* Required for the pseudo-element */
     overflow-y: auto;
     overflow-x: hidden;
-    /* prevent horizontal overflow */
-    width: calc(100% - 200px);
-    padding-left: 10px;
+    background: transparent; /* Ensure main itself is clear */
+}
+
+/* The Glassmorphic Background Layer */
+main::before {
+    content: "";
+    position: fixed; /* Keeps the background stable while scrolling */
+    top: 60px; /* Match your margin-top */
+    left: 200px; /* Match your margin-left */
+    right: 0;
+    bottom: 0;
+    
+    /* Background Image */
+    background-image: url('https://i.pinimg.com/1200x/e4/a1/b7/e4a1b73d374d880cce3e4b5788848d0b.jpg');
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    
+    /* The Blur Effect */
+    filter: blur(20px); /* Adjust pixels for more/less blur */
+    transform: scale(1.1); /* Prevents white edges caused by blurring */
+    
+    /* Glass Overlay Tint */
+    box-shadow: inset 0 0 0 2000px rgba(255, 255, 255, 0.2); 
+    
+    z-index: -1; /* Puts it behind your task cards */
 }
 
 /* Constrain inner content so it doesn't stretch across full width */
