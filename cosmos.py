@@ -45,32 +45,24 @@ def get_detailed_quote_with_items(estimate_id):
         print(f"❌ Error: Quote {estimate_id} not found. {e}")
         return None
 
-# def get_brand_performance():
-#     """
-#     Advanced Query: Digs into the line_items array across all documents
-#     to count which brands are being quoted the most.
-#     """
-#     query = """
-#     SELECT 
-#         cf.value AS Brand, 
-#         COUNT(1) AS QuoteCount
-#     FROM c
-#     JOIN li IN c.line_items
-#     JOIN cf IN li.item_custom_fields
-#     WHERE cf.api_name = 'cf_brand'
-#     GROUP BY cf.value
-#     """
-#     items = list(container.query_items(query=query, enable_cross_partition_query=True))
-#     return pd.DataFrame(items)
 
+# EXECUTION
 # =======================
-# # EXECUTION
-# # =======================
-# if __name__ == "__main__":
-#     print("📊 Loading Dashboard Data...")
+if __name__ == "__main__":
+    print("📊 Loading Dashboard Data...")
     
-#     # 1. Main Table
-#     df_main = get_all_quotes_for_dashboard()
-#     print("\n--- Recent Quotes ---")
-#     print(df_main.head())
-
+    # 1. Main Table
+    df_main = get_all_quotes_for_dashboard()
+    print("\n--- Recent Quotes ---")
+    print(df_main.head())
+    
+    
+    # 2. Detailed View for a Specific Quote
+    if not df_main.empty:
+        sample_estimate_id = df_main.iloc[0]['estimate_number']
+        print(f"\n📋 Fetching details for Quote: {sample_estimate_id}")
+        detailed_quote = get_detailed_quote_with_items(sample_estimate_id)
+        print(detailed_quote)
+    else:
+        print("No quotes found in the database.")
+         
