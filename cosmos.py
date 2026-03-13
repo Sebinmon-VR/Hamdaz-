@@ -14,9 +14,21 @@ DATABASE_NAME = "Quotes"
 CONTAINER_NAME = "items"
 
 # Initialize Client
-client = CosmosClient(ENDPOINT, KEY)
-database = client.get_database_client(DATABASE_NAME)
-container = database.get_container_client(CONTAINER_NAME)
+try:
+    if ENDPOINT and KEY:
+        client = CosmosClient(ENDPOINT, KEY)
+        database = client.get_database_client(DATABASE_NAME)
+        container = database.get_container_client(CONTAINER_NAME)
+    else:
+        print("Warning: COSMOS_ENDPOINT or COSMOS_KEY is missing. Cosmos DB features will be disabled.")
+        client = None
+        database = None
+        container = None
+except Exception as e:
+    print(f"Error initializing CosmosClient: {e}")
+    client = None
+    database = None
+    container = None
 
 # =======================
 # DASHBOARD FUNCTIONS
@@ -26,6 +38,9 @@ def get_all_quotes_for_dashboard():
     """
     Fetches the latest summary of all quotes for the main dashboard table.
     """
+    if container is None:
+        return pd.DataFrame()
+        
     query = "SELECT c.estimate_number, c.customer_name, c.date, c.status, c.total, c.currency_code FROM c"
     
     # query_items returns a generator
@@ -37,6 +52,9 @@ def get_detailed_quote_with_items(estimate_id):
     Fetches EVERYTHING for one specific quote (including line items and brands)
     using the Partition Key (estimate_id).
     """
+    if container is None:
+        return None
+        
     try:
         # read_item is the fastest way to get data if you have the ID and Partition Key
         response = container.read_item(item=estimate_id, partition_key=estimate_id)
@@ -51,6 +69,9 @@ def get_all_data_full():
     Fetches EVERY single field from EVERY quote.
     Warning: If you have thousands of records, this might be slow.
     """
+    if container is None:
+        return []
+        
     print("📡 Fetching Master Data from Cosmos DB...")
     query = "SELECT * FROM c"
     items = list(container.query_items(query=query, enable_cross_partition_query=True))
@@ -61,6 +82,9 @@ def search_quotes_by_item(search_term):
     Searches inside the line_items array for a specific product name.
     Useful for finding: 'Where did we quote this Hard Drive before?'
     """
+    if container is None:
+        return pd.DataFrame()
+        
     print(f"🔍 Searching for items containing: '{search_term}'...")
     
     # Using CONTAINS for a fuzzy search (not case-sensitive in many Cosmos setups)
@@ -89,6 +113,9 @@ def deep_search_item_with_quote_context(search_term):
     """
     Returns specific item details PLUS the full parent quote information.
     """
+    if container is None:
+        return pd.DataFrame()
+        
     print(f"🔍 Deep searching for: '{search_term}'...")
     
     query = {
@@ -128,6 +155,9 @@ def search_item_and_get_full_quotes(search_term):
     Finds items matching the search term and returns the 
     ENTIRE parent quote JSON for each match.
     """
+    if container is None:
+        return []
+        
     print(f"🔍 Searching for item: '{search_term}' and retrieving full quotes...")
     
     # We select '*' to get the full document
