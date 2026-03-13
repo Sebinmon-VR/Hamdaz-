@@ -113,14 +113,51 @@
             wrapper.classList.add("justify-start");
 
             if (typing) {
-                avatar.classList.add("bot-floating"); // Apply floating animation when processing/typing
+                avatar.classList.add("bot-floating");
                 let index = 0;
+
+                // Check if this is an email draft — render UI card
+                if (message.includes("EMAIL_DRAFT_START")) {
+                    const match = message.match(/EMAIL_DRAFT_START\n([\s\S]*?)\nEMAIL_DRAFT_END/);
+                    if (match && match[1]) {
+                        try {
+                            const emailData = JSON.parse(match[1]);
+                            // Override the div to be a plain container (no max-width/prose)
+                            div.className = "bubble-anim";
+                            div.innerHTML = renderEmailUI(emailData);
+                            avatar.classList.remove("bot-floating");
+                            wrapper.appendChild(div);
+                            chatBox.appendChild(wrapper);
+                            scrollToBottom();
+                            return; // Done — skip normal flow
+                        } catch (e) {
+                            console.error("Failed to parse email JSON", e);
+                        }
+                    }
+                }
+
                 const interval = setInterval(() => {
                     div.innerHTML = marked.parse(message.slice(0, index++));
                     scrollToBottom();
                     if (index > message.length) clearInterval(interval);
                 }, 5);
             } else {
+                if (message.includes("EMAIL_DRAFT_START")) {
+                    const match = message.match(/EMAIL_DRAFT_START\n([\s\S]*?)\nEMAIL_DRAFT_END/);
+                    if (match && match[1]) {
+                        try {
+                            const emailData = JSON.parse(match[1]);
+                            div.className = "bubble-anim";
+                            div.innerHTML = renderEmailUI(emailData);
+                            wrapper.appendChild(div);
+                            chatBox.appendChild(wrapper);
+                            scrollToBottom();
+                            return;
+                        } catch (e) {
+                            console.error("Failed to parse email JSON", e);
+                        }
+                    }
+                }
                 div.innerHTML = marked.parse(message);
             }
         }
@@ -133,11 +170,138 @@
     // FIRST BOT MESSAGE (GREETING)
     window.onload = function () {
         appendMessage(
-            "**Hello! I'm your Personal AI Assistant.**\n\nI can:\n- Check your active tasks\n- Extract data from your uploaded PDFs, Excels, or Docs\n- Check local Cosmos DB for product prices and items\n- Search the web for distributors, suppliers, and live prices\n\nHow can I help you today?",
+            "**Hello! I'm your Personal AI Assistant.**\n\nI can:\n- 📋 Check your active tasks from SharePoint\n- 📎 Analyze uploaded PDFs, Excels, Word Docs & CSVs\n- 🗄️ Check your internal Cosmos DB for product prices & items\n- 🌍 Search the web for distributors, suppliers, and live prices\n- ✉️ **Draft, edit, and send emails via Outlook** — just say *\"write an email to...\"*\n\nHow can I help you today?",
             "assistant",
             true
         );
     };
+
+    // ============================================================
+    // RENDER EMAIL DRAFT UI
+    // ============================================================
+    function renderEmailUI(emailData) {
+        const id = 'email_' + Date.now();
+        return `
+        <div id="${id}" class="email-card">
+            <div class="email-card-header">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="email-icon"><path d="M1.5 8.67v8.58a3 3 0 003 3h15a3 3 0 003-3V8.67l-8.928 5.493a3 3 0 01-3.144 0L1.5 8.67z"/><path d="M22.5 6.908V6.75a3 3 0 00-3-3h-15a3 3 0 00-3 3v.158l9.714 5.978a1.5 1.5 0 001.572 0L22.5 6.908z"/></svg>
+                <span class="email-card-title">Email Draft</span>
+                <div class="email-status-badge">AI Generated</div>
+            </div>
+            <div class="email-card-body">
+                <div class="email-field">
+                    <label class="email-label">To</label>
+                    <input type="email" class="email-input" id="${id}_to" value="${emailData.to || ''}" placeholder="recipient@email.com" />
+                </div>
+                <div class="email-field">
+                    <label class="email-label">Subject</label>
+                    <input type="text" class="email-input" id="${id}_subject" value="${(emailData.subject || '').replace(/"/g, '&quot;')}" placeholder="Subject" />
+                </div>
+                <div class="email-field">
+                    <label class="email-label">Body</label>
+                    <textarea class="email-textarea" id="${id}_body" rows="8">${emailData.body || ''}</textarea>
+                </div>
+            </div>
+            <div class="email-card-footer">
+                <button class="email-btn email-btn-copy" onclick="copyEmailDraft('${id}')">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="btn-icon"><path d="M7.5 3.375c0-1.036.84-1.875 1.875-1.875h.375a3.75 3.75 0 013.75 3.75v1.875C13.5 8.161 14.34 9 15.375 9h1.875A3.75 3.75 0 0121 12.75v3.375C21 17.16 20.16 18 19.125 18h-9.75A1.875 1.875 0 017.5 16.125V3.375z"/><path d="M15 5.25a5.23 5.23 0 00-1.279-3.434 9.768 9.768 0 016.963 6.963A5.23 5.23 0 0017.25 7.5h-1.875A.375.375 0 0115 7.125V5.25zM4.875 6H6v10.125A3.375 3.375 0 009.375 19.5H16.5v1.125c0 1.035-.84 1.875-1.875 1.875h-9.75A1.875 1.875 0 013 20.625V7.875C3 6.839 3.84 6 4.875 6z"/></svg>
+                    Copy
+                </button>
+                <button class="email-btn email-btn-regen" onclick="regenerateEmail('${id}')">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="btn-icon"><path fill-rule="evenodd" d="M4.755 10.059a7.5 7.5 0 0112.548-3.364l1.903 1.927H16.5a.75.75 0 010 1.5h-4.374a.75.75 0 01-.75-.75V5.998a.75.75 0 011.5 0v1.652l1.949-1.97a9 9 0 11-2.586 6.036.75.75 0 011.497.116A7.5 7.5 0 114.755 10.06z" clip-rule="evenodd"/></svg>
+                    Regenerate
+                </button>
+                <button class="email-btn email-btn-send" onclick="sendEmailDraft('${id}')">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="btn-icon"><path d="M3.478 2.405a.75.75 0 00-.926.94l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.405z"/></svg>
+                    Send via Outlook
+                </button>
+            </div>
+        </div>`;
+    }
+
+    // Copy draft to clipboard
+    function copyEmailDraft(id) {
+        const to = document.getElementById(id + '_to').value;
+        const subject = document.getElementById(id + '_subject').value;
+        const body = document.getElementById(id + '_body').value;
+        const text = `To: ${to}\nSubject: ${subject}\n\n${body}`;
+        navigator.clipboard.writeText(text).then(() => {
+            showEmailToast('📋 Email copied to clipboard!');
+        });
+    }
+
+    // Regenerate: populate the input with a prompt and send
+    function regenerateEmail(id) {
+        const subject = document.getElementById(id + '_subject').value;
+        messageInput.value = `Please regenerate the email about "${subject}" with any improvements or based on my feedback.`;
+        messageInput.focus();
+    }
+
+    // Show a confirmation popup before sending
+    async function sendEmailDraft(id) {
+        const to = document.getElementById(id + '_to').value.trim();
+        const subject = document.getElementById(id + '_subject').value.trim();
+        const body = document.getElementById(id + '_body').value.trim();
+
+        if (!to) { showEmailToast('⚠️ Please enter a recipient email address.', 'warn'); return; }
+
+        // Show custom confirm popup
+        const confirmed = await showSendConfirm(to, subject);
+        if (!confirmed) return;
+
+        try {
+            const res = await fetch('/api/send_email', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ to, subject, body })
+            });
+            const data = await res.json();
+            if (data.success) {
+                showEmailToast('✅ Email sent successfully via Outlook!');
+            } else {
+                showEmailToast('❌ Failed: ' + data.error, 'error');
+            }
+        } catch (err) {
+            showEmailToast('❌ Network error: ' + err.message, 'error');
+        }
+    }
+
+    // Toast notification
+    function showEmailToast(msg, type = 'success') {
+        const toast = document.createElement('div');
+        toast.className = 'email-toast ' + (type === 'error' ? 'toast-error' : type === 'warn' ? 'toast-warn' : 'toast-success');
+        toast.textContent = msg;
+        document.body.appendChild(toast);
+        setTimeout(() => toast.classList.add('show'), 10);
+        setTimeout(() => { toast.classList.remove('show'); setTimeout(() => toast.remove(), 300); }, 3500);
+    }
+
+    // Custom confirmation popup
+    function showSendConfirm(to, subject) {
+        return new Promise((resolve) => {
+            const overlay = document.createElement('div');
+            overlay.className = 'confirm-overlay';
+            overlay.innerHTML = `
+                <div class="confirm-box">
+                    <div class="confirm-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M1.5 8.67v8.58a3 3 0 003 3h15a3 3 0 003-3V8.67l-8.928 5.493a3 3 0 01-3.144 0L1.5 8.67z"/><path d="M22.5 6.908V6.75a3 3 0 00-3-3h-15a3 3 0 00-3 3v.158l9.714 5.978a1.5 1.5 0 001.572 0L22.5 6.908z"/></svg>
+                    </div>
+                    <h3 class="confirm-title">Send this Email?</h3>
+                    <p class="confirm-desc">This will be sent from your Outlook account to:</p>
+                    <div class="confirm-recipient">${to}</div>
+                    <p class="confirm-subject">Subject: <strong>${subject}</strong></p>
+                    <div class="confirm-actions">
+                        <button class="confirm-btn-cancel" id="confirmCancel">Cancel</button>
+                        <button class="confirm-btn-send" id="confirmSend">Yes, Send</button>
+                    </div>
+                </div>`;
+            document.body.appendChild(overlay);
+            setTimeout(() => overlay.classList.add('show'), 10);
+
+            document.getElementById('confirmSend').onclick = () => { overlay.remove(); resolve(true); };
+            document.getElementById('confirmCancel').onclick = () => { overlay.remove(); resolve(false); };
+        });
+    }
 
     async function sendMessage() {
         const message = messageInput.value.trim();
@@ -180,6 +344,7 @@
             });
 
             const data = await res.json();
+            clearInterval(loading._thinkingInterval);
             loading.remove();
             removePulsing(); // Stop floating
             
@@ -192,6 +357,7 @@
                 appendMessage("Error: " + data.error, "assistant");
             }
         } catch (err) {
+            clearInterval(loading._thinkingInterval);
             loading.remove();
             removePulsing(); // Stop floating
             appendMessage("Error connecting to server.", "assistant");
@@ -214,8 +380,26 @@
         wrapper.appendChild(avatar);
 
         const div = document.createElement("div");
-        div.classList.add("p-3", "rounded-xl", "inline-block", "bg-white", "mr-auto", "border", "border-gray-100");
-        div.innerHTML = `<span class="typing-dots"><span></span><span></span><span></span></span>`;
+        div.classList.add("p-3", "px-4", "rounded-xl", "inline-block", "bg-white", "mr-auto", "border", "border-gray-100");
+        
+        const thinkingSteps = [
+            "🧠 Thinking...",
+            "📎 Analyzing your request...",
+            "🗄️ Checking internal database...",
+            "🌍 Looking up information...",
+            "✍️ Drafting a response...",
+            "🔍 Processing context...",
+            "⚙️ Running tools...",
+        ];
+        let stepIdx = 0;
+        div.innerHTML = `<span class="thinking-status">${thinkingSteps[0]}</span>`;
+        const statusInterval = setInterval(() => {
+            stepIdx = (stepIdx + 1) % thinkingSteps.length;
+            const el = div.querySelector('.thinking-status');
+            if (el) el.textContent = thinkingSteps[stepIdx];
+        }, 1800);
+        // Store interval id so we can clear it when removing bubble
+        wrapper._thinkingInterval = statusInterval;
 
         wrapper.appendChild(div);
         chatBox.appendChild(wrapper);
@@ -315,28 +499,256 @@
         background: #555;
     }
 
-    /* Prose fixes for markdown container */
-    .prose ul {
-        list-style-type: disc;
-        margin-left: 1.5rem;
-    }
-
-    .prose ol {
-        list-style-type: decimal;
-        margin-left: 1.5rem;
-    }
-
-    .prose a {
-        color: #2563eb;
-        text-decoration: underline;
-    }
-
     .prose p {
         margin-bottom: 0.5rem;
     }
 
     .prose p:last-child {
         margin-bottom: 0;
+    }
+
+    /* Thinking status text */
+    .thinking-status {
+        font-size: 13px;
+        color: #6366f1;
+        font-weight: 500;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        animation: fadeStatus 0.4s ease;
+    }
+    @keyframes fadeStatus {
+        0% { opacity: 0; transform: translateY(3px); }
+        100% { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ============== EMAIL CARD ============== */
+    .email-card {
+        background: #fff;
+        border: 1px solid #e0e7ff;
+        border-radius: 16px;
+        overflow: hidden;
+        box-shadow: 0 4px 20px rgba(99,102,241,0.10);
+        min-width: 320px;
+        max-width: 100%;
+        font-family: inherit;
+    }
+    .email-card-header {
+        background: linear-gradient(135deg, #4f46e5, #7c3aed);
+        padding: 14px 18px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        color: #fff;
+    }
+    .email-icon {
+        width: 20px; height: 20px; flex-shrink: 0;
+    }
+    .email-card-title {
+        font-size: 15px; font-weight: 700; flex: 1;
+    }
+    .email-status-badge {
+        font-size: 11px;
+        background: rgba(255,255,255,0.2);
+        border-radius: 20px;
+        padding: 2px 10px;
+        letter-spacing: 0.03em;
+    }
+    .email-card-body {
+        padding: 16px 18px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        background: #f8f9ff;
+    }
+    .email-field {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+    .email-label {
+        font-size: 11px;
+        font-weight: 700;
+        color: #6366f1;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+    }
+    .email-input {
+        border: 1.5px solid #e0e7ff;
+        border-radius: 8px;
+        padding: 8px 12px;
+        font-size: 14px;
+        color: #1e1b4b;
+        background: #fff;
+        outline: none;
+        transition: border-color 0.2s;
+        width: 100%;
+        box-sizing: border-box;
+    }
+    .email-input:focus {
+        border-color: #6366f1;
+        box-shadow: 0 0 0 3px rgba(99,102,241,0.10);
+    }
+    .email-textarea {
+        border: 1.5px solid #e0e7ff;
+        border-radius: 8px;
+        padding: 10px 12px;
+        font-size: 14px;
+        color: #1e1b4b;
+        background: #fff;
+        outline: none;
+        transition: border-color 0.2s;
+        width: 100%;
+        box-sizing: border-box;
+        resize: vertical;
+        line-height: 1.6;
+        font-family: inherit;
+    }
+    .email-textarea:focus {
+        border-color: #6366f1;
+        box-shadow: 0 0 0 3px rgba(99,102,241,0.10);
+    }
+    .email-card-footer {
+        padding: 12px 18px;
+        background: #fff;
+        border-top: 1px solid #e0e7ff;
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+    }
+    .email-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 8px 16px;
+        border-radius: 8px;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        border: none;
+        transition: all 0.18s;
+    }
+    .btn-icon { width: 15px; height: 15px; }
+    .email-btn-copy {
+        background: #f0f0f5;
+        color: #4b5563;
+    }
+    .email-btn-copy:hover { background: #e0e7ff; color: #4f46e5; }
+    .email-btn-regen {
+        background: #fef3c7;
+        color: #92400e;
+    }
+    .email-btn-regen:hover { background: #fde68a; color: #78350f; }
+    .email-btn-send {
+        background: linear-gradient(135deg, #4f46e5, #7c3aed);
+        color: #fff;
+        margin-left: auto;
+    }
+    .email-btn-send:hover {
+        opacity: 0.92;
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(99,102,241,0.3);
+    }
+
+    /* ============== TOAST ============== */
+    .email-toast {
+        position: fixed;
+        bottom: 28px;
+        left: 50%;
+        transform: translateX(-50%) translateY(20px);
+        padding: 12px 26px;
+        border-radius: 12px;
+        font-size: 14px;
+        font-weight: 600;
+        color: #fff;
+        opacity: 0;
+        transition: all 0.3s;
+        z-index: 9999;
+        pointer-events: none;
+    }
+    .email-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+    .toast-success { background: #10b981; }
+    .toast-error   { background: #ef4444; }
+    .toast-warn    { background: #f59e0b; }
+
+    /* ============== CONFIRM POPUP ============== */
+    .confirm-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(30,27,75,0.45);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 10000;
+        opacity: 0;
+        transition: opacity 0.2s;
+        backdrop-filter: blur(3px);
+    }
+    .confirm-overlay.show { opacity: 1; }
+    .confirm-box {
+        background: #fff;
+        border-radius: 20px;
+        padding: 36px 32px 28px;
+        max-width: 380px;
+        width: 90%;
+        text-align: center;
+        box-shadow: 0 20px 50px rgba(99,102,241,0.25);
+    }
+    .confirm-icon {
+        width: 56px; height: 56px;
+        background: linear-gradient(135deg, #4f46e5, #7c3aed);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 16px;
+        color: #fff;
+    }
+    .confirm-icon svg { width: 26px; height: 26px; }
+    .confirm-title {
+        font-size: 20px; font-weight: 800; color: #1e1b4b; margin: 0 0 8px;
+    }
+    .confirm-desc { font-size: 14px; color: #6b7280; margin: 0 0 10px; }
+    .confirm-recipient {
+        background: #f0f0f5;
+        border-radius: 8px;
+        padding: 7px 14px;
+        font-size: 14px;
+        font-weight: 600;
+        color: #4f46e5;
+        margin-bottom: 8px;
+        word-break: break-all;
+    }
+    .confirm-subject { font-size: 13px; color: #6b7280; margin-bottom: 24px; }
+    .confirm-actions { display: flex; gap: 12px; }
+    .confirm-btn-cancel {
+        flex: 1;
+        padding: 11px;
+        border-radius: 10px;
+        border: 1.5px solid #e0e7ff;
+        background: #f9fafb;
+        color: #4b5563;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background 0.2s;
+    }
+    .confirm-btn-cancel:hover { background: #e0e7ff; }
+    .confirm-btn-send {
+        flex: 1;
+        padding: 11px;
+        border-radius: 10px;
+        border: none;
+        background: linear-gradient(135deg, #4f46e5, #7c3aed);
+        color: #fff;
+        font-size: 14px;
+        font-weight: 700;
+        cursor: pointer;
+        transition: opacity 0.2s, box-shadow 0.2s;
+    }
+    .confirm-btn-send:hover {
+        opacity: 0.92;
+        box-shadow: 0 4px 14px rgba(99,102,241,0.35);
     }
 </style>
 {% endblock %}

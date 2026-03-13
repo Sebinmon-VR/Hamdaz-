@@ -33,7 +33,7 @@ CLIENT_SECRET = os.getenv("CLIENT_SECRET")
 TENANT_ID = os.getenv("TENANT_ID")
 REDIRECT_URI = os.getenv("REDIRECT_URI")
 AUTHORITY = f"https://login.microsoftonline.com/{TENANT_ID}"
-SCOPE = ["User.Read"]
+SCOPE = ["User.Read", "Mail.Send", "Mail.ReadWrite"]
 
 SUPERUSERS = ["jishad@hamdaz.com", "hisham@hamdaz.com" , "sebin@hamdaz.com" , "sujeel@hamdaz.com","shibit@hamdaz.com", "althaf@hamdaz.com"]
 approvers = ["shibit@hamdaz.com", "althaf@hamdaz.com" ,"sebin@hamdaz.com" , "sujeel@hamdaz.com"]
@@ -78,8 +78,23 @@ print("[INIT] Data loaded successfully.")
 # HELPER FUNCTIONS
 # ==============================================================
 
-def is_admin(email):
-    return email.lower() in SUPERUSERS if email else False
+def is_admin(email_or_name):
+    if not email_or_name:
+        return False
+        
+    identifier_lower = email_or_name.lower().replace(" ", "")
+    
+    for superuser in SUPERUSERS:
+        # Check if it matches exactly the email, or just the portion before the @
+        superuser_email = superuser.lower()
+        superuser_name = superuser_email.split('@')[0].replace(" ", "")
+        
+        # If the provided name is part of the email prefix, consider it a match
+        # e.g., if identifier_lower is "jishad", it matches "jishad@hamdaz.com"
+        if identifier_lower == superuser_email or identifier_lower == superuser_name or identifier_lower in superuser_name:
+            return True
+            
+    return False
 
 def is_approver(email):
     return email.lower() in approvers if email else False
@@ -1245,6 +1260,8 @@ def pa_chat():
     email = user.get("mail") or user.get("userPrincipalName")
     username = user.get("displayName", "").replace(" ", "")
     
+    is_admin_user = is_admin(email)
+    
     message = request.form.get("message", "")
     files = request.files.getlist("files")
     
@@ -1282,7 +1299,7 @@ def pa_chat():
         pa_chat_histories[email] = []
         
     try:
-        reply = run_personal_assistant(username, message, files_text, pa_chat_histories[email])
+        reply = run_personal_assistant(username, message, files_text, pa_chat_histories[email], is_admin_user)
         
         pa_chat_histories[email].append({"role": "user", "content": message})
         pa_chat_histories[email].append({"role": "assistant", "content": reply})
@@ -1291,6 +1308,64 @@ def pa_chat():
     except Exception as e:
         import traceback
         return jsonify({"error": str(e) + "\n" + traceback.format_exc()}), 500
+
+# ==============================================================
+# MS GRAPH SEND EMAIL ROUTE
+# ==============================================================
+@app.route("/api/send_email", methods=["POST"])
+def send_email_api():
+    if "user" not in session or "access_token" not in session:
+        return jsonify({"success": False, "error": "Unauthorized. Please log in again."}), 401
+
+    try:
+        data = request.get_json()
+        to_email = data.get("to")
+        subject = data.get("subject")
+        body = data.get("body")
+
+        if not to_email or not subject or not body:
+            return jsonify({"success": False, "error": "Missing 'to', 'subject', or 'body' fields."}), 400
+
+        access_token = session["access_token"]
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json"
+        }
+
+        # Handle multiple recipients (comma-separated or list)
+        if isinstance(to_email, str):
+            to_recipients = [{"emailAddress": {"address": email.strip()}} for email in to_email.split(",")]
+        else:
+            to_recipients = [{"emailAddress": {"address": email.strip()}} for email in to_email]
+
+        email_data = {
+            "message": {
+                "subject": subject,
+                "body": {
+                    "contentType": "Text", # Send as plain text, or "HTML" if you prefer
+                    "content": body
+                },
+                "toRecipients": to_recipients
+            },
+            "saveToSentItems": "true"
+        }
+
+        response = requests.post(f"{GRAPH_API_ENDPOINT}/me/sendMail", headers=headers, json=email_data)
+        
+        if response.status_code == 202:
+            return jsonify({"success": True, "message": "Email sent successfully."})
+        else:
+            error_detail = ""
+            try:
+                error_detail = response.json().get("error", {}).get("message", response.text)
+            except Exception:
+                error_detail = response.text
+            print(f"[GRAPH EMAIL ERROR] Status: {response.status_code} | Detail: {error_detail}")
+            return jsonify({"success": False, "error": f"Graph API Error ({response.status_code}): {error_detail}"}), response.status_code
+
+    except Exception as e:
+        import traceback
+        return jsonify({"success": False, "error": str(e) + "\n" + traceback.format_exc()}), 500
 
 # ==============================================================
 

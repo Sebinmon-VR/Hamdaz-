@@ -10,15 +10,23 @@ SITE_DOMAIN = "hamdaz1.sharepoint.com"
 test_path = "/sites/Test"
 test_proposals_list = "testproposals"
 
-def get_my_tasks(username):
-    """Fetches tasks for the given username."""
+def get_user_tasks(current_username, is_admin_user=False, target_username=None):
+    """Fetches tasks from SharePoint."""
     try:
         tasks = fetch_sharepoint_list(SITE_DOMAIN, test_path, test_proposals_list)
-        # Filter logic similar to app.py
-        user_tasks = [t for t in tasks if t.get("AssignedTo", "").replace(" ", "") == username]
-        if not user_tasks:
-            return "No tasks found for the current user."
-        return json.dumps(user_tasks, default=str)
+        if is_admin_user:
+            if target_username and target_username.lower() != "all":
+                user_tasks = [t for t in tasks if str(t.get("AssignedTo", "")).replace(" ", "").lower() == target_username.lower()]
+                if not user_tasks:
+                    return f"No tasks found for user: {target_username}"
+                return json.dumps(user_tasks, default=str)
+            else:
+                return json.dumps(tasks, default=str)
+        else:
+            user_tasks = [t for t in tasks if str(t.get("AssignedTo", "")).replace(" ", "") == current_username]
+            if not user_tasks:
+                return "No tasks found for the current user."
+            return json.dumps(user_tasks, default=str)
     except Exception as e:
         return f"Error fetching tasks: {str(e)}"
 
@@ -49,11 +57,23 @@ def search_web(query):
     except Exception as e:
         return f"Error searching the web: {str(e)}"
 
-def run_personal_assistant(username, user_prompt, files_text="", chat_history=None):
+def run_personal_assistant(username, user_prompt, files_text="", chat_history=None, is_admin_user=False):
     if chat_history is None:
         chat_history = []
         
-    system_prompt = f"""You are a helpful, very efficient, and fast AI personal assistant for {username}.
+    if is_admin_user:
+        system_prompt = f"""You are a helpful, very efficient, and fast AI personal assistant for {username} (ADMIN).
+You are an ADMIN, which means you have access to data of ALL users. 
+You can help the user with queries, fetch ALL tasks of EVERYONE or specific users, analyze files, check prices in the local Cosmos DB, and search online.
+
+IMPORTANT INSTRUCTIONS FOR PRICES:
+If the user asks about the price or details of a product, you MUST FIRST use `search_cosmos_db` to check the local database. 
+If it is not in the database, or if you need to provide online alternatives/links/competitors, you MUST use `search_web` to find online prices and links.
+Do not hallucinate prices or links; clearly cite from web results if used.
+Return markdown formatting.
+"""
+    else:
+        system_prompt = f"""You are a helpful, very efficient, and fast AI personal assistant for {username}.
 Only data belonging to the current user ({username}) is accessible. 
 You can help the user with their queries, assist them in tasks, fetch their tasks, analyze files, check prices in the local Cosmos DB, and search online for distributors, suppliers, or online prices.
 
@@ -79,14 +99,18 @@ Return markdown formatting.
         {
             "type": "function",
             "function": {
-                "name": "get_my_tasks",
-                "description": "Get the current user's tasks from SharePoint.",
+                "name": "get_user_tasks",
+                "description": "Get tasks from SharePoint. If admin, can optionally specify a target_username or 'all'. Otherwise gets the current user's tasks.",
                 "parameters": {
                     "type": "object",
                     "properties": {
                         "username": {
                             "type": "string",
-                            "description": "The current username to fetch tasks for."
+                            "description": "The current username."
+                        },
+                        "target_username": {
+                            "type": "string",
+                            "description": "(Optional) If admin, the specific user's tasks to fetch. Leave empty or pass 'all' to get all tasks."
                         }
                     },
                     "required": ["username"]
@@ -126,9 +150,33 @@ Return markdown formatting.
                     "required": ["query"]
                 }
             }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "draft_email",
+                "description": "Draft an email based on the user's request. Always use this when the user asks to write, draft, or compose an email.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "subject": {
+                            "type": "string",
+                            "description": "The subject line of the email."
+                        },
+                        "body": {
+                            "type": "string",
+                            "description": "The body content of the email. Best formatted in plain text or simple markdown."
+                        },
+                        "to_recipients": {
+                            "type": "string",
+                            "description": "The recipient's email address. If unknown, leave empty or use a placeholder."
+                        }
+                    },
+                    "required": ["subject", "body", "to_recipients"]
+                }
+            }
         }
     ]
-
     try:
         openai.api_key = os.getenv("OPENAI_API_KEY")
         response = openai.ChatCompletion.create(
@@ -151,12 +199,24 @@ Return markdown formatting.
                 function_name = tool_call.function.name
                 function_args = json.loads(tool_call.function.arguments)
                 
-                if function_name == "get_my_tasks":
-                    function_response = get_my_tasks(username)
+                if function_name == "get_user_tasks":
+                    target_username = function_args.get("target_username")
+                    function_response = get_user_tasks(username, is_admin_user, target_username)
                 elif function_name == "search_cosmos_db":
                     function_response = search_cosmos_db(function_args.get("query"))
                 elif function_name == "search_web":
                     function_response = search_web(function_args.get("query"))
+                elif function_name == "draft_email":
+                    # For draft email, we want to return a specific JSON payload back to the frontend
+                    # without calling another OpenAI completion, so we just return the payload directly
+                    # prefixed with a special tag so the frontend knows how to parse it.
+                    function_response = json.dumps({
+                        "type": "email_draft",
+                        "subject": function_args.get("subject"),
+                        "body": function_args.get("body"),
+                        "to": function_args.get("to_recipients")
+                    })
+                    return f"EMAIL_DRAFT_START\n{function_response}\nEMAIL_DRAFT_END"
                 else:
                     function_response = "Unknown function"
                     
