@@ -41,6 +41,8 @@ docx2pdf==0.1.8
 
 pinecone == 7.3.0
 
+duckduckgo-search==5.3.1b1
+
 # pythoncom == 227
 
 # pywin32

@@ -20,6 +20,7 @@ from pinecone import Pinecone, ServerlessSpec
 from uuid import uuid4
 # from openai import OpenAI
 from assistant import *
+import docx
 # ================== LOAD ENVIRONMENT ==================
 load_dotenv(override=True)
 
@@ -1221,6 +1222,77 @@ def ask_chatbot():
         return jsonify({"error": str(e)}), 500
 # ...existing code...
 # ==============================================================
+pa_chat_histories = {}
+
+@app.route("/personal_assistant")
+def personal_assistant_page():
+    if "user" not in session:
+        return redirect(url_for("login"))
+    user = session["user"]
+    email = user.get("mail") or user.get("userPrincipalName")
+    
+    if email not in pa_chat_histories:
+        pa_chat_histories[email] = []
+        
+    return render_template("pages/personal_assistant.html", user=user)
+
+@app.route("/api/personal_assistant/chat", methods=["POST"])
+def pa_chat():
+    if "user" not in session:
+        return jsonify({"error": "Unauthorized"}), 401
+        
+    user = session["user"]
+    email = user.get("mail") or user.get("userPrincipalName")
+    username = user.get("displayName", "").replace(" ", "")
+    
+    message = request.form.get("message", "")
+    files = request.files.getlist("files")
+    
+    files_text = ""
+    if files:
+        for f in files:
+            if not f.filename:
+                continue
+            ext = f.filename.rsplit('.', 1)[-1].lower() if '.' in f.filename else ''
+            file_bytes = f.read()
+            if not file_bytes:
+                continue
+                
+            files_text += f"\n--- {f.filename} ---\n"
+            try:
+                if ext == 'pdf':
+                    reader = PyPDF2.PdfReader(io.BytesIO(file_bytes))
+                    for page in reader.pages:
+                        files_text += (page.extract_text() or "") + "\n"
+                elif ext in ['xlsx', 'xls']:
+                    df_file = pd.read_excel(io.BytesIO(file_bytes))
+                    files_text += df_file.to_markdown(index=False) + "\n"
+                elif ext == 'csv':
+                    df_file = pd.read_csv(io.BytesIO(file_bytes))
+                    files_text += df_file.to_markdown(index=False) + "\n"
+                elif ext == 'docx':
+                    doc = docx.Document(io.BytesIO(file_bytes))
+                    files_text += "\n".join([p.text for p in doc.paragraphs]) + "\n"
+                elif ext == 'txt':
+                    files_text += file_bytes.decode('utf-8') + "\n"
+            except Exception as e:
+                files_text += f"[Error reading file: {str(e)}]\n"
+
+    if email not in pa_chat_histories:
+        pa_chat_histories[email] = []
+        
+    try:
+        reply = run_personal_assistant(username, message, files_text, pa_chat_histories[email])
+        
+        pa_chat_histories[email].append({"role": "user", "content": message})
+        pa_chat_histories[email].append({"role": "assistant", "content": reply})
+        
+        return jsonify({"reply": reply})
+    except Exception as e:
+        import traceback
+        return jsonify({"error": str(e) + "\n" + traceback.format_exc()}), 500
+
+# ==============================================================
 
 # ==============================================================
 
@@ -1721,18 +1793,16 @@ def assist():
     print(f"User {user_name} has {len(user_items)} assigned items.", flush=True)
     
     return render_template("assist.html", user=user, tasks=user_items)
-    
 
-
-
-
-
-
-   
-    
+@app.route("/line_items")
+def line_items():
+    if "user" not in session:
+        return redirect(url_for("login"))
+    user = session.get("user")
+    return render_template("line_items.html", user=user)
 
 # ==============================================================
-# START FLASK + BACKGROUND UPDATER
+# START FLASK + BACKGROUND UPDATER``
 # ==============================================================
 threading.Thread(target=background_updater, daemon=True).start()
 

@@ -48,7 +48,10 @@
             </div>
 
             <div class="mini-overlay">
-                <button class="quick-view">Open<span class="material-symbols-outlined">open_in_new_down</span> </button>
+                <a href="{{ url_for('assis_task_detail', task_id=task.id , task_title=task.Title ) }}" class="quick-view">
+                    Open
+                    <span class="material-symbols-outlined">open_in_new_down</span>
+                </a>
             </div>
         </div>
         {% endfor %}
@@ -247,6 +250,7 @@
         opacity: 1;
 
     }
+
     .mini-overlay button {
         display: flex;
         align-items: center;
@@ -254,6 +258,7 @@
         font-size: 15px;
 
     }
+
     .quick-view {
         background: var(--accent);
         color: white;

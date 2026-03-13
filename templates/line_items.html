@@ -1,0 +1,64 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container mt-5">
+    <h1 class="text-center mb-4">Line Items</h1>
+    <div class="row mb-3">
+        <div class="col-md-6">
+            <input type="text" id="searchInput" class="form-control" placeholder="Search for items...">
+        </div>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-bordered table-hover">
+            <thead class="thead-dark">
+                <tr>
+                    <th scope="col">Item</th>
+                    <th scope="col">Rate</th>
+                </tr>
+            </thead>
+            <tbody id="itemsTable">
+                <!-- Items will be loaded here -->
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const searchInput = document.getElementById('searchInput');
+    const itemsTable = document.getElementById('itemsTable');
+    let items = [];
+
+    // Fetch items from the backend
+    fetch('/get_line_items')
+        .then(response => response.json())
+        .then(data => {
+            items = data;
+            renderTable(items);
+        });
+
+    function renderTable(itemsToRender) {
+        itemsTable.innerHTML = '';
+        if (itemsToRender.length === 0) {
+            itemsTable.innerHTML = '<tr><td colspan="2" class="text-center">No items found</td></tr>';
+            return;
+        }
+        itemsToRender.forEach(item => {
+            const row = `<tr>
+                <td>${item.name}</td>
+                <td>${item.rate}</td>
+            </tr>`;
+            itemsTable.innerHTML += row;
+        });
+    }
+
+    searchInput.addEventListener('keyup', function() {
+        const searchTerm = searchInput.value.toLowerCase();
+        const filteredItems = items.filter(item => {
+            return item.name.toLowerCase().includes(searchTerm) || item.rate.toString().toLowerCase().includes(searchTerm);
+        });
+        renderTable(filteredItems);
+    });
+});
+</script>
+{% endblock %}
