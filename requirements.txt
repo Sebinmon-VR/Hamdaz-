@@ -48,5 +48,5 @@ duckduckgo-search==5.3.1b1
 # pywin32
 
 
-azure-cosmos
-python-docx
+azure-cosmos ==  4.15.0
+python-docx == 1.2.0
