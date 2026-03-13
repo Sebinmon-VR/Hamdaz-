@@ -46,3 +46,6 @@ duckduckgo-search==5.3.1b1
 # pythoncom == 227
 
 # pywin32
+
+azure-cosmos
+python-docx
