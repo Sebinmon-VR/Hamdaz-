@@ -33,7 +33,7 @@ CLIENT_SECRET = os.getenv("CLIENT_SECRET")
 TENANT_ID = os.getenv("TENANT_ID")
 REDIRECT_URI = os.getenv("REDIRECT_URI")
 AUTHORITY = f"https://login.microsoftonline.com/{TENANT_ID}"
-SCOPE = ["User.Read", "Mail.Send", "Mail.ReadWrite"]
+SCOPE = ["User.Read"]
 
 SUPERUSERS = ["jishad@hamdaz.com", "hisham@hamdaz.com" , "sebin@hamdaz.com" , "sujeel@hamdaz.com","shibit@hamdaz.com", "althaf@hamdaz.com"]
 approvers = ["shibit@hamdaz.com", "althaf@hamdaz.com" ,"sebin@hamdaz.com" , "sujeel@hamdaz.com"]
@@ -1326,9 +1326,29 @@ def send_email_api():
         if not to_email or not subject or not body:
             return jsonify({"success": False, "error": "Missing 'to', 'subject', or 'body' fields."}), 400
 
-        access_token = session["access_token"]
+        # Acquire a token specifically for Mail.Send using MSAL On-Behalf-Of flow
+        # This requires admin consent to be granted in Azure Portal first
+        user_token = session.get("access_token")
+        if not user_token:
+            return jsonify({"success": False, "error": "Session expired. Please log in again."}), 401
+
+        mail_token_result = msal_app.acquire_token_on_behalf_of(
+            user_assertion=user_token,
+            requested_scopes=["Mail.Send"]
+        )
+
+        if "access_token" not in mail_token_result:
+            error_msg = mail_token_result.get("error_description", mail_token_result.get("error", "Unknown error"))
+            print(f"[MAIL TOKEN ERROR] {error_msg}")
+            # If OBO fails (e.g. admin consent not yet granted), fallback to session token
+            mail_access_token = user_token
+            print("[MAIL TOKEN] Falling back to session token — ensure admin consent is granted in Azure Portal.")
+        else:
+            mail_access_token = mail_token_result["access_token"]
+            print("[MAIL TOKEN] Successfully acquired Mail.Send token via OBO.")
+
         headers = {
-            "Authorization": f"Bearer {access_token}",
+            "Authorization": f"Bearer {mail_access_token}",
             "Content-Type": "application/json"
         }
 
@@ -1342,7 +1362,7 @@ def send_email_api():
             "message": {
                 "subject": subject,
                 "body": {
-                    "contentType": "Text", # Send as plain text, or "HTML" if you prefer
+                    "contentType": "Text",
                     "content": body
                 },
                 "toRecipients": to_recipients
@@ -1351,7 +1371,7 @@ def send_email_api():
         }
 
         response = requests.post(f"{GRAPH_API_ENDPOINT}/me/sendMail", headers=headers, json=email_data)
-        
+
         if response.status_code == 202:
             return jsonify({"success": True, "message": "Email sent successfully."})
         else:
