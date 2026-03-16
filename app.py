@@ -21,6 +21,7 @@ from uuid import uuid4
 # from openai import OpenAI
 from assistant import *
 import docx
+from cosmos import get_user_sessions, get_session_messages, save_session_message, delete_session
 # ================== LOAD ENVIRONMENT ==================
 load_dotenv(override=True)
 
@@ -33,7 +34,7 @@ CLIENT_SECRET = os.getenv("CLIENT_SECRET")
 TENANT_ID = os.getenv("TENANT_ID")
 REDIRECT_URI = os.getenv("REDIRECT_URI")
 AUTHORITY = f"https://login.microsoftonline.com/{TENANT_ID}"
-SCOPE = ["User.Read"]
+SCOPE = ["User.Read", "Mail.Send"]
 
 SUPERUSERS = ["jishad@hamdaz.com", "hisham@hamdaz.com" , "sebin@hamdaz.com" , "sujeel@hamdaz.com","shibit@hamdaz.com", "althaf@hamdaz.com"]
 approvers = ["shibit@hamdaz.com", "althaf@hamdaz.com" ,"sebin@hamdaz.com" , "sujeel@hamdaz.com"]
@@ -183,7 +184,7 @@ def background_updater():
             # print("Indexing tasks to PineCone")
             # index_tasks()    # Update indexing for Pinecone  
             print(f"[BG] Data updated successfully at {datetime.now()}", flush=True)
-
+            
         except Exception as e:
             print("[BG] Error during update:", e)
 
@@ -288,7 +289,7 @@ def index():
                 t for t in user_analytics_specific['OngoingTasks']
                 if pd.to_datetime(t['BCD']).date() == now_utc.date()
             ]),
-            user_flag_data=user_flag_data
+            user_flag_data=user_flag_data, 
         )
     return render_template("login.html")
 
@@ -924,332 +925,45 @@ def approvals():
     return render_template("pages/quote_decision.html", user=user, quote_items=quote_items)
 
 # ==============================================================
-# Global chat histories
-chat_histories = {}
 
-# Helper to get tasks for a user
-def get_tasks_for_user(username):
-    now_utc = pd.Timestamp.utcnow()
-    user_tasks = [t for t in tasks if t.get("AssignedTo", "").replace(" ", "") == username]
-    return user_tasks
-
-
-# ============================================================================
-# HELPER FUNCTIONS FOR RAG
-# ============================================================================
-def get_embeddings_batch(texts):
-    """Batch embed texts (10-100x faster than individual calls)"""
-    if not texts:
-        return []
-    
-    all_embeddings = []
-    for i in range(0, len(texts), 2048):  # OpenAI limit: 2048 texts/request
-        batch = texts[i:i+2048]
-        response = openai.Embedding.create(model="text-embedding-ada-002", input=batch)
-        all_embeddings.extend([item['embedding'] for item in response['data']])
-    
-    return all_embeddings
-
-
-def get_embedding(text):
-    """Single text embedding (use batch version when possible)"""
-    return openai.Embedding.create(model="text-embedding-ada-002", input=text)['data'][0]['embedding']
-
-
-
-def upsert_tasks_to_pinecone(tasks, is_admin, period_type="month"):
-    """Index tasks + analytics into Pinecone - only update when data changed."""
-    pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
-    index = pc.Index("hamdaz")
-
-    all_items = []   # (id, text, metadata)
-
-    # -------------------------------
-    # 1. BUILD TASKS + ANALYTICS LIST
-    # -------------------------------
-    if is_admin:
-        overall_analytics, per_user_analytics = get_analytics_data(df, period_type='all')
-        period_analytics, period_per_user = get_analytics_data(df, period_type=period_type)
-
-        analytics_text = json.dumps({
-            "overall_analytics": overall_analytics,
-            "per_user_analytics": per_user_analytics,
-            "period_analytics": period_analytics,
-            "period_per_user": period_per_user
-        }, indent=2)
-
-        all_items.append((
-            f"analytics-{period_type}",
-            analytics_text,
-            {
-                "type": "analytics",
-                "period_type": str(period_type),
-                "text": analytics_text[:40000]
-            }
-        ))
-
-    for task in tasks:
-        task_text = json.dumps(task, default=str)
-        assigned_to = task.get("AssignedTo", "").replace(" ", "")
-        task_id = task.get("id") or task.get("ID") or task.get("TaskID") or str(uuid4())
-
-        all_items.append((
-            f"task-{task_id}",
-            task_text,
-            {
-                "type": "task",
-                "assigned_to": str(assigned_to),
-                "is_admin": bool(is_admin),
-                "full_task": task_text
-            }
-        ))
-
-    # Gather all ids we need to check
-    ids = [item[0] for item in all_items]
-
-    # -------------------------------------
-    # 2. FETCH EXISTING RECORDS FROM INDEX
-    # -------------------------------------
-    existing = index.fetch(ids).vectors
-    print(f"Fetched {len(existing)} existing records.", flush=True)
-
-    # -------------------------------------
-    # 3. DETERMINE WHICH ITEMS CHANGED
-    # -------------------------------------
-    to_embed = []
-    to_upsert = []
-
-    for item_id, text, metadata in all_items:
-        old = existing.get(item_id)
-
-        if not old:
-            # New record — must embed and upsert
-            to_embed.append((item_id, text, metadata))
-            continue
-
-        old_meta = old.metadata or {}
-
-        old_text = old_meta.get("full_task") or old_meta.get("text") or None
-
-
-        if old_text != text:
-            # content changed → regenerate embedding and upsert
-            to_embed.append((item_id, text, metadata))
-        else:
-            # content is identical → SKIP
-            pass
-
-    print(f"🔥 Records changed: {len(to_embed)-1}", flush=True)
-
-    if not to_embed:
-        print("✅ No changes detected — nothing to upsert.", flush=True)
-        return True
-
-    # -------------------------------------
-    # 4. BATCH GENERATE EMBEDDINGS
-    # -------------------------------------
-    texts = [x[1] for x in to_embed]
-    new_embeddings = get_embeddings_batch(texts)
-
-    # -------------------------------------
-    # 5. BUILD UPSERT PAYLOAD
-    # -------------------------------------
-    for (item_id, text, metadata), embed in zip(to_embed, new_embeddings):
-        to_upsert.append({
-            "id": item_id,
-            "values": embed,
-            "metadata": metadata
-        })
-
-    # -------------------------------------
-    # 6. BATCH UPSERT ONLY CHANGED ITEMS
-    # -------------------------------------
-    batch_size = 100
-    for i in range(0, len(to_upsert), batch_size):
-        index.upsert(vectors=to_upsert[i:i+batch_size])
-        print(f"  ↳ Upserted batch {i//batch_size + 1}", flush=True)
-
-    print(f"✅ Completed upsert of {len(to_upsert)} changed items.", flush=True)
-    return True
-
-def query_relevant_data(user_query, username, is_admin, top_k=10):
-    """Query Pinecone for relevant tasks and analytics"""
-    query_embedding = get_embedding(user_query)
-    
-    # Admin sees all, users see only their tasks
-    filter_dict = None if is_admin else {"assigned_to": username, "type": "task"}
-    pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
-    index = pc.Index("hamdaz")
-    results = index.query(
-        vector=query_embedding,
-        top_k=top_k,
-        include_metadata=True,
-        filter=filter_dict
-    )
-    
-    tasks, analytics = [], []
-    
-    for match in results.get('matches', []):
-        meta = match.get('metadata', {})
-        
-        if meta.get('type') == 'task':
-            task_info = {
-                "score": match['score'],
-                "task": json.loads(meta.get('full_task', '{}'))
-            }
-            tasks.append(task_info)
-                
-        elif meta.get('type') == 'analytics':
-            analytics.append({
-                "score": match['score'],
-                "analytics": json.loads(meta.get('text', '{}'))
-            })
-    
-    return tasks, analytics 
-
-@app.route("/chatbot")
-def chatbot():
-    if "user" not in session:
-        return redirect(url_for("login"))
-    
-    user = session["user"]
-    email = user.get("mail") or user.get("userPrincipalName")
-
-    # Initialize chat history if not exists
-    if email not in chat_histories:
-        chat_histories[email] = [{"role": "system", "content": "You are a helpful assistant."}]
-    
-    return render_template("pages/chatbot.html", user=user)
-
-
-def index_tasks():
-    """
-    Index all tasks to Pinecone (called from background updater).
-    """
-    try:
-        print("[BG] 🔄 Indexing tasks to Pinecone...", flush=True)
-        
-        print(f"[BG] 📊 Indexing {len(tasks)} tasks...", flush=True)
-        
-        # Use a system email for background indexing
-        # system_email = "system@hamdaz.com"
-        
-        # Index all tasks as admin
-        upsert_tasks_to_pinecone(tasks, is_admin=True)
-        
-        print(f"[BG] ✅ Successfully indexed {len(tasks)} tasks", flush=True)
-        return True
-        
-    except Exception as e:
-        print(f"[BG] ❌ Error indexing tasks: {e}", flush=True)
-        import traceback
-        traceback.print_exc()
-        return False
-# ...existing code...
-@app.route("/chatbot/ask", methods=["POST"])
-def ask_chatbot():
-    if "user" not in session:
-        return jsonify({"error": "Unauthorized"}), 401
-
-    user = session["user"]
-    email = user.get("mail") or user.get("userPrincipalName")
-    username = user.get("displayName", "").replace(" ", "")
-    is_admin_user = is_admin(email)
-    
-    user_prompt = request.json.get("message", "")
-    period_type = request.json.get("period", "month")
-
-    try:
-        # 1) Try semantic retrieval from Pinecone
-        tasks, analytics = query_relevant_data(
-            user_prompt, username, is_admin_user, top_k=200
-        )
-
-        # 2) FALLBACK for non-admins: if Pinecone returned no tasks, load directly from SharePoint/global cache
-        if not is_admin_user and (not tasks or len(tasks) == 0):
-            print("[CHATBOT] Pinecone returned no matches — falling back to SharePoint tasks for user", flush=True)
-            sp_tasks = get_tasks_for_user(username)
-            tasks = [{"score": 1.0, "task": t} for t in sp_tasks] if sp_tasks else []
-
-        # 3) Build contextual system prompt
-        if is_admin_user:
-            # Admin: include analytics + all matched tasks
-            if analytics:
-                analytics_data = analytics[0].get('analytics', {})
-                per_user_analytics = analytics_data.get('per_user_analytics', {})
-            else:
-                _, per_user_analytics = get_analytics_data(df, period_type='all')
-
-            tasks_list = [t['task'] for t in tasks] if tasks else []
-            context = (
-                f"ADMIN CONTEXT\n\n"
-                f"Analytics (per user):\n{json.dumps(per_user_analytics, default=str)}\n\n"
-                f"Matched Tasks:\n{json.dumps(tasks_list, default=str)}\n\n"
-                "You may use the analytics and tasks above to answer the user's question. asosciate the data properly for better"
-            )
-        else:
-            # Non-admin: MUST answer only from the user's tasks. If no tasks, explicitly state cannot answer.
-            if tasks:
-                context = (
-                    f"USER: {username}\n\n"
-                    f"Use ONLY the following tasks to answer the question. Do NOT use any external knowledge.\n\n"
-                    f"{json.dumps([t['task'] for t in tasks], default=str)}\n\n"
-                    "INSTRUCTIONS: Answer ONLY using the information above. If the question cannot be answered from this data, reply exactly: \"I don't know based on available data.\" Keep the answer concise."
-                )
-            else:
-                context = (
-                    f"USER: {username}\n\n"
-                    "No task data is available for this user. You must reply: \"I don't know based on available data.\""
-                )
-
-        # 4) Compose messages and call model
-        messages = [{"role": "system", "content": context}]
-        last_summary = session.get(f"{email}_last_summary")
-        if last_summary:
-            messages.append({"role": "system", "content": f"Previous: {last_summary}"})
-        messages.append({"role": "user", "content": user_prompt})
-
-        response = openai.ChatCompletion.create(
-            model="gpt-4o",
-            messages=messages,
-            temperature=0.0,   # deterministic answers when relying on data
-            max_tokens=8000
-        )
-        reply = response.choices[0].message.content.strip()
-
-        # 5) Short summary for session memory
-        summary_resp = openai.ChatCompletion.create(
-            model="gpt-4o",
-            messages=[
-                {"role": "system", "content": "Summarize in 1 sentence."},
-                {"role": "user", "content": f"User: {user_prompt}\nAssistant: {reply}"}
-            ],
-            temperature=0.0,
-            max_tokens=60
-        )
-        summary = summary_resp.choices[0].message.content.strip()
-        session[f"{email}_last_summary"] = summary
-
-        return jsonify({"reply": reply, "summary": summary})
-
-    except Exception as e:
-        print(f"❌ Error in ask_chatbot: {e}", flush=True)
-        return jsonify({"error": str(e)}), 500
-# ...existing code...
 # ==============================================================
-pa_chat_histories = {}
+pa_chat_histories = {} 
+# Note: pa_chat_histories is now legacy, using Cosmos DB instead
 
 @app.route("/personal_assistant")
 def personal_assistant_page():
     if "user" not in session:
         return redirect(url_for("login"))
     user = session["user"]
+    return render_template("pages/personal_assistant.html", user=user)
+
+@app.route("/api/personal_assistant/sessions", methods=["GET"])
+def pa_get_sessions():
+    if "user" not in session:
+        return jsonify({"error": "Unauthorized"}), 401
+    user = session["user"]
     email = user.get("mail") or user.get("userPrincipalName")
     
-    if email not in pa_chat_histories:
-        pa_chat_histories[email] = []
-        
-    return render_template("pages/personal_assistant.html", user=user)
+    sessions = get_user_sessions(email)
+    return jsonify({"sessions": sessions})
+
+@app.route("/api/personal_assistant/sessions/<session_id>", methods=["GET"])
+def pa_get_session(session_id):
+    if "user" not in session:
+        return jsonify({"error": "Unauthorized"}), 401
+    messages = get_session_messages(session_id)
+    if messages is None:
+        return jsonify({"error": "Session not found"}), 404
+    return jsonify({"messages": messages})
+
+@app.route("/api/personal_assistant/sessions/<session_id>", methods=["DELETE"])
+def pa_delete_session(session_id):
+    if "user" not in session:
+        return jsonify({"error": "Unauthorized"}), 401
+    success = delete_session(session_id)
+    if success:
+        return jsonify({"success": True})
+    return jsonify({"error": "Delete failed"}), 500
 
 @app.route("/api/personal_assistant/chat", methods=["POST"])
 def pa_chat():
@@ -1263,6 +977,7 @@ def pa_chat():
     is_admin_user = is_admin(email)
     
     message = request.form.get("message", "")
+    session_id = request.form.get("session_id", "")
     files = request.files.getlist("files")
     
     files_text = ""
@@ -1277,6 +992,8 @@ def pa_chat():
                 
             files_text += f"\n--- {f.filename} ---\n"
             try:
+                import PyPDF2
+                import io
                 if ext == 'pdf':
                     reader = PyPDF2.PdfReader(io.BytesIO(file_bytes))
                     for page in reader.pages:
@@ -1295,16 +1012,37 @@ def pa_chat():
             except Exception as e:
                 files_text += f"[Error reading file: {str(e)}]\n"
 
-    if email not in pa_chat_histories:
-        pa_chat_histories[email] = []
+    # Get chat history from Cosmos DB
+    chat_history = []
+    print(f"[PA_CHAT] session_id received: '{session_id}'", flush=True)
+    if session_id and session_id not in ("", "null", "undefined"):
+        msgs = get_session_messages(session_id)
+        if msgs:
+            chat_history = msgs
+            print(f"[PA_CHAT] Loaded {len(chat_history)} messages from session {session_id}", flush=True)
+        else:
+            print(f"[PA_CHAT] No messages found for session {session_id} (new or empty session)", flush=True)
+    else:
+        print("[PA_CHAT] No session_id — starting fresh conversation", flush=True)
+            
+    # Save user message to Cosmos
+    title = message[:40].strip() + ("..." if len(message) > 40 else "") if message else "Chat with Assistant"
+    # Only set title on the FIRST message (when session_id is empty — new session)
+    first_message = not session_id or session_id in ("", "null", "undefined")
+    if not first_message:
+        title = None  # Don't override existing session title
         
+    print(f"[PA_CHAT] Saving user message. title={title}, first_message={first_message}", flush=True)
+    generated_session_id = save_session_message(session_id, email, "user", message, title=title)
+    print(f"[PA_CHAT] Generated/Updated session_id: {generated_session_id}", flush=True)
+    
     try:
-        reply = run_personal_assistant(username, message, files_text, pa_chat_histories[email], is_admin_user)
+        reply = run_personal_assistant(username, message, files_text, chat_history, is_admin_user)
         
-        pa_chat_histories[email].append({"role": "user", "content": message})
-        pa_chat_histories[email].append({"role": "assistant", "content": reply})
+        # Save assistant reply to Cosmos
+        save_session_message(generated_session_id, email, "assistant", reply)
         
-        return jsonify({"reply": reply})
+        return jsonify({"reply": reply, "session_id": generated_session_id})
     except Exception as e:
         import traceback
         return jsonify({"error": str(e) + "\n" + traceback.format_exc()}), 500
@@ -1326,29 +1064,15 @@ def send_email_api():
         if not to_email or not subject or not body:
             return jsonify({"success": False, "error": "Missing 'to', 'subject', or 'body' fields."}), 400
 
-        # Acquire a token specifically for Mail.Send using MSAL On-Behalf-Of flow
-        # This requires admin consent to be granted in Azure Portal first
-        user_token = session.get("access_token")
-        if not user_token:
+        # Use the session access token directly (must have Mail.Send scope)
+        # This works after admin grants Mail.Send consent in Azure Portal
+        # and user re-logs in to get a fresh token with Mail.Send.
+        access_token = session.get("access_token")
+        if not access_token:
             return jsonify({"success": False, "error": "Session expired. Please log in again."}), 401
 
-        mail_token_result = msal_app.acquire_token_on_behalf_of(
-            user_assertion=user_token,
-            requested_scopes=["Mail.Send"]
-        )
-
-        if "access_token" not in mail_token_result:
-            error_msg = mail_token_result.get("error_description", mail_token_result.get("error", "Unknown error"))
-            print(f"[MAIL TOKEN ERROR] {error_msg}")
-            # If OBO fails (e.g. admin consent not yet granted), fallback to session token
-            mail_access_token = user_token
-            print("[MAIL TOKEN] Falling back to session token — ensure admin consent is granted in Azure Portal.")
-        else:
-            mail_access_token = mail_token_result["access_token"]
-            print("[MAIL TOKEN] Successfully acquired Mail.Send token via OBO.")
-
         headers = {
-            "Authorization": f"Bearer {mail_access_token}",
+            "Authorization": f"Bearer {access_token}",
             "Content-Type": "application/json"
         }
 

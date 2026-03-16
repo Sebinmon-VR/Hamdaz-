@@ -3,6 +3,7 @@ import json
 import openai
 from duckduckgo_search import DDGS
 import pandas as pd
+from datetime import datetime
 from cosmos import search_quotes_by_item
 from sharepoint_items import fetch_sharepoint_list
 
@@ -60,7 +61,16 @@ def search_web(query):
 def run_personal_assistant(username, user_prompt, files_text="", chat_history=None, is_admin_user=False):
     if chat_history is None:
         chat_history = []
+    
+    print(f"[PA] run_personal_assistant called. Username={username}, History length={len(chat_history)}, Files={'yes' if files_text else 'no'}", flush=True)
+    if chat_history:
+        print(f"[PA] Last history message: role={chat_history[-1].get('role')}, content={str(chat_history[-1].get('content'))[:80]}...", flush=True)
+    else:
+        print("[PA] No chat history — this is a fresh conversation turn.", flush=True)
         
+    current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    time_context = f"\n\nCURRENT DATE AND TIME: {current_time}. Use this to answer any time-related queries accurately."
+
     if is_admin_user:
         system_prompt = f"""You are a helpful, very efficient, and fast AI personal assistant for {username} (ADMIN).
 You are an ADMIN, which means you have access to data of ALL users. 
@@ -71,6 +81,7 @@ If the user asks about the price or details of a product, you MUST FIRST use `se
 If it is not in the database, or if you need to provide online alternatives/links/competitors, you MUST use `search_web` to find online prices and links.
 Do not hallucinate prices or links; clearly cite from web results if used.
 Return markdown formatting.
+{time_context}
 """
     else:
         system_prompt = f"""You are a helpful, very efficient, and fast AI personal assistant for {username}.
@@ -82,18 +93,22 @@ If the user asks about the price or details of a product, you MUST FIRST use `se
 If it is not in the database, or if you need to provide online alternatives/links/competitors, you MUST use `search_web` to find online prices and links.
 Do not hallucinate prices or links; clearly cite from web results if used.
 Return markdown formatting.
+{time_context}
 """
 
     if files_text:
+        print(f"[PA] File context added ({len(files_text)} chars)", flush=True)
         system_prompt += f"\nFile Contents Context (user uploaded these for you to analyze):\n{files_text}\n"
 
     messages = [{"role": "system", "content": system_prompt}]
     
-    # append chat history
+    # Append chat history — only role and content (no timestamp fields)
     for msg in chat_history:
-        messages.append(msg)
+        cleaned = {"role": msg["role"], "content": msg["content"]}
+        messages.append(cleaned)
         
     messages.append({"role": "user", "content": user_prompt})
+    print(f"[PA] Total messages sent to OpenAI: {len(messages)} (1 system + {len(chat_history)} history + 1 user)", flush=True)
 
     tools = [
         {

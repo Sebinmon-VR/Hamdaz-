@@ -3,54 +3,100 @@
 {% block content %}
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/4.3.0/marked.min.js"></script>
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 
-<div class="flex justify-center mt-6 px-4 pb-10">
-    <div class="flex flex-col w-full max-w-5xl h-[75vh] min-h-[600px] overflow-hidden">
-        
-        <!-- Header -->
-        <div class="border-b border-gray-200 p-4 shrink-0 flex items-center justify-between">
-            <div class="flex items-center space-x-3">
-                <div class="w-12 h-12 rounded-full overflow-hidden shadow-sm flex items-center justify-center bg-blue-50">
-                    <img src="/static/images/bot_avatar.png" alt="AI Agent" class="w-full h-full object-cover">
-                </div>
-                <div>
-                    <h2 class="text-lg font-bold text-gray-800">Personal Assistant</h2>
-                    <p class="text-xs text-green-500 font-medium flex items-center gap-1">
-                        <span class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span> Online
-                    </p>
-                </div>
+<div class="flex h-[85vh] min-h-[600px] max-w-7xl mx-auto mt-6 px-4 pb-10 gap-6">
+
+    <!-- Sidebar -->
+    <div class="w-72 flex flex-col bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden shrink-0">
+        <div class="p-4 border-b border-gray-100">
+            <button onclick="startNewChat()"
+                class="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 px-4 rounded-xl font-medium transition-colors shadow-sm">
+                <i class="fa-solid fa-plus text-sm"></i> New Chat
+            </button>
+        </div>
+
+        <div class="flex-1 overflow-y-auto w-full">
+            <div id="sessionList" class="p-3 space-y-1 w-full">
+                <!-- Session items will be inserted here -->
             </div>
         </div>
 
+        <div
+            class="p-4 text-xs text-center text-gray-400 border-t border-gray-100 bg-gray-50 flex items-center justify-center gap-2">
+            <i class="fa-solid fa-circle-info text-indigo-300"></i>
+            Sessions auto-delete after 5 days.
+        </div>
+    </div>
+
+    <!-- Main Chat Area -->
+    <div class="flex-1 flex flex-col bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden relative">
+        <!-- Header -->
+        <div
+            class="border-b border-gray-100 p-4 shrink-0 flex items-center justify-between bg-white z-10 shadow-sm relative">
+            <div class="flex items-center space-x-3">
+                
+                <div
+                    class="w-10 h-10 rounded-full overflow-hidden shadow-sm flex items-center justify-center bg-indigo-50 border border-indigo-100">
+                    <img src="/static/images/bot_avatar.png" alt="AI Agent" class="w-full h-full object-cover">
+                </div>
+                <div>
+                    <h2 class="text-base font-bold text-gray-800" id="currentChatTitle">AI Assistant</h2>
+                    <p class="text-xs text-emerald-500 font-medium flex items-center gap-1.5 mt-0.5">
+                        <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span> Online
+                    </p>
+                </div>
+                
+            </div>
+            <!-- Agent Mode Toggle -->
+            <div class="flex items-center gap-2.5 select-none" style="opacity: 0.3;">
+                <div class="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 cursor-pointer hover:border-indigo-200 transition-colors" onclick="toggleAgentMode()" title="Toggle agent tools (task lookup, web search, email)">
+                    <!-- <i id="agentIcon" class="fa-solid fa-robot text-indigo-500 text-sm"></i> -->
+                    <span class="text-xs font-semibold text-gray-600">Agent</span>
+                    <!-- Toggle pill -->
+                    <div id="agentToggle" class="relative w-9 h-5 rounded-full transition-colors duration-300 bg-indigo-500 "  >
+                        <div id="agentThumb" class="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm transition-transform duration-300 translate-x-4"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+
         <!-- Chat Box -->
-        <div id="chatBox" class="flex-1 overflow-y-auto p-4 space-y-3"></div>
+        <div id="chatBox" class="flex-1 overflow-y-auto p-6 space-y-6 bg-slate-50 relative"></div>
 
         <!-- File Upload Info -->
-        <div id="fileInfo" class="hidden px-4 py-2 text-sm text-gray-600 bg-gray-50 border-x">
-            <span id="fileNameDisplay"></span>
-            <button onclick="clearFiles()" class="ml-2 text-red-500 hover:text-red-700 font-bold">&times;</button>
+        <div id="fileInfo"
+            class="hidden px-6 py-2.5 text-sm text-indigo-700 bg-indigo-50/80 border-t border-indigo-100 flex items-center justify-between">
+            <div class="flex items-center gap-2">
+                <i class="fa-solid fa-file-lines text-indigo-500"></i>
+                <span id="fileNameDisplay" class="font-medium"></span>
+            </div>
+            <button onclick="clearFiles()"
+                class="text-indigo-400 hover:text-indigo-600 font-bold transition-colors w-6 h-6 flex items-center justify-center rounded-full hover:bg-indigo-100">&times;</button>
         </div>
 
         <!-- Input Box -->
-        <div class="px-4 pb-6 pt-2 shrink-0">
-            <div class="flex items-end space-x-2 bg-white rounded-3xl border border-gray-200 focus-within:border-indigo-300 focus-within:ring-4 focus-within:ring-indigo-50 shadow-sm overflow-hidden transition-all duration-300 relative group">
+        <div class="p-4 bg-white shrink-0 border-t border-gray-100">
+            <div
+                class="flex items-end space-x-2 bg-white rounded-2xl border border-gray-300 focus-within:border-indigo-400 focus-within:ring-4 focus-within:ring-indigo-50/50 shadow-sm overflow-hidden transition-all duration-300 relative group">
                 <!-- File attachment button -->
-                <label for="fileInput" class="cursor-pointer p-3 pl-4 text-gray-400 hover:text-indigo-600 transition-colors" title="Attach Files">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
-                    </svg>
+                <label for="fileInput"
+                    class="cursor-pointer p-3.5 pl-4 text-gray-400 hover:text-indigo-600 transition-colors"
+                    title="Attach Files">
+                    <i class="fa-solid fa-paperclip text-lg"></i>
                 </label>
-                <input type="file" id="fileInput" class="hidden" multiple accept=".pdf,.xlsx,.xls,.doc,.docx,.csv,.txt" onchange="updateFileInfo()">
+                <input type="file" id="fileInput" class="hidden" multiple accept=".pdf,.xlsx,.xls,.doc,.docx,.csv,.txt"
+                    onchange="updateFileInfo()">
 
                 <textarea id="messageInput" rows="1"
-                    class="flex-1 py-3.5 pr-14 bg-transparent border-none focus:ring-0 resize-none max-h-32 text-gray-800 placeholder-gray-400 text-base leading-relaxed"
-                    placeholder="Message Personal Assistant..."></textarea>
-                
+                    class="flex-1 py-4 flex items-center pr-14 bg-transparent border-none focus:ring-0 resize-none max-h-32 text-gray-700 placeholder-gray-400 text-[15px] leading-relaxed"
+                    placeholder="Ask me anything..."></textarea>
+
                 <!-- Send button integrated inside the input area -->
-                <button id="sendBtn" class="absolute right-1.5 bottom-1.5 p-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full transition shadow-sm shrink-0 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                        <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />
-                    </svg>
+                <button id="sendBtn"
+                    class="absolute right-2 bottom-2 p-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl transition-all shadow-md shrink-0 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed w-10 h-10 hover:scale-105 active:scale-95">
+                    <i class="fa-solid fa-paper-plane text-sm ml-0.5 mt-0.5"></i>
                 </button>
             </div>
         </div>
@@ -64,11 +110,133 @@
     const fileInput = document.getElementById("fileInput");
     const fileInfo = document.getElementById("fileInfo");
     const fileNameDisplay = document.getElementById("fileNameDisplay");
+    const sessionList = document.getElementById("sessionList");
+    const currentChatTitle = document.getElementById("currentChatTitle");
+
+    let currentSessionId = sessionStorage.getItem('pa_session_id') || null;
+
+    // Load sessions on init
+    window.onload = function () {
+        fetchSessions();
+        if (!currentSessionId) {
+            showGreeting();
+        }
+    };
+
+    async function fetchSessions() {
+        try {
+            const res = await fetch("/api/personal_assistant/sessions");
+            const data = await res.json();
+            if (data.sessions) {
+                renderSessionList(data.sessions);
+            }
+        } catch (e) {
+            console.error("Failed to load sessions", e);
+        }
+    }
+
+    function renderSessionList(sessions) {
+        sessionList.innerHTML = "";
+        if (sessions.length === 0) {
+            sessionList.innerHTML = `<div class="text-center text-gray-400 text-sm py-4">No recent chats</div>`;
+            return;
+        }
+
+        sessions.forEach(s => {
+            const isActive = s.id === currentSessionId;
+            const div = document.createElement("div");
+            div.className = `flex justify-between items-center group p-2.5 rounded-xl cursor-pointer transition-all ${isActive ? 'bg-indigo-50 text-indigo-700 font-medium border border-indigo-100/50' : 'hover:bg-gray-50 text-gray-600 border border-transparent'}`;
+
+            div.innerHTML = `
+                <div class="flex items-center gap-3 truncate flex-1 min-w-0" onclick="loadSession('${s.id}', '${s.session_title.replace(/'/g, "\\'")}')">
+                    <i class="fa-regular fa-message text-sm shrink-0 ${isActive ? 'text-indigo-500' : 'text-gray-400 group-hover:text-indigo-400'}"></i>
+                    <span class="text-sm truncate select-none">${s.session_title}</span>
+                </div>
+                <button onclick="deleteSession(event, '${s.id}')" 
+                    class="text-gray-300 hover:text-red-500 hover:bg-red-50 p-1.5 rounded-lg transition-colors shrink-0 ml-1" 
+                    title="Delete session">
+                    <i class="fa-regular fa-trash-can text-xs"></i>
+                </button>
+            `;
+            sessionList.appendChild(div);
+        });
+    }
+
+    async function loadSession(sessionId, title) {
+        currentSessionId = sessionId;
+        sessionStorage.setItem('pa_session_id', sessionId);
+        currentChatTitle.textContent = title;
+        chatBox.innerHTML = "";
+
+        // refresh sidebar to highlight active session
+        fetchSessions();
+
+        // update URL
+        const newUrl = window.location.protocol + "//" + window.location.host + window.location.pathname + '?session=' + sessionId;
+        window.history.pushState({ path: newUrl }, '', newUrl);
+
+        const loading = appendLoadingBubble();
+        loading.querySelector('.thinking-status').textContent = 'Loading...';
+
+        try {
+            const res = await fetch(`/api/personal_assistant/sessions/${sessionId}`);
+            const data = await res.json();
+
+            loading.remove();
+
+            if (data.messages) {
+                if (data.messages.length === 0) showGreeting();
+                data.messages.forEach(m => appendMessage(m.content, m.role, false));
+            } else {
+                showGreeting();
+            }
+        } catch (e) {
+            loading.remove();
+            console.error(e);
+            appendMessage("Failed to load session history.", "assistant");
+        }
+    }
+
+    function startNewChat() {
+        currentSessionId = null;
+        sessionStorage.removeItem('pa_session_id');
+        currentChatTitle.textContent = "AI Personal Assistant";
+        chatBox.innerHTML = "";
+        fetchSessions();
+        showGreeting();
+        const newUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
+        window.history.pushState({ path: newUrl }, '', newUrl);
+    }
+
+    async function deleteSession(event, sessionId) {
+        event.stopPropagation();
+        if (!confirm("Are you sure you want to delete this session?")) return;
+
+        try {
+            await fetch(`/api/personal_assistant/sessions/${sessionId}`, { method: 'DELETE' });
+            if (currentSessionId === sessionId) {
+                startNewChat();
+            } else {
+                fetchSessions();
+            }
+        } catch (e) {
+            console.error(e);
+            alert("Failed to delete session");
+        }
+    }
+
+    function showGreeting() {
+        appendMessage(
+            "**Hello! I'm your Personal AI Assistant.**\n\nI can:\n- 📋 Check your active tasks from SharePoint\n- 📎 Analyze uploaded PDFs, Excels, Word Docs & CSVs\n- 🗄️ Check your internal database for product prices\n- 🌍 Search the web for distributors and suppliers\n- ✉️ **Draft and send emails** via Outlook\n\nHow can I help you today?",
+            "assistant",
+            true
+        );
+    }
 
     function updateFileInfo() {
         if (fileInput.files.length > 0) {
             let names = Array.from(fileInput.files).map(f => f.name).join(", ");
-            fileNameDisplay.textContent = "Attached: " + names;
+            fileNameDisplay.textContent = names;
             fileInfo.classList.remove("hidden");
         } else {
             clearFiles();
@@ -85,78 +253,55 @@
         chatBox.scrollTop = chatBox.scrollHeight;
     }
 
-    // Append message with animation + typing effect for assistant
+    // Append message with animation + styling
     function appendMessage(message, sender, typing = false) {
         const wrapper = document.createElement("div");
         wrapper.classList.add("w-full", "flex", "fade-in");
 
         const div = document.createElement("div");
         div.classList.add(
-            "p-3", "rounded-xl", "inline-block", "max-w-[80%]",
-            "break-words", "bubble-anim"
+            "p-3.5", "rounded-2xl", "inline-block", "max-w-[85%]", // wider max-width for better reading
+            "break-words", "bubble-anim", "text-[15px]", "leading-relaxed", "shadow-sm"
         );
 
-        const avatar = document.createElement("div");
-        avatar.classList.add("w-8", "h-8", "rounded-full", "flex", "items-center", "justify-center", "text-white", "font-bold", "shadow-sm", "shrink-0", "mt-auto", "mb-2", "overflow-hidden");
-
         if (sender === "user") {
-            div.classList.add("bg-blue-600", "text-white", "ml-auto");
+            div.classList.add("bg-indigo-600", "text-white", "ml-auto", "rounded-tr-sm");
             wrapper.classList.add("justify-end");
             div.innerHTML = marked.parse(message);
-        }
-        else if (sender === "assistant") {
-            avatar.classList.add("bg-blue-100", "mr-2");
+            // fix user links color just in case
+            const links = div.querySelectorAll("a");
+            links.forEach(l => l.classList.add("underline", "text-indigo-100", "hover:text-white"));
+        } else {
+            // Assistant
+            const avatar = document.createElement("div");
+            avatar.classList.add("w-8", "h-8", "rounded-full", "flex", "items-center", "justify-center", "shrink-0", "mt-auto", "mb-1.5", "overflow-hidden", "bg-indigo-50", "border", "border-indigo-100", "mr-3");
             avatar.innerHTML = `<img src="/static/images/bot_avatar.png" alt="Bot" class="w-full h-full object-cover">`;
             wrapper.appendChild(avatar);
 
-            div.classList.add("bg-white", "text-gray-800", "mr-auto", "border", "border-gray-100", "rounded-bl-sm", "prose", "prose-sm");
+            div.classList.add("bg-white", "text-gray-800", "mr-auto", "border", "border-gray-200/60", "rounded-bl-sm", "prose-custom");
             wrapper.classList.add("justify-start");
 
             if (typing) {
                 avatar.classList.add("bot-floating");
                 let index = 0;
 
-                // Check if this is an email draft — render UI card
                 if (message.includes("EMAIL_DRAFT_START")) {
-                    const match = message.match(/EMAIL_DRAFT_START\n([\s\S]*?)\nEMAIL_DRAFT_END/);
-                    if (match && match[1]) {
-                        try {
-                            const emailData = JSON.parse(match[1]);
-                            // Override the div to be a plain container (no max-width/prose)
-                            div.className = "bubble-anim";
-                            div.innerHTML = renderEmailUI(emailData);
-                            avatar.classList.remove("bot-floating");
-                            wrapper.appendChild(div);
-                            chatBox.appendChild(wrapper);
-                            scrollToBottom();
-                            return; // Done — skip normal flow
-                        } catch (e) {
-                            console.error("Failed to parse email JSON", e);
-                        }
-                    }
+                    renderEmailSafely(message, div, avatar, wrapper);
+                    return;
                 }
 
                 const interval = setInterval(() => {
                     div.innerHTML = marked.parse(message.slice(0, index++));
                     scrollToBottom();
-                    if (index > message.length) clearInterval(interval);
+                    if (index > message.length) {
+                        clearInterval(interval);
+                        avatar.classList.remove("bot-floating");
+                    }
                 }, 5);
             } else {
                 if (message.includes("EMAIL_DRAFT_START")) {
-                    const match = message.match(/EMAIL_DRAFT_START\n([\s\S]*?)\nEMAIL_DRAFT_END/);
-                    if (match && match[1]) {
-                        try {
-                            const emailData = JSON.parse(match[1]);
-                            div.className = "bubble-anim";
-                            div.innerHTML = renderEmailUI(emailData);
-                            wrapper.appendChild(div);
-                            chatBox.appendChild(wrapper);
-                            scrollToBottom();
-                            return;
-                        } catch (e) {
-                            console.error("Failed to parse email JSON", e);
-                        }
-                    }
+                    renderEmailSafely(message, div, avatar, wrapper);
+                    return;
                 }
                 div.innerHTML = marked.parse(message);
             }
@@ -167,87 +312,99 @@
         scrollToBottom();
     }
 
-    // FIRST BOT MESSAGE (GREETING)
-    window.onload = function () {
-        appendMessage(
-            "**Hello! I'm your Personal AI Assistant.**\n\nI can:\n- 📋 Check your active tasks from SharePoint\n- 📎 Analyze uploaded PDFs, Excels, Word Docs & CSVs\n- 🗄️ Check your internal Cosmos DB for product prices & items\n- 🌍 Search the web for distributors, suppliers, and live prices\n- ✉️ **Draft, edit, and send emails via Outlook** — just say *\"write an email to...\"*\n\nHow can I help you today?",
-            "assistant",
-            true
-        );
-    };
+    function renderEmailSafely(message, div, avatar, wrapper) {
+        const match = message.match(/EMAIL_DRAFT_START\n([\s\S]*?)\nEMAIL_DRAFT_END/);
+        if (match && match[1]) {
+            try {
+                const emailData = JSON.parse(match[1]);
+                div.className = "bubble-anim shadow-md rounded-2xl border border-gray-100 overflow-hidden bg-white max-w-[90%]";
+                div.innerHTML = renderEmailUI(emailData);
+                avatar.classList.remove("bot-floating");
+                wrapper.appendChild(div);
+                chatBox.appendChild(wrapper);
+                scrollToBottom();
+            } catch (e) {
+                console.error("Failed to parse email JSON", e);
+                div.innerHTML = "Error parsing email draft.";
+                wrapper.appendChild(div);
+                chatBox.appendChild(wrapper);
+            }
+        }
+    }
 
     // ============================================================
-    // RENDER EMAIL DRAFT UI
+    // SLEEK EMAIL DRAFT UI
     // ============================================================
     function renderEmailUI(emailData) {
         const id = 'email_' + Date.now();
         return `
-        <div id="${id}" class="email-card">
-            <div class="email-card-header">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="email-icon"><path d="M1.5 8.67v8.58a3 3 0 003 3h15a3 3 0 003-3V8.67l-8.928 5.493a3 3 0 01-3.144 0L1.5 8.67z"/><path d="M22.5 6.908V6.75a3 3 0 00-3-3h-15a3 3 0 00-3 3v.158l9.714 5.978a1.5 1.5 0 001.572 0L22.5 6.908z"/></svg>
-                <span class="email-card-title">Email Draft</span>
-                <div class="email-status-badge">AI Generated</div>
-            </div>
-            <div class="email-card-body">
-                <div class="email-field">
-                    <label class="email-label">To</label>
-                    <input type="email" class="email-input" id="${id}_to" value="${emailData.to || ''}" placeholder="recipient@email.com" />
+        <div id="${id}" class="email-card w-[450px] max-w-full">
+            <div class="px-5 py-3.5 bg-gradient-to-r from-gray-50 to-white border-b border-gray-100 flex items-center gap-3">
+                <div class="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-600">
+                    <i class="fa-regular fa-envelope text-lg"></i>
                 </div>
-                <div class="email-field">
-                    <label class="email-label">Subject</label>
-                    <input type="text" class="email-input" id="${id}_subject" value="${(emailData.subject || '').replace(/"/g, '&quot;')}" placeholder="Subject" />
-                </div>
-                <div class="email-field">
-                    <label class="email-label">Body</label>
-                    <textarea class="email-textarea" id="${id}_body" rows="8">${emailData.body || ''}</textarea>
+                <div class="flex-1">
+                    <h3 class="text-[15px] font-bold text-gray-800 leading-tight">Email Draft</h3>
+                    <p class="text-[11px] font-medium text-gray-400 uppercase tracking-widest mt-0.5">AI Generated</p>
                 </div>
             </div>
-            <div class="email-card-footer">
-                <button class="email-btn email-btn-copy" onclick="copyEmailDraft('${id}')">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="btn-icon"><path d="M7.5 3.375c0-1.036.84-1.875 1.875-1.875h.375a3.75 3.75 0 013.75 3.75v1.875C13.5 8.161 14.34 9 15.375 9h1.875A3.75 3.75 0 0121 12.75v3.375C21 17.16 20.16 18 19.125 18h-9.75A1.875 1.875 0 017.5 16.125V3.375z"/><path d="M15 5.25a5.23 5.23 0 00-1.279-3.434 9.768 9.768 0 016.963 6.963A5.23 5.23 0 0017.25 7.5h-1.875A.375.375 0 0115 7.125V5.25zM4.875 6H6v10.125A3.375 3.375 0 009.375 19.5H16.5v1.125c0 1.035-.84 1.875-1.875 1.875h-9.75A1.875 1.875 0 013 20.625V7.875C3 6.839 3.84 6 4.875 6z"/></svg>
-                    Copy
+            
+            <div class="p-5 space-y-4 bg-white">
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5 ml-1">To</label>
+                    <input type="email" id="${id}_to" value="${emailData.to || ''}" placeholder="recipient@example.com" 
+                        class="w-full bg-gray-50/50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 transition-all font-medium" />
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5 ml-1">Subject</label>
+                    <input type="text" id="${id}_subject" value="${(emailData.subject || '').replace(/"/g, '&quot;')}" placeholder="Subject line" 
+                        class="w-full bg-gray-50/50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 transition-all font-medium" />
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5 ml-1">Message</label>
+                    <textarea id="${id}_body" rows="7" 
+                        class="w-full bg-gray-50/50 border border-gray-200 rounded-xl px-4 py-3 text-[14px] text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-400 transition-all resize-y leading-relaxed">${emailData.body || ''}</textarea>
+                </div>
+            </div>
+
+            <div class="px-5 py-4 bg-gray-50/50 border-t border-gray-100 flex flex-wrap gap-2 justify-end">
+                <button onclick="copyEmailDraft('${id}')" 
+                    class="px-4 py-2 rounded-lg text-xs font-semibold text-gray-600 hover:text-gray-800 hover:bg-gray-200/50 bg-gray-100 border border-gray-200 transition-colors flex items-center gap-1.5">
+                    <i class="fa-regular fa-copy"></i> Copy
                 </button>
-                <button class="email-btn email-btn-regen" onclick="regenerateEmail('${id}')">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="btn-icon"><path fill-rule="evenodd" d="M4.755 10.059a7.5 7.5 0 0112.548-3.364l1.903 1.927H16.5a.75.75 0 010 1.5h-4.374a.75.75 0 01-.75-.75V5.998a.75.75 0 011.5 0v1.652l1.949-1.97a9 9 0 11-2.586 6.036.75.75 0 011.497.116A7.5 7.5 0 114.755 10.06z" clip-rule="evenodd"/></svg>
-                    Regenerate
+                <button onclick="regenerateEmail('${id}')" 
+                    class="px-4 py-2 rounded-lg text-xs font-semibold text-amber-700 hover:text-amber-800 hover:bg-amber-200/50 bg-amber-100 border border-amber-200/50 transition-colors flex items-center gap-1.5">
+                    <i class="fa-solid fa-rotate-right"></i> Redo
                 </button>
-                <button class="email-btn email-btn-send" onclick="sendEmailDraft('${id}')">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="btn-icon"><path d="M3.478 2.405a.75.75 0 00-.926.94l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.405z"/></svg>
-                    Send via Outlook
+                <button onclick="sendEmailDraft('${id}')" 
+                    class="px-5 py-2 rounded-lg text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 shadow-sm shadow-indigo-200 transition-all flex items-center gap-1.5 ml-auto">
+                    <i class="fa-regular fa-paper-plane"></i> Send
                 </button>
             </div>
         </div>`;
     }
 
-    // Copy draft to clipboard
+    // Email interactions (unchanged logic, just styled differently if needed)
     function copyEmailDraft(id) {
         const to = document.getElementById(id + '_to').value;
         const subject = document.getElementById(id + '_subject').value;
         const body = document.getElementById(id + '_body').value;
-        const text = `To: ${to}\nSubject: ${subject}\n\n${body}`;
-        navigator.clipboard.writeText(text).then(() => {
-            showEmailToast('📋 Email copied to clipboard!');
-        });
+        navigator.clipboard.writeText(`To: ${to}\nSubject: ${subject}\n\n${body}`).then(() => showToast('Email copied!'));
     }
 
-    // Regenerate: populate the input with a prompt and send
     function regenerateEmail(id) {
         const subject = document.getElementById(id + '_subject').value;
-        messageInput.value = `Please regenerate the email about "${subject}" with any improvements or based on my feedback.`;
+        messageInput.value = `Please regenerate the email about "${subject}" with improvements.`;
         messageInput.focus();
     }
 
-    // Show a confirmation popup before sending
     async function sendEmailDraft(id) {
         const to = document.getElementById(id + '_to').value.trim();
         const subject = document.getElementById(id + '_subject').value.trim();
         const body = document.getElementById(id + '_body').value.trim();
 
-        if (!to) { showEmailToast('⚠️ Please enter a recipient email address.', 'warn'); return; }
-
-        // Show custom confirm popup
-        const confirmed = await showSendConfirm(to, subject);
-        if (!confirmed) return;
+        if (!to) { showToast('Please enter a recipient.', 'warn'); return; }
+        if (!confirm(`Send email to ${to}?`)) return;
 
         try {
             const res = await fetch('/api/send_email', {
@@ -256,51 +413,28 @@
                 body: JSON.stringify({ to, subject, body })
             });
             const data = await res.json();
-            if (data.success) {
-                showEmailToast('✅ Email sent successfully via Outlook!');
-            } else {
-                showEmailToast('❌ Failed: ' + data.error, 'error');
-            }
+            if (data.success) showToast('Email sent via MS Graph!');
+            else showToast('Failed: ' + data.error, 'error');
         } catch (err) {
-            showEmailToast('❌ Network error: ' + err.message, 'error');
+            showToast('Error: ' + err.message, 'error');
         }
     }
 
-    // Toast notification
-    function showEmailToast(msg, type = 'success') {
+    function showToast(msg, type = 'success') {
+        const alertColor = type === 'error' ? 'bg-red-500' : (type === 'warn' ? 'bg-amber-500' : 'bg-green-500');
         const toast = document.createElement('div');
-        toast.className = 'email-toast ' + (type === 'error' ? 'toast-error' : type === 'warn' ? 'toast-warn' : 'toast-success');
+        toast.className = `fixed bottom-8 left-1/2 transform -translate-x-1/2 ${alertColor} text-white px-6 py-3 rounded-full shadow-lg font-medium text-sm transition-all duration-300 opacity-0 translate-y-4 z-50`;
         toast.textContent = msg;
         document.body.appendChild(toast);
-        setTimeout(() => toast.classList.add('show'), 10);
-        setTimeout(() => { toast.classList.remove('show'); setTimeout(() => toast.remove(), 300); }, 3500);
-    }
 
-    // Custom confirmation popup
-    function showSendConfirm(to, subject) {
-        return new Promise((resolve) => {
-            const overlay = document.createElement('div');
-            overlay.className = 'confirm-overlay';
-            overlay.innerHTML = `
-                <div class="confirm-box">
-                    <div class="confirm-icon">
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M1.5 8.67v8.58a3 3 0 003 3h15a3 3 0 003-3V8.67l-8.928 5.493a3 3 0 01-3.144 0L1.5 8.67z"/><path d="M22.5 6.908V6.75a3 3 0 00-3-3h-15a3 3 0 00-3 3v.158l9.714 5.978a1.5 1.5 0 001.572 0L22.5 6.908z"/></svg>
-                    </div>
-                    <h3 class="confirm-title">Send this Email?</h3>
-                    <p class="confirm-desc">This will be sent from your Outlook account to:</p>
-                    <div class="confirm-recipient">${to}</div>
-                    <p class="confirm-subject">Subject: <strong>${subject}</strong></p>
-                    <div class="confirm-actions">
-                        <button class="confirm-btn-cancel" id="confirmCancel">Cancel</button>
-                        <button class="confirm-btn-send" id="confirmSend">Yes, Send</button>
-                    </div>
-                </div>`;
-            document.body.appendChild(overlay);
-            setTimeout(() => overlay.classList.add('show'), 10);
-
-            document.getElementById('confirmSend').onclick = () => { overlay.remove(); resolve(true); };
-            document.getElementById('confirmCancel').onclick = () => { overlay.remove(); resolve(false); };
+        requestAnimationFrame(() => {
+            toast.classList.remove('opacity-0', 'translate-y-4');
         });
+
+        setTimeout(() => {
+            toast.classList.add('opacity-0', 'translate-y-4');
+            setTimeout(() => toast.remove(), 300);
+        }, 3000);
     }
 
     async function sendMessage() {
@@ -316,16 +450,14 @@
 
         appendMessage(displayMsg, "user");
 
-        // Disable inputs
         messageInput.value = "";
+        messageInput.style.height = 'auto'; // reset height if auto-expanding
         messageInput.disabled = true;
         sendBtn.disabled = true;
         fileInput.disabled = true;
 
-        // Loading bubble
         const loading = appendLoadingBubble();
 
-        // Stop floating of the latest bot message once finished
         function removePulsing() {
             const bots = chatBox.querySelectorAll('.bot-floating');
             bots.forEach(b => b.classList.remove('bot-floating'));
@@ -334,6 +466,11 @@
         try {
             const formData = new FormData();
             formData.append("message", message);
+            const sid = currentSessionId || sessionStorage.getItem('pa_session_id') || '';
+            console.log('[PA] Sending message. session_id:', sid || '(none — new session)');
+            if (sid) {
+                formData.append("session_id", sid);
+            }
             for (let i = 0; i < files.length; i++) {
                 formData.append("files", files[i]);
             }
@@ -346,22 +483,27 @@
             const data = await res.json();
             clearInterval(loading._thinkingInterval);
             loading.remove();
-            removePulsing(); // Stop floating
-            
-            // Clear files after successful request starts processing
+            removePulsing();
             clearFiles();
 
             if (data.reply) {
                 appendMessage(data.reply, "assistant", true);
+                if (data.session_id) {
+                    if (currentSessionId !== data.session_id) {
+                        currentSessionId = data.session_id;
+                        sessionStorage.setItem('pa_session_id', currentSessionId);
+                        console.log('[PA] New session_id set:', currentSessionId);
+                    }
+                    fetchSessions(); // always refresh sidebar
+                }
             } else {
                 appendMessage("Error: " + data.error, "assistant");
             }
         } catch (err) {
             clearInterval(loading._thinkingInterval);
             loading.remove();
-            removePulsing(); // Stop floating
+            removePulsing();
             appendMessage("Error connecting to server.", "assistant");
-            console.error(err);
         } finally {
             messageInput.disabled = false;
             sendBtn.disabled = false;
@@ -375,30 +517,26 @@
         wrapper.classList.add("w-full", "flex", "justify-start", "fade-in");
 
         const avatar = document.createElement("div");
-        avatar.classList.add("w-8", "h-8", "rounded-full", "flex", "items-center", "justify-center", "text-white", "font-bold", "shadow-sm", "shrink-0", "mt-auto", "mb-2", "overflow-hidden", "bg-blue-100", "mr-2", "bot-floating");
+        avatar.classList.add("w-8", "h-8", "rounded-full", "flex", "items-center", "justify-center", "shrink-0", "mt-auto", "mb-1.5", "overflow-hidden", "bg-indigo-50", "border", "border-indigo-100", "mr-3", "bot-floating");
         avatar.innerHTML = `<img src="/static/images/bot_avatar.png" alt="Bot" class="w-full h-full object-cover">`;
         wrapper.appendChild(avatar);
 
         const div = document.createElement("div");
-        div.classList.add("p-3", "px-4", "rounded-xl", "inline-block", "bg-white", "mr-auto", "border", "border-gray-100");
-        
+        div.classList.add("px-5", "py-3.5", "rounded-2xl", "inline-block", "bg-white", "mr-auto", "border", "border-gray-200/60", "shadow-sm");
+
         const thinkingSteps = [
-            "🧠 Thinking...",
-            "📎 Analyzing your request...",
-            "🗄️ Checking internal database...",
-            "🌍 Looking up information...",
-            "✍️ Drafting a response...",
-            "🔍 Processing context...",
-            "⚙️ Running tools...",
+            "<i class='fa-solid fa-microchip mr-2'></i> Thinking...",
+            "<i class='fa-solid fa-magnifying-glass mr-2'></i> Analyzing...",
+            "<i class='fa-solid fa-database mr-2'></i> Querying data...",
+            "<i class='fa-solid fa-pen-nib mr-2'></i> Drafting...",
         ];
         let stepIdx = 0;
-        div.innerHTML = `<span class="thinking-status">${thinkingSteps[0]}</span>`;
+        div.innerHTML = `<span class="thinking-status text-indigo-500 font-medium text-sm flex items-center">${thinkingSteps[0]}</span>`;
         const statusInterval = setInterval(() => {
             stepIdx = (stepIdx + 1) % thinkingSteps.length;
             const el = div.querySelector('.thinking-status');
-            if (el) el.textContent = thinkingSteps[stepIdx];
-        }, 1800);
-        // Store interval id so we can clear it when removing bubble
+            if (el) el.innerHTML = thinkingSteps[stepIdx];
+        }, 2000);
         wrapper._thinkingInterval = statusInterval;
 
         wrapper.appendChild(div);
@@ -408,7 +546,6 @@
         return wrapper;
     }
 
-    // Enter to send, Shift+Enter for new line
     messageInput.addEventListener("keydown", function (e) {
         if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
@@ -417,17 +554,112 @@
     });
 
     sendBtn.addEventListener("click", sendMessage);
+
+    // Auto-resize textarea
+    messageInput.addEventListener('input', function () {
+        this.style.height = 'auto';
+        this.style.height = (this.scrollHeight) + 'px';
+        if (this.value === '') this.style.height = 'auto';
+    });
 </script>
 
 <style>
-    /* Bubble pop animation */
+    /* Custom Markdown Prose Styling */
+    .prose-custom p {
+        margin-bottom: 0.75em;
+    }
+
+    .prose-custom p:last-child {
+        margin-bottom: 0;
+    }
+
+    .prose-custom strong {
+        color: #1e293b;
+        font-weight: 600;
+    }
+
+    .prose-custom code {
+        background: #f1f5f9;
+        padding: 0.2rem 0.4rem;
+        border-radius: 0.375rem;
+        font-size: 0.875em;
+        color: #db2777;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+
+    .prose-custom pre {
+        background: #1e293b;
+        padding: 1rem;
+        border-radius: 0.75rem;
+        overflow-x: auto;
+        margin-top: 0.5rem;
+        margin-bottom: 1rem;
+    }
+
+    .prose-custom pre code {
+        background: transparent;
+        color: #e2e8f0;
+        padding: 0;
+    }
+
+    .prose-custom ul {
+        list-style-type: disc;
+        padding-left: 1.5rem;
+        margin-bottom: 0.75rem;
+    }
+
+    .prose-custom ol {
+        list-style-type: decimal;
+        padding-left: 1.5rem;
+        margin-bottom: 0.75rem;
+    }
+
+    .prose-custom li {
+        margin-bottom: 0.25rem;
+    }
+
+    .prose-custom h1,
+    .prose-custom h2,
+    .prose-custom h3 {
+        color: #1e293b;
+        font-weight: 700;
+        margin-top: 1rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .prose-custom h3 {
+        font-size: 1.1em;
+    }
+
+    .prose-custom a {
+        color: #4f46e5;
+        text-decoration: underline;
+    }
+
+    /* Animations */
+    .fade-in {
+        animation: fadeIn 0.3s ease-out;
+    }
+
+    @keyframes fadeIn {
+        from {
+            opacity: 0;
+            transform: translateY(10px);
+        }
+
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
     .bubble-anim {
-        animation: popIn 0.1s ease-out;
+        animation: popIn 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
     }
 
     @keyframes popIn {
         0% {
-            transform: scale(0.8);
+            transform: scale(0.95);
             opacity: 0;
         }
 
@@ -437,318 +669,42 @@
         }
     }
 
-    /* Typing dots */
-    .typing-dots span {
-        height: 8px;
-        width: 8px;
-        margin: 0 2px;
-        background: gray;
-        border-radius: 50%;
-        display: inline-block;
-        animation: blink 1.4s infinite;
+    .bot-floating {
+        animation: floatBot 2.5s ease-in-out infinite;
+        transform-origin: center bottom;
     }
 
-    .typing-dots span:nth-child(2) {
-        animation-delay: 0.1s;
-    }
-
-    .typing-dots span:nth-child(3) {
-        animation-delay: 0.3s;
-    }
-
-    @keyframes blink {
-
-        0%,
-        100% {
-            opacity: 0.2;
+    @keyframes floatBot {
+        0% {
+            transform: translateY(0) scale(1) rotate(0deg);
         }
 
         50% {
-            opacity: 1;
+            transform: translateY(-3px) scale(1.03) rotate(3deg);
+        }
+
+        100% {
+            transform: translateY(0) scale(1) rotate(0deg);
         }
     }
 
-    /* 3D Bot Avatar Floating Animation */
-    .bot-floating {
-        animation: floatBot 2s ease-in-out infinite;
-        transform-origin: center bottom;
-        box-shadow: 0 10px 15px -3px rgba(59, 130, 246, 0.4);
-    }
-    @keyframes floatBot {
-        0% { transform: translateY(0) scale(1) rotate(0deg); }
-        50% { transform: translateY(-8px) scale(1.05) rotate(5deg); }
-        100% { transform: translateY(0) scale(1) rotate(0deg); }
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
     }
 
-    /* Custom scrollbar for chatbox */
-    #chatBox::-webkit-scrollbar {
-        width: 8px;
+    ::-webkit-scrollbar-track {
+        background: transparent;
     }
 
-    #chatBox::-webkit-scrollbar-track {
-        background: #f1f1f1;
+    ::-webkit-scrollbar-thumb {
+        background: #cbd5e1;
         border-radius: 10px;
     }
 
-    #chatBox::-webkit-scrollbar-thumb {
-        background: #888;
-        border-radius: 10px;
-    }
-
-    #chatBox::-webkit-scrollbar-thumb:hover {
-        background: #555;
-    }
-
-    .prose p {
-        margin-bottom: 0.5rem;
-    }
-
-    .prose p:last-child {
-        margin-bottom: 0;
-    }
-
-    /* Thinking status text */
-    .thinking-status {
-        font-size: 13px;
-        color: #6366f1;
-        font-weight: 500;
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        animation: fadeStatus 0.4s ease;
-    }
-    @keyframes fadeStatus {
-        0% { opacity: 0; transform: translateY(3px); }
-        100% { opacity: 1; transform: translateY(0); }
-    }
-
-    /* ============== EMAIL CARD ============== */
-    .email-card {
-        background: #fff;
-        border: 1px solid #e0e7ff;
-        border-radius: 16px;
-        overflow: hidden;
-        box-shadow: 0 4px 20px rgba(99,102,241,0.10);
-        min-width: 320px;
-        max-width: 100%;
-        font-family: inherit;
-    }
-    .email-card-header {
-        background: linear-gradient(135deg, #4f46e5, #7c3aed);
-        padding: 14px 18px;
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        color: #fff;
-    }
-    .email-icon {
-        width: 20px; height: 20px; flex-shrink: 0;
-    }
-    .email-card-title {
-        font-size: 15px; font-weight: 700; flex: 1;
-    }
-    .email-status-badge {
-        font-size: 11px;
-        background: rgba(255,255,255,0.2);
-        border-radius: 20px;
-        padding: 2px 10px;
-        letter-spacing: 0.03em;
-    }
-    .email-card-body {
-        padding: 16px 18px;
-        display: flex;
-        flex-direction: column;
-        gap: 12px;
-        background: #f8f9ff;
-    }
-    .email-field {
-        display: flex;
-        flex-direction: column;
-        gap: 4px;
-    }
-    .email-label {
-        font-size: 11px;
-        font-weight: 700;
-        color: #6366f1;
-        text-transform: uppercase;
-        letter-spacing: 0.06em;
-    }
-    .email-input {
-        border: 1.5px solid #e0e7ff;
-        border-radius: 8px;
-        padding: 8px 12px;
-        font-size: 14px;
-        color: #1e1b4b;
-        background: #fff;
-        outline: none;
-        transition: border-color 0.2s;
-        width: 100%;
-        box-sizing: border-box;
-    }
-    .email-input:focus {
-        border-color: #6366f1;
-        box-shadow: 0 0 0 3px rgba(99,102,241,0.10);
-    }
-    .email-textarea {
-        border: 1.5px solid #e0e7ff;
-        border-radius: 8px;
-        padding: 10px 12px;
-        font-size: 14px;
-        color: #1e1b4b;
-        background: #fff;
-        outline: none;
-        transition: border-color 0.2s;
-        width: 100%;
-        box-sizing: border-box;
-        resize: vertical;
-        line-height: 1.6;
-        font-family: inherit;
-    }
-    .email-textarea:focus {
-        border-color: #6366f1;
-        box-shadow: 0 0 0 3px rgba(99,102,241,0.10);
-    }
-    .email-card-footer {
-        padding: 12px 18px;
-        background: #fff;
-        border-top: 1px solid #e0e7ff;
-        display: flex;
-        gap: 8px;
-        flex-wrap: wrap;
-    }
-    .email-btn {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        padding: 8px 16px;
-        border-radius: 8px;
-        font-size: 13px;
-        font-weight: 600;
-        cursor: pointer;
-        border: none;
-        transition: all 0.18s;
-    }
-    .btn-icon { width: 15px; height: 15px; }
-    .email-btn-copy {
-        background: #f0f0f5;
-        color: #4b5563;
-    }
-    .email-btn-copy:hover { background: #e0e7ff; color: #4f46e5; }
-    .email-btn-regen {
-        background: #fef3c7;
-        color: #92400e;
-    }
-    .email-btn-regen:hover { background: #fde68a; color: #78350f; }
-    .email-btn-send {
-        background: linear-gradient(135deg, #4f46e5, #7c3aed);
-        color: #fff;
-        margin-left: auto;
-    }
-    .email-btn-send:hover {
-        opacity: 0.92;
-        transform: translateY(-1px);
-        box-shadow: 0 4px 12px rgba(99,102,241,0.3);
-    }
-
-    /* ============== TOAST ============== */
-    .email-toast {
-        position: fixed;
-        bottom: 28px;
-        left: 50%;
-        transform: translateX(-50%) translateY(20px);
-        padding: 12px 26px;
-        border-radius: 12px;
-        font-size: 14px;
-        font-weight: 600;
-        color: #fff;
-        opacity: 0;
-        transition: all 0.3s;
-        z-index: 9999;
-        pointer-events: none;
-    }
-    .email-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
-    .toast-success { background: #10b981; }
-    .toast-error   { background: #ef4444; }
-    .toast-warn    { background: #f59e0b; }
-
-    /* ============== CONFIRM POPUP ============== */
-    .confirm-overlay {
-        position: fixed;
-        inset: 0;
-        background: rgba(30,27,75,0.45);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        z-index: 10000;
-        opacity: 0;
-        transition: opacity 0.2s;
-        backdrop-filter: blur(3px);
-    }
-    .confirm-overlay.show { opacity: 1; }
-    .confirm-box {
-        background: #fff;
-        border-radius: 20px;
-        padding: 36px 32px 28px;
-        max-width: 380px;
-        width: 90%;
-        text-align: center;
-        box-shadow: 0 20px 50px rgba(99,102,241,0.25);
-    }
-    .confirm-icon {
-        width: 56px; height: 56px;
-        background: linear-gradient(135deg, #4f46e5, #7c3aed);
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        margin: 0 auto 16px;
-        color: #fff;
-    }
-    .confirm-icon svg { width: 26px; height: 26px; }
-    .confirm-title {
-        font-size: 20px; font-weight: 800; color: #1e1b4b; margin: 0 0 8px;
-    }
-    .confirm-desc { font-size: 14px; color: #6b7280; margin: 0 0 10px; }
-    .confirm-recipient {
-        background: #f0f0f5;
-        border-radius: 8px;
-        padding: 7px 14px;
-        font-size: 14px;
-        font-weight: 600;
-        color: #4f46e5;
-        margin-bottom: 8px;
-        word-break: break-all;
-    }
-    .confirm-subject { font-size: 13px; color: #6b7280; margin-bottom: 24px; }
-    .confirm-actions { display: flex; gap: 12px; }
-    .confirm-btn-cancel {
-        flex: 1;
-        padding: 11px;
-        border-radius: 10px;
-        border: 1.5px solid #e0e7ff;
-        background: #f9fafb;
-        color: #4b5563;
-        font-size: 14px;
-        font-weight: 600;
-        cursor: pointer;
-        transition: background 0.2s;
-    }
-    .confirm-btn-cancel:hover { background: #e0e7ff; }
-    .confirm-btn-send {
-        flex: 1;
-        padding: 11px;
-        border-radius: 10px;
-        border: none;
-        background: linear-gradient(135deg, #4f46e5, #7c3aed);
-        color: #fff;
-        font-size: 14px;
-        font-weight: 700;
-        cursor: pointer;
-        transition: opacity 0.2s, box-shadow 0.2s;
-    }
-    .confirm-btn-send:hover {
-        opacity: 0.92;
-        box-shadow: 0 4px 14px rgba(99,102,241,0.35);
+    ::-webkit-scrollbar-thumb:hover {
+        background: #94a3b8;
     }
 </style>
 {% endblock %}

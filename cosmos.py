@@ -2,6 +2,8 @@ import os
 from azure.cosmos import CosmosClient, PartitionKey
 from dotenv import load_dotenv
 import pandas as pd
+import datetime
+import uuid
 
 # =======================
 # CONFIGURATION
@@ -19,11 +21,25 @@ try:
         client = CosmosClient(ENDPOINT, KEY)
         database = client.get_database_client(DATABASE_NAME)
         container = database.get_container_client(CONTAINER_NAME)
+
+        # --- Dedicated container for Chat Sessions ---
+        # We create it with partition key /id and TTL enabled
+        try:
+            sessions_container = database.create_container_if_not_exists(
+                id="chat_sessions",
+                partition_key=PartitionKey(path="/id"),
+                default_ttl=-1  # Enable TTL; each doc sets its own ttl value
+            )
+            print("[COSMOS INFO] chat_sessions container ready.", flush=True)
+        except Exception as e_sess:
+            print(f"[COSMOS ERROR] Could not create/get chat_sessions container: {e_sess}", flush=True)
+            sessions_container = None
     else:
         print("Warning: COSMOS_ENDPOINT or COSMOS_KEY is missing. Cosmos DB features will be disabled.")
         client = None
         database = None
         container = None
+        sessions_container = None
 except Exception as e:
     print(f"Error initializing CosmosClient: {e}")
     client = None
@@ -188,8 +204,118 @@ def search_item_and_get_full_quotes(search_term):
 
 
 
-# EXECUTION
 # =======================
+# CHAT SESSION MANAGEMENT
+# =======================
+
+def get_user_sessions(user_email):
+    """
+    Fetches all chat sessions for a specific user.
+    """
+    if sessions_container is None:
+        print("[COSMOS WARN] sessions_container is None. Cannot fetch sessions.", flush=True)
+        return []
+    
+    query = {
+        "query": "SELECT c.id, c.session_title, c.updated_at FROM c WHERE c.user_email = @email ORDER BY c.updated_at DESC",
+        "parameters": [
+            {"name": "@email", "value": user_email}
+        ]
+    }
+    try:
+        results = list(sessions_container.query_items(query=query, enable_cross_partition_query=True))
+        print(f"[COSMOS INFO] Fetched {len(results)} sessions for {user_email}", flush=True)
+        return results
+    except Exception as e:
+        print(f"[COSMOS ERROR] Error fetching sessions for {user_email}: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
+        return []
+
+def get_session_messages(session_id):
+    """
+    Fetches the full chat history of a specific session.
+    Returns messages stripped of 'timestamp' field so OpenAI API doesn't reject them.
+    """
+    if sessions_container is None:
+        print("[COSMOS WARN] sessions_container is None. Cannot retrieve session.", flush=True)
+        return None
+        
+    try:
+        response = sessions_container.read_item(item=session_id, partition_key=session_id)
+        messages = response.get("messages", [])
+        msg_count = len(messages)
+        print(f"[COSMOS INFO] Loaded session {session_id} with {msg_count} messages.", flush=True)
+        # Strip timestamp so OpenAI only gets role/content
+        clean_messages = [{"role": m["role"], "content": m["content"]} for m in messages]
+        return clean_messages
+    except Exception as e:
+        print(f"[COSMOS ERROR] Error retrieving session {session_id}: {e}", flush=True)
+        return None
+
+def save_session_message(session_id, user_email, role, content, title=None):
+    """
+    Appends a message to a session or creates a new one in chat_sessions container.
+    Sets TTL of 5 days (432000 seconds) for automatic deletion.
+    """
+    if sessions_container is None:
+        print("[COSMOS WARN] sessions_container is None. Cannot save session.", flush=True)
+        if not session_id:
+            session_id = str(uuid.uuid4())
+        return session_id
+
+    if not session_id or session_id in ("null", "undefined", ""):
+        session_id = str(uuid.uuid4())
+        print(f"[COSMOS INFO] Generated new session_id: {session_id}", flush=True)
+        
+    try:
+        try:
+            session = sessions_container.read_item(item=session_id, partition_key=session_id)
+            print(f"[COSMOS INFO] Found existing session {session_id}", flush=True)
+        except Exception:
+            print(f"[COSMOS INFO] Creating new session document: {session_id}", flush=True)
+            session = {
+                "id": session_id,
+                "user_email": user_email,
+                "session_title": title or "New Chat",
+                "messages": [],
+                "created_at": datetime.datetime.utcnow().isoformat(),
+                "ttl": 432000  # 5 days in seconds
+            }
+
+        session["messages"].append({
+            "role": role,
+            "content": content,
+            "timestamp": datetime.datetime.utcnow().isoformat()
+        })
+        session["updated_at"] = datetime.datetime.utcnow().isoformat()
+        
+        if title and session.get("session_title") == "New Chat":
+            session["session_title"] = title
+
+        sessions_container.upsert_item(body=session)
+        print(f"[COSMOS INFO] ✅ Saved {role} message to session {session_id} (title: {session.get('session_title')})", flush=True)
+        return session_id
+    except Exception as e:
+        print(f"[COSMOS ERROR] Error saving session message: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
+        return session_id
+
+def delete_session(session_id):
+    """
+    Deletes a session document from chat_sessions container.
+    """
+    if sessions_container is None:
+        print("[COSMOS WARN] sessions_container is None. Cannot delete session.", flush=True)
+        return False
+    try:
+        sessions_container.delete_item(item=session_id, partition_key=session_id)
+        print(f"[COSMOS INFO] Deleted session {session_id}", flush=True)
+        return True
+    except Exception as e:
+        print(f"[COSMOS ERROR] Error deleting session {session_id}: {e}", flush=True)
+        return False
 # if __name__ == "__main__":
 #     print("📊 Loading Dashboard Data...")
     

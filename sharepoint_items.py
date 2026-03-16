@@ -1893,7 +1893,17 @@ def swp():
         print(f"An error occurred during the swap process: {e}")
     
 
+def get_teams_stauts(user_id):
     
+    url = f"{GRAPH_API_ENDPOINT}/users/{user_id}/presence"
+    headers = {"Authorization": f"Bearer {get_access_token()}"}
+    
+    response = requests.get(url, headers=headers)
+    response.raise_for_status()
+    
+    return response.json()
+
+
     
     
 
