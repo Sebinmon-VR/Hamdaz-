@@ -1619,12 +1619,12 @@ def assist():
     
     return render_template("assist.html", user=user, tasks=user_items)
 
-@app.route("/line_items")
-def line_items():
-    if "user" not in session:
-        return redirect(url_for("login"))
-    user = session.get("user")
-    return render_template("line_items.html", user=user)
+# @app.route("/line_items")
+# def line_items():
+#     if "user" not in session:
+#         return redirect(url_for("login"))
+#     user = session.get("user")
+#     return render_template("line_items.html", user=user)
 
 # ==============================================================
 # START FLASK + BACKGROUND UPDATER``
