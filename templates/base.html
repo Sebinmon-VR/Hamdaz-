@@ -27,6 +27,94 @@
         {% block content %}{% endblock %}
     </main>
 
+    <!-- Global Updates Popup -->
+    <div id="updatesPopupOverlay" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-[9999] flex items-center justify-center opacity-0 pointer-events-none transition-opacity duration-500 overflow-y-auto py-10 px-4">
+        <div id="updatesPopupCard" class="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-2xl transform scale-90 transition-transform duration-500 overflow-hidden relative">
+            <button onclick="closeUpdatesPopup()" class="absolute top-6 right-6 w-10 h-10 rounded-full bg-black/5 hover:bg-black/10 flex items-center justify-center transition-colors z-20">
+                <i class="fa-solid fa-xmark text-gray-700"></i>
+            </button>
+
+            <!-- Poster Image Header -->
+            <div class="h-64 relative bg-indigo-600">
+                <img src="/static/brain/ddf65cf1-467f-4651-bce5-fbaa73a5f334/ai_chatbot_feature_1773681247539.png" alt="Updates" class="w-full h-full object-cover opacity-80">
+                <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent"></div>
+                <div class="absolute bottom-8 left-10">
+                    <span class="px-3 py-1 rounded-full bg-indigo-500 text-white text-[10px] font-bold uppercase tracking-[0.2em] mb-3 inline-block">New Arrival</span>
+                    <h2 class="text-4xl font-black text-white leading-tight">Hamdaz AI v2.0</h2>
+                </div>
+            </div>
+
+            <!-- Content -->
+            <div class="p-10">
+                <p class="text-gray-500 font-medium mb-8 text-lg leading-relaxed">
+                    Welcome to the next generation of Hamdaz. We've built significant new tools to accelerate your workflow.
+                </p>
+
+                <div class="space-y-6 mb-10">
+                    <div class="flex items-start gap-4">
+                        <div class="w-10 h-10 rounded-2xl bg-indigo-50 flex items-center justify-center shrink-0 border border-indigo-100">
+                            <i class="fa-solid fa-robot text-indigo-600"></i>
+                        </div>
+                        <div>
+                            <h4 class="font-bold text-gray-900">Personal AI Assistant</h4>
+                            <p class="text-sm text-gray-500 mt-1">A production-ready chatbot with context memory and persistent sessions.</p>
+                        </div>
+                    </div>
+                    <div class="flex items-start gap-4">
+                        <div class="w-10 h-10 rounded-2xl bg-emerald-50 flex items-center justify-center shrink-0 border border-emerald-100">
+                            <i class="fa-solid fa-database text-emerald-600"></i>
+                        </div>
+                        <div>
+                            <h4 class="font-bold text-gray-900">Smart Data Retention</h4>
+                            <p class="text-sm text-gray-500 mt-1">Automatic 5-day deletion logic for sessions, keeping your workspace clean.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex items-center gap-4">
+                    <a href="/updates" class="flex-1 py-4 bg-indigo-600 text-white font-bold rounded-2xl text-center hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 hover:scale-[1.02] active:scale-[0.98]">
+                        Explore All Features
+                    </a>
+                    <button onclick="closeUpdatesPopup()" class="px-8 py-4 bg-gray-100 text-gray-700 font-bold rounded-2xl hover:bg-gray-200 transition-all">
+                        Later
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const VERSION_KEY = 'hamdaz_seen_version_2.0.1';
+        
+        function showUpdatesPopup() {
+            const overlay = document.getElementById('updatesPopupOverlay');
+            const card = document.getElementById('updatesPopupCard');
+            if (overlay && card) {
+                overlay.classList.remove('opacity-0', 'pointer-events-none');
+                card.classList.remove('scale-90');
+                card.classList.add('scale-100');
+            }
+        }
+
+        function closeUpdatesPopup() {
+            const overlay = document.getElementById('updatesPopupOverlay');
+            const card = document.getElementById('updatesPopupCard');
+            if (overlay && card) {
+                overlay.classList.add('opacity-0', 'pointer-events-none');
+                card.classList.add('scale-90');
+                card.classList.remove('scale-100');
+                localStorage.setItem(VERSION_KEY, 'true');
+            }
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            if (!localStorage.getItem(VERSION_KEY)) {
+                // Delay slightly for better effect
+                setTimeout(showUpdatesPopup, 1500);
+            }
+        });
+    </script>
+
     <!-- Allow pages to inject scripts (Bootstrap bundle or page-specific JS) -->
     {% block scripts %}{% endblock %}
 

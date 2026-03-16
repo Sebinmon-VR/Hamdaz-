@@ -1047,6 +1047,12 @@ def pa_chat():
         import traceback
         return jsonify({"error": str(e) + "\n" + traceback.format_exc()}), 500
 
+@app.route("/updates")
+def updates():
+    if "user" not in session:
+        return redirect(url_for("login"))
+    return render_template("pages/updates.html", user=session["user"])
+
 # ==============================================================
 # MS GRAPH SEND EMAIL ROUTE
 # ==============================================================
