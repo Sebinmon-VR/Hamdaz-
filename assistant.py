@@ -4,7 +4,7 @@ import openai
 from duckduckgo_search import DDGS
 import pandas as pd
 from datetime import datetime
-from cosmos import search_quotes_by_item
+from cosmos import search_quotes_by_item, search_item_distributors
 from sharepoint_items import fetch_sharepoint_list
 
 SITE_DOMAIN = "hamdaz1.sharepoint.com"
@@ -48,6 +48,17 @@ def search_cosmos_db(query):
     except Exception as e:
         return f"Error searching Cosmos DB: {str(e)}"
 
+def search_item_purchase_history(query):
+    """Searches the local Cosmos DB for item purchase history and distributors."""
+    try:
+        results = search_item_distributors(query)
+        if not results:
+            return "No matching purchase history found in the database."
+        # Limit results to avoid token limits
+        return json.dumps(results[:3], default=str)
+    except Exception as e:
+        return f"Error searching purchase history: {str(e)}"
+
 def search_web(query):
     """Searches the internet for product details, prices, distributors, and suppliers."""
     try:
@@ -76,8 +87,9 @@ def run_personal_assistant(username, user_prompt, files_text="", chat_history=No
 You are an ADMIN, which means you have access to data of ALL users. 
 You can help the user with queries, fetch ALL tasks of EVERYONE or specific users, analyze files, check prices in the local Cosmos DB, and search online.
 
-IMPORTANT INSTRUCTIONS FOR PRICES:
-If the user asks about the price or details of a product, you MUST FIRST use `search_cosmos_db` to check the local database. 
+IMPORTANT INSTRUCTIONS FOR PRICES AND DISTRIBUTORS:
+If the user asks about the price or details of a product, you MUST FIRST use `search_cosmos_db` to check the local database for quotes.
+To find historical distributors, vendors, or previous purchase prices for an item, use `search_item_purchase_history`. 
 If it is not in the database, or if you need to provide online alternatives/links/competitors, you MUST use `search_web` to find online prices and links.
 Do not hallucinate prices or links; clearly cite from web results if used.
 Return markdown formatting.
@@ -88,8 +100,9 @@ Return markdown formatting.
 Only data belonging to the current user ({username}) is accessible. 
 You can help the user with their queries, assist them in tasks, fetch their tasks, analyze files, check prices in the local Cosmos DB, and search online for distributors, suppliers, or online prices.
 
-IMPORTANT INSTRUCTIONS FOR PRICES:
-If the user asks about the price or details of a product, you MUST FIRST use `search_cosmos_db` to check the local database. 
+IMPORTANT INSTRUCTIONS FOR PRICES AND DISTRIBUTORS:
+If the user asks about the price or details of a product, you MUST FIRST use `search_cosmos_db` to check the local database for quotes.
+To find historical distributors, vendors, or previous purchase prices for an item, use `search_item_purchase_history`. 
 If it is not in the database, or if you need to provide online alternatives/links/competitors, you MUST use `search_web` to find online prices and links.
 Do not hallucinate prices or links; clearly cite from web results if used.
 Return markdown formatting.
@@ -143,6 +156,23 @@ Return markdown formatting.
                         "query": {
                             "type": "string",
                             "description": "The product name to search for in our database."
+                        }
+                    },
+                    "required": ["query"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "search_item_purchase_history",
+                "description": "Search the local Cosmos database for historical purchase orders, distributors, and previous purchase prices for an item.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "The item name or ID to search for in our purchase history."
                         }
                     },
                     "required": ["query"]
@@ -219,6 +249,8 @@ Return markdown formatting.
                     function_response = get_user_tasks(username, is_admin_user, target_username)
                 elif function_name == "search_cosmos_db":
                     function_response = search_cosmos_db(function_args.get("query"))
+                elif function_name == "search_item_purchase_history":
+                    function_response = search_item_purchase_history(function_args.get("query"))
                 elif function_name == "search_web":
                     function_response = search_web(function_args.get("query"))
                 elif function_name == "draft_email":

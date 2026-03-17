@@ -21,6 +21,17 @@ try:
         client = CosmosClient(ENDPOINT, KEY)
         database = client.get_database_client(DATABASE_NAME)
         container = database.get_container_client(CONTAINER_NAME)
+        
+        # --- Dedicated container for Item Distributors ---
+        try:
+            distributors_container = database.create_container_if_not_exists(
+                id="item_distributors",
+                partition_key=PartitionKey(path="/id")
+            )
+            print("[COSMOS INFO] item_distributors container ready.", flush=True)
+        except Exception as e_dist:
+            print(f"[COSMOS ERROR] Could not create/get item_distributors container: {e_dist}", flush=True)
+            distributors_container = None
 
         # --- Dedicated container for Chat Sessions ---
         # We create it with partition key /id and TTL enabled
@@ -316,7 +327,81 @@ def delete_session(session_id):
     except Exception as e:
         print(f"[COSMOS ERROR] Error deleting session {session_id}: {e}", flush=True)
         return False
-# if __name__ == "__main__":
+
+# =======================
+# ITEM DISTRIBUTOR MANAGEMENT
+# =======================
+
+def upsert_item_distributors(mapping):
+    """
+    Saves the enriched item mapping to Cosmos DB.
+    Each document: { "id": item_id, "name": item_name, "purchase_history": [...] }
+    """
+    if distributors_container is None:
+        print("[COSMOS WARN] distributors_container is None. Cannot save mapping.", flush=True)
+        return False
+    
+    print(f"📡 Syncing {len(mapping)} item-history records to Cosmos DB...")
+    try:
+        for item_id, details in mapping.items():
+            doc = {
+                "id": str(item_id),
+                "item_name": details.get("name"),
+                "purchase_history": details.get("history", []),
+                "updated_at": datetime.datetime.utcnow().isoformat()
+            }
+            distributors_container.upsert_item(body=doc)
+        print("✅ Sync complete.", flush=True)
+        return True
+    except Exception as e:
+        print(f"[COSMOS ERROR] Error upserting distributors: {e}", flush=True)
+        return False
+
+def get_item_distributors(item_id):
+    """
+    Retrieves the list of distributors for a specific item_id.
+    """
+    if distributors_container is None:
+        return []
+    
+    try:
+        doc = distributors_container.read_item(item=str(item_id), partition_key=str(item_id))
+        return doc.get("distributors", [])
+    except Exception:
+        # Item not found or error
+        return []
+
+def search_item_distributors(search_term):
+    """
+    Searches for items by name or ID in the item_distributors container.
+    Returns a list of matching items with their purchase history.
+    """
+    if distributors_container is None:
+        return []
+    
+    print(f"🔍 Searching distributors for: '{search_term}'...")
+    
+    query = {
+        "query": """
+            SELECT c.id, c.item_name, c.purchase_history, c.updated_at
+            FROM c
+            WHERE CONTAINS(UPPER(c.item_name), UPPER(@search))
+               OR CONTAINS(UPPER(c.id), UPPER(@search))
+        """,
+        "parameters": [
+            {"name": "@search", "value": search_term}
+        ]
+    }
+    
+    try:
+        results = list(distributors_container.query_items(query=query, enable_cross_partition_query=True))
+        return results
+    except Exception as e:
+        print(f"[COSMOS ERROR] Error searching distributors: {e}", flush=True)
+        return []
+
+# =======================
+# MAIN EXECUTION
 #     print("📊 Loading Dashboard Data...")
     
     # # 1. Main Table

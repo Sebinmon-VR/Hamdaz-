@@ -91,6 +91,13 @@ def get_specific_quote(estimate_id):
     response = requests.get(url, headers=headers)
     return response.json().get("estimate")
 
+def get_specific_purchase_order(purchaseorder_id):
+    access_token = get_access_token()
+    url = f"{BASE_URL}/purchaseorders/{purchaseorder_id}?organization_id={ORGANIZATION_ID}"
+    headers = {"Authorization": f"Zoho-oauthtoken {access_token}"}
+    response = requests.get(url, headers=headers)
+    return response.json().get("purchaseorder")
+
 def fetch_all_quotes_everything():
     # 1. Discovery Phase
     summary_list = fetch_quotes_list()
@@ -122,6 +129,73 @@ def fetch_all_quotes_everything():
         
     print(f"\n✨ Extraction finished. {len(full_detailed_data)} full objects collected.")
     return full_detailed_data
+
+def fetch_all_purchase_orders_everything():
+    # 1. Discovery Phase
+    summary_list = fetch_data_paginated("purchaseorders", "purchaseorders")
+    full_detailed_data = []
+    total_to_fetch = len(summary_list)
+    
+    print(f"\n🚀 DISCOVERY COMPLETE: {total_to_fetch} PO IDs found.")
+    print(f"🛠 Starting Deep Extraction (fetching line items and vendors)...")
+    
+    # 2. Extraction Phase
+    for index, summary in enumerate(summary_list, start=1):
+        po_id = summary.get("purchaseorder_id")
+        po_no = summary.get("purchaseorder_number")
+        
+        # DEBUG: Progress Indicator
+        print(f"   [{index}/{total_to_fetch}] Processing {po_no}...", end="\r")
+        
+        try:
+            detail = get_specific_purchase_order(po_id)
+            if detail:
+                full_detailed_data.append(detail)
+            else:
+                print(f"\n⚠️ Warning: No detail data returned for {po_no}")
+        except Exception as e:
+            print(f"\n❌ Error fetching details for {po_no}: {str(e)}")
+            
+        # Throttling to prevent 429 Too Many Requests
+        time.sleep(0.15)
+        
+    print(f"\n✨ Extraction finished. {len(full_detailed_data)} full objects collected.")
+    return full_detailed_data
+
+def get_item_distributors_map():
+    """
+    Creates a mapping of item_id -> { "name": item_name, "purchase_history": [...] }
+    by scanning all purchase orders.
+    """
+    full_pos = fetch_all_purchase_orders_everything()
+    item_map = {} # item_id -> { name: str, history: list }
+    
+    for po in full_pos:
+        vendor_name = po.get("vendor_name")
+        po_number = po.get("purchaseorder_number")
+        po_date = po.get("date")
+        po_id = po.get("purchaseorder_id")
+
+        for item in po.get("line_items", []):
+            item_id = item.get("item_id")
+            if item_id:
+                if item_id not in item_map:
+                    item_map[item_id] = {
+                        "name": item.get("name"),
+                        "history": []
+                    }
+                
+                # Add record of this specific purchase
+                item_map[item_id]["history"].append({
+                    "vendor_name": vendor_name,
+                    "po_number": po_number,
+                    "po_date": po_date,
+                    "po_id": po_id,
+                    "rate": item.get("rate"),
+                    "quantity": item.get("quantity")
+                })
+    
+    return item_map
 
 # =======================
 # DATA STRUCTURING
@@ -300,8 +374,10 @@ def structure_quotes_data(quotes):
     return pd.DataFrame(structured_data)
 
 
+def get_purchase_orders():
+    return fetch_data("purchaseorders", "purchaseorders")
 
-
+# =======================
 
 
 
