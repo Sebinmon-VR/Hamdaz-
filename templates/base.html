@@ -35,7 +35,7 @@
     <div id="updatesPopupOverlay"
         class="fixed inset-0 bg-black/60 backdrop-blur-sm z-[9999] flex items-center justify-center opacity-0 pointer-events-none transition-opacity duration-500 overflow-y-auto py-10 px-4">
         <div id="updatesPopupCard"
-            class="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-2xl transform scale-90 transition-transform duration-500 overflow-hidden relative">
+            class="bg-white rounded-[2.5rem]  w-full max-w-2xl transform scale-90 transition-transform duration-500 overflow-hidden relative">
             <button onclick="closeUpdatesPopup()"
                 class="absolute top-6 right-6 w-10 h-10 rounded-full bg-black/5 hover:bg-black/10 flex items-center justify-center transition-colors z-20">
                 <i class="fa-solid fa-xmark text-gray-700"></i>
@@ -88,7 +88,7 @@
 
                 <div class="flex items-center gap-4">
                     <a href="/updates"
-                        class="flex-1 py-4 bg-indigo-600 text-white font-bold rounded-2xl text-center hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 hover:scale-[1.02] active:scale-[0.98]">
+                        class="flex-1 py-4 bg-indigo-600 text-white font-bold rounded-2xl text-center hover:bg-indigo-700 transition-all   hover:scale-[1.02] active:scale-[0.98]">
                         Explore All Features
                     </a>
                     <button onclick="closeUpdatesPopup()"
@@ -135,7 +135,7 @@
     <!-- Floating Chatbot Button -->
     {% if session.get('user') and request.path != '/personal_assistant' %}
     <a href="/personal_assistant" id="chatbotFAB"
-        class="fixed bottom-8 right-8 w-16 h-16 bg-gradient-to-tr from-indigo-600 to-violet-500 rounded-full shadow-[0_8px_30px_rgb(99,102,241,0.5)] flex items-center justify-center text-white text-2xl z-[9998] hover:scale-110 hover:shadow-[0_8px_40px_rgb(99,102,241,0.8)] transition-all duration-300 group">
+        class="fixed bottom-8 right-8 w-16 h-16 bg-gradient-to-tr from-indigo-600 to-violet-500 rounded-full 0_8px_30px_rgb(99,102,241,0.5)] flex items-center justify-center text-white text-2xl z-[9998] hover:scale-110 hover:0_8px_40px_rgb(99,102,241,0.8)] transition-all duration-300 group">
         <i class="fa-solid fa-wand-magic-sparkles group-hover:rotate-12 transition-transform"></i>
         <!-- Soft pulse effect -->
         <div class="absolute inset-0 rounded-full bg-indigo-400 opacity-20 animate-ping group-hover:opacity-40"></div>
