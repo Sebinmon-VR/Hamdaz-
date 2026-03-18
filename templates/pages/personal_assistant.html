@@ -4,7 +4,7 @@
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/4.3.0/marked.min.js"></script>
 
-<div class="flex h-[85vh] min-h-[600px] max-w-7xl mx-auto mt-6 px-4 pb-10 gap-6">
+<div class="flex h-[calc(100vh-100px)] w-full pb-6 gap-6">
 
     <!-- Sidebar -->
     <div class="w-72 flex flex-col bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden shrink-0">
@@ -28,41 +28,77 @@
         </div>
     </div>
 
-    <!-- Main Chat Area -->
-    <div class="flex-1 flex flex-col bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden relative">
-        <!-- Header -->
+    <!-- Main Chat Area (Premium Elevated) -->
+    <div
+        class="flex-1 flex flex-col bg-white rounded-[2rem] shadow-[0_10px_40px_rgba(0,0,0,0.03)] border border-slate-100/60 overflow-hidden relative">
+        <!-- Header (Solid & Elevated) -->
         <div
-            class="border-b border-gray-100 p-4 shrink-0 flex items-center justify-between bg-white z-10 shadow-sm relative">
-            <div class="flex items-center space-x-3">
-                
+            class="border-b border-slate-100 p-6 shrink-0 flex items-center justify-between bg-white z-10 relative shadow-[0_2px_15px_rgba(0,0,0,0.02)]">
+            <div class="flex items-center space-x-4">
                 <div
-                    class="w-10 h-10 rounded-full overflow-hidden shadow-sm flex items-center justify-center bg-indigo-50 border border-indigo-100">
+                    class="w-12 h-12 rounded-2xl overflow-hidden shadow-md flex items-center justify-center bg-indigo-50 border border-indigo-100 ring-4 ring-slate-50">
                     <img src="/static/images/bot_avatar.png" alt="AI Agent" class="w-full h-full object-cover">
                 </div>
                 <div>
-                    <h2 class="text-base font-bold text-gray-800" id="currentChatTitle">AI Assistant</h2>
-                    <p class="text-xs text-emerald-500 font-medium flex items-center gap-1.5 mt-0.5">
-                        <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span> Online
+                    <h2 class="text-lg font-black text-slate-800 tracking-tight" id="currentChatTitle">AI Assistant</h2>
+                    <p
+                        class="text-[10px] text-emerald-500 font-bold flex items-center gap-1.5 mt-0.5 uppercase tracking-widest">
+                        <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse ring-4 ring-emerald-50"></span>
+                        Online
                     </p>
                 </div>
-                
             </div>
-            <!-- Agent Mode Toggle -->
-            <div class="flex items-center gap-2.5 select-none" style="opacity: 0.3;">
-                <div class="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 cursor-pointer hover:border-indigo-200 transition-colors" onclick="toggleAgentMode()" title="Toggle agent tools (task lookup, web search, email)">
-                    <!-- <i id="agentIcon" class="fa-solid fa-robot text-indigo-500 text-sm"></i> -->
-                    <span class="text-xs font-semibold text-gray-600">Agent</span>
-                    <!-- Toggle pill -->
-                    <div id="agentToggle" class="relative w-9 h-5 rounded-full transition-colors duration-300 bg-indigo-500 "  >
-                        <div id="agentThumb" class="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm transition-transform duration-300 translate-x-4"></div>
+
+            <!-- Redesigned Agent Selection (Segmented Control - Professional Pill) -->
+            <div
+                class="bg-slate-100/80 p-1.5 rounded-2xl flex items-center relative group backdrop-blur-md border border-slate-200/50 shadow-inner">
+                <div id="agentActiveIndicator"
+                    class="absolute h-9 bg-white rounded-[0.8rem] shadow-sm transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] z-0"
+                    style="width: 140px; transform: translateX(0px);"></div>
+
+                <button onclick="selectAgent('general')" id="tabGeneral"
+                    class="relative z-10 flex items-center justify-center gap-2 px-6 py-2.5 text-xs font-black transition-all duration-300 text-indigo-600"
+                    style="width: 140px;">
+                    <i class="fa-solid fa-message text-[11px]"></i>
+                    <span class="tracking-tight">Personal AI</span>
+                </button>
+
+                <button onclick="selectAgent('procurement')" id="tabProcurement"
+                    class="relative z-10 flex items-center justify-center gap-2 px-6 py-2.5 text-xs font-black transition-all duration-300 text-slate-400 hover:text-slate-600"
+                    style="width: 140px;">
+                    <i class="fa-solid fa-cart-shopping text-[11px]"></i>
+                    <span class="tracking-tight">Procurement</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Chat Box -->
+        <div id="chatBox" class="flex-1 overflow-y-auto p-6 space-y-6 bg-transparent relative custom-scrollbar"></div>
+
+        <!-- Header-Integrated Task Selection Overlay -->
+        <div id="taskOverlay"
+            class="hidden absolute inset-0 z-20 backdrop-blur-2xl bg-white/10 flex flex-col p-10 overflow-hidden">
+            <div class="flex items-center justify-between mb-8 max-w-7xl mx-auto w-full">
+                <div>
+                    <h3 class="text-3xl font-black text-slate-800 tracking-tighter">Active Tasks</h3>
+                    <p class="text-[11px] text-slate-400 font-bold uppercase tracking-[0.2em] mt-2">Select a task
+                        assigned to you in SharePoint</p>
+                </div>
+                <button onclick="closeTaskOverlay()"
+                    class="group w-12 h-12 rounded-[1.2rem] bg-white shadow-xl shadow-slate-200 border border-slate-100 flex items-center justify-center text-slate-400 hover:text-rose-500 transition-all hover:rotate-90 hover:scale-110 active:scale-90">
+                    <i class="fa-solid fa-xmark text-xl"></i>
+                    <div
+                        class="absolute inset-0 rounded-[1.2rem] bg-rose-500 opacity-0 group-hover:opacity-5 transition-opacity">
                     </div>
+                </button>
+            </div>
+            <div class="flex-1 overflow-y-auto w-full custom-scrollbar">
+                <div id="taskList"
+                    class="flex flex-col gap-3 max-w-5xl mx-auto pb-20">
+                    <!-- Task items will be inserted here -->
                 </div>
             </div>
         </div>
-        
-
-        <!-- Chat Box -->
-        <div id="chatBox" class="flex-1 overflow-y-auto p-6 space-y-6 bg-slate-50 relative"></div>
 
         <!-- File Upload Info -->
         <div id="fileInfo"
@@ -75,11 +111,10 @@
                 class="text-indigo-400 hover:text-indigo-600 font-bold transition-colors w-6 h-6 flex items-center justify-center rounded-full hover:bg-indigo-100">&times;</button>
         </div>
 
-        <!-- Input Box -->
-        <div class="p-4 bg-white shrink-0 border-t border-gray-100">
+        <!-- Input Box (Solid) -->
+        <div class="p-4 bg-gray-50/50 shrink-0 border-t border-gray-100">
             <div
-                class="flex items-end space-x-2 bg-white rounded-2xl border border-gray-300 focus-within:border-indigo-400 focus-within:ring-4 focus-within:ring-indigo-50/50 shadow-sm overflow-hidden transition-all duration-300 relative group">
-                <!-- File attachment button -->
+                class="flex items-end space-x-2 bg-white rounded-2xl border border-gray-200 focus-within:border-indigo-400 focus-within:ring-4 focus-within:ring-indigo-50/30 shadow-sm transition-all duration-300 relative group">
                 <label for="fileInput"
                     class="cursor-pointer p-3.5 pl-4 text-gray-400 hover:text-indigo-600 transition-colors"
                     title="Attach Files">
@@ -92,12 +127,51 @@
                     class="flex-1 py-4 flex items-center pr-14 bg-transparent border-none focus:ring-0 resize-none max-h-32 text-gray-700 placeholder-gray-400 text-[15px] leading-relaxed"
                     placeholder="Ask me anything..."></textarea>
 
-                <!-- Send button integrated inside the input area -->
                 <button id="sendBtn"
                     class="absolute right-2 bottom-2 p-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl transition-all shadow-md shrink-0 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed w-10 h-10 hover:scale-105 active:scale-95">
                     <i class="fa-solid fa-paper-plane text-sm ml-0.5 mt-0.5"></i>
                 </button>
             </div>
+        </div>
+    </div>
+
+    <!-- Right Sidebar (Agent Logs & Distributors) -->
+    <div id="rightSidebar"
+        class="hidden w-80 flex flex-col bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden shrink-0 transition-all duration-300">
+        <!-- Step Indicator -->
+        <div class="p-4 border-b border-gray-100 bg-indigo-50/30">
+            <div class="flex items-center gap-2 mb-1">
+                <span class="flex h-2 w-2 rounded-full bg-indigo-600 animate-pulse"></span>
+                <span class="text-[10px] font-bold text-indigo-600 uppercase tracking-widest">Active Step</span>
+            </div>
+            <p id="currentAgentStep" class="text-sm font-semibold text-gray-800">Ready</p>
+        </div>
+
+        <!-- Scrollable content -->
+        <div class="flex-1 overflow-y-auto w-full p-4 space-y-6">
+            <!-- Agent Logs -->
+            <div>
+                <div class="flex items-center justify-between mb-3 cursor-pointer group" onclick="toggleLogExpansion()">
+                    <h4 class="text-xs font-bold text-gray-400 uppercase tracking-wider">Agent Logs</h4>
+                    <i id="logChevron"
+                        class="fa-solid fa-chevron-down text-[10px] text-gray-300 transition-transform"></i>
+                </div>
+                <div id="agentLogs" class="space-y-2 max-h-48 overflow-hidden transition-all duration-300">
+                    <!-- Logs will be inserted here -->
+                </div>
+            </div>
+
+            <!-- Distributor Selection -->
+            <div id="distributorArea" class="hidden">
+                <h4 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Target Distributor</h4>
+                <div id="distributorList" class="space-y-2">
+                    <!-- Distributor buttons/radios will be inserted here -->
+                </div>
+            </div>
+        </div>
+
+        <div class="p-4 border-t border-gray-100 bg-gray-50 text-[10px] text-gray-400 italic">
+            Procurement Agent Session
         </div>
     </div>
 </div>
@@ -113,6 +187,9 @@
     const currentChatTitle = document.getElementById("currentChatTitle");
 
     let currentSessionId = sessionStorage.getItem('pa_session_id') || null;
+    let selectedAgent = 'general';
+    let currentTaskId = null;
+    let isLogExpanded = true;
 
     // Load sessions on init
     window.onload = function () {
@@ -199,12 +276,16 @@
     function startNewChat() {
         currentSessionId = null;
         sessionStorage.removeItem('pa_session_id');
-        currentChatTitle.textContent = "AI Personal Assistant";
+        currentChatTitle.textContent = selectedAgent === 'procurement' ? "Procurement Agent" : "AI Personal Assistant";
         chatBox.innerHTML = "";
         fetchSessions();
         showGreeting();
         const newUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
         window.history.pushState({ path: newUrl }, '', newUrl);
+
+        if (selectedAgent === 'procurement') {
+            openTaskOverlay();
+        }
     }
 
     async function deleteSession(event, sessionId) {
@@ -442,9 +523,18 @@
 
         if (!message && files.length === 0) return;
 
+        let actualMessage = message;
         let displayMsg = message;
+        
         if (files.length > 0) {
-            displayMsg += `\n\n*(📎 Attached ${files.length} file(s))*`;
+            if (selectedAgent === 'procurement' && (!message || message.toLowerCase().includes('analyze'))) {
+                actualMessage = message ? (message + ". Please extract items for procurement from the attached file(s) and return them strictly as a JSON array.") : "Please extract items for procurement from the attached file(s) and return them strictly as a JSON array.";
+            }
+            if (!message) {
+                displayMsg = "Please analyze this requirement file.";
+            } else {
+                displayMsg += `\n\n*(📎 Attached ${files.length} file(s))*`;
+            }
         }
 
         appendMessage(displayMsg, "user");
@@ -464,12 +554,19 @@
 
         try {
             const formData = new FormData();
-            formData.append("message", message);
+            formData.append("message", actualMessage);
             const sid = currentSessionId || sessionStorage.getItem('pa_session_id') || '';
             console.log('[PA] Sending message. session_id:', sid || '(none — new session)');
             if (sid) {
                 formData.append("session_id", sid);
             }
+
+            // Send context data
+            formData.append("agent_mode", selectedAgent);
+            if (selectedAgent === 'procurement' && currentTaskId) {
+                formData.append("task_id", currentTaskId);
+            }
+
             for (let i = 0; i < files.length; i++) {
                 formData.append("files", files[i]);
             }
@@ -486,7 +583,29 @@
             clearFiles();
 
             if (data.reply) {
-                appendMessage(data.reply, "assistant", true);
+                // Detect JSON array for uploaded requirement files
+                let handledAsJSON = false;
+                try {
+                    let text = data.reply;
+                    let match = text.match(/\[[\s\S]*\]/);
+                    if (match && selectedAgent === 'procurement') {
+                        let parsed = JSON.parse(match[0]);
+                        if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].name) {
+                            addAgentLog("Requirements analyzed from upload successfully", "success");
+                            let itemsList = parsed.map(i => `- **${i.name}** (${i.type || 'Product'})`).join('\n');
+                            appendMessage(`Analysis complete! I have identified the following items needed from your upload:\n\n${itemsList}\n\nI will now search for distributors in our database and online.`, "assistant", true);
+                            searchDistributors(parsed);
+                            handledAsJSON = true;
+                        }
+                    }
+                } catch (e) {
+                    console.log("Not a JSON response or failed to parse:", e.message);
+                }
+
+                if (!handledAsJSON) {
+                    appendMessage(data.reply, "assistant", true);
+                }
+
                 if (data.session_id) {
                     if (currentSessionId !== data.session_id) {
                         currentSessionId = data.session_id;
@@ -554,6 +673,347 @@
 
     sendBtn.addEventListener("click", sendMessage);
 
+    // ============================================================
+    // PROCUREMENT AGENT FUNCTIONS
+    // ============================================================
+    function selectAgent(agent) {
+        selectedAgent = agent;
+        const indicator = document.getElementById('agentActiveIndicator');
+        const tabGen = document.getElementById('tabGeneral');
+        const tabProc = document.getElementById('tabProcurement');
+        const rightSidebar = document.getElementById('rightSidebar');
+        const taskOverlay = document.getElementById('taskOverlay');
+
+        if (agent === 'procurement') {
+            // Update Toggle UI
+            if (indicator) indicator.style.transform = 'translateX(140px)';
+            tabGen.className = "relative z-10 flex items-center gap-2 px-5 py-2 text-xs font-bold transition-all duration-300 text-gray-400";
+            tabProc.className = "relative z-10 flex items-center gap-2 px-5 py-2 text-xs font-bold transition-all duration-300 text-indigo-600";
+
+            rightSidebar.classList.remove('hidden');
+            openTaskOverlay();
+            currentChatTitle.textContent = "Procurement Agent";
+        } else {
+            // Update Toggle UI
+            if (indicator) indicator.style.transform = 'translateX(0px)';
+            tabGen.className = "relative z-10 flex items-center gap-2 px-5 py-2 text-xs font-bold transition-all duration-300 text-indigo-600";
+            tabProc.className = "relative z-10 flex items-center gap-2 px-5 py-2 text-xs font-bold transition-all duration-300 text-gray-400";
+
+            rightSidebar.classList.add('hidden');
+            taskOverlay.classList.add('hidden');
+            currentChatTitle.textContent = "AI Personal Assistant";
+        }
+
+        startNewChat();
+    }
+
+    async function openTaskOverlay() {
+        const overlay = document.getElementById('taskOverlay');
+        const list = document.getElementById('taskList');
+        if (!overlay || !list) return;
+
+        overlay.classList.remove('hidden');
+        list.innerHTML = `<div class="col-span-full py-20 flex flex-col items-center justify-center text-gray-400">
+            <i class="fa-solid fa-circle-notch fa-spin text-3xl mb-4"></i>
+            <p>Fetching your tasks from SharePoint...</p>
+        </div>`;
+
+        try {
+            const res = await fetch('/api/procurement/tasks');
+            const data = await res.json();
+            if (data.tasks && data.tasks.length > 0) {
+                renderTaskCards(data.tasks);
+            } else {
+                list.innerHTML = `<div class="col-span-full py-20 text-center text-gray-400">No active tasks found in SharePoint.</div>`;
+            }
+        } catch (e) {
+            list.innerHTML = `<div class="col-span-full py-20 text-center text-red-400">Error fetching tasks. Please try again.</div>`;
+        }
+    }
+
+    function closeTaskOverlay() {
+        const overlay = document.getElementById('taskOverlay');
+        if (overlay) overlay.classList.add('hidden');
+    }
+
+    function renderTaskCards(tasks) {
+        const list = document.getElementById('taskList');
+        if (!list) return;
+
+        list.innerHTML = "";
+        tasks.forEach(task => {
+            const item = document.createElement('div');
+            item.className = "flex items-center justify-between p-4 bg-white rounded-2xl shadow-[0_2px_10px_rgba(0,0,0,0.02)] border border-slate-100 hover:border-indigo-200 hover:shadow-[0_8px_25px_rgba(0,0,0,0.06)] transition-all duration-300 group";
+
+            const priorityClass = (task.Priority || 'medium').toLowerCase();
+            let priorityColors = {
+                high: 'text-rose-600 bg-rose-50 border-rose-100',
+                medium: 'text-amber-600 bg-amber-50 border-amber-100',
+                low: 'text-emerald-600 bg-emerald-50 border-emerald-100'
+            }[priorityClass] || 'text-slate-600 bg-slate-50 border-slate-100';
+
+            item.innerHTML = `
+                <div class="flex items-center gap-5 flex-1 min-w-0 pr-4">
+                    <div class="flex flex-col items-center justify-center shrink-0 w-12 hidden sm:flex">
+                        <span class="text-[10px] font-black uppercase text-indigo-400">Step</span>
+                        <span class="text-lg font-black text-indigo-600 leading-none">${task.steps_completed || 0}/5</span>
+                    </div>
+                    
+                    <div class="h-10 w-px bg-slate-100 hidden sm:block"></div>
+                    
+                    <div class="flex-1 min-w-0">
+                        <div class="flex items-center gap-2 mb-1">
+                            <span class="text-[9px] font-black uppercase px-2 py-0.5 rounded-md border ${priorityColors}">${priorityClass}</span>
+                            <span class="text-[10px] text-slate-400 font-bold flex items-center gap-1"><i class="fa-regular fa-clock"></i> Due: ${task.DueAt || 'N/A'}</span>
+                        </div>
+                        <h4 class="font-bold text-slate-800 text-[15px] truncate" title="${task.Title}">
+                            ${task.Title}
+                        </h4>
+                    </div>
+                    
+                    <div class="items-center gap-3 hidden md:flex shrink-0 w-48 border-l border-slate-100 pl-5">
+                        <div class="w-8 h-8 rounded-full bg-indigo-50 flex items-center justify-center text-[11px] font-black text-indigo-600 border border-indigo-100 shrink-0">
+                            ${(task.AssignedTo || 'U').charAt(0).toUpperCase()}
+                        </div>
+                        <div class="min-w-0">
+                            <p class="text-[8px] text-slate-400 font-bold uppercase tracking-widest">Assignee</p>
+                            <p class="text-xs font-bold text-slate-700 truncate">${task.AssignedTo || 'Unassigned'}</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <button onclick="selectTask('${task.id}', '${task.Title.replace(/'/g, "\\'")}')" 
+                    class="bg-indigo-600 group-hover:bg-indigo-700 text-white text-[12px] font-bold py-2.5 px-6 rounded-xl transition-all shadow-md shadow-indigo-100 hover:shadow-lg active:scale-95 shrink-0 ml-4 flex items-center gap-2">
+                    Start <i class="fa-solid fa-arrow-right text-[10px]"></i>
+                </button>
+            `;
+            list.appendChild(item);
+        });
+    }
+
+    async function selectTask(taskId, title) {
+        currentTaskId = taskId; // Track current task
+        closeTaskOverlay();
+        addAgentLog(`Selected task: ${title}`, 'success');
+        updateAgentStep(`Fetching details for ${title}...`);
+
+        appendMessage(`I have selected the task: **${title}**. Fetching details and attachments...`, "assistant", true);
+
+        try {
+            const res = await fetch(`/api/procurement/tasks/${taskId}`);
+            const data = await res.json();
+
+            if (data.task) {
+                let detailsMsg = `### Task Details: ${data.task.Title}\n`;
+                detailsMsg += `- **Assigned To:** ${data.task.AssignedTo}\n`;
+                detailsMsg += `- **Priority:** ${data.task.Priority}\n`;
+                detailsMsg += `- **Status:** ${data.task.JobStatus || 'N/A'}\n`;
+
+                if (data.attachments && data.attachments.length > 0) {
+                    detailsMsg += `\n### Attachments:\n`;
+                    data.attachments.forEach(att => {
+                        detailsMsg += `- [${att.name}](${att.url})\n`;
+                    });
+
+                    detailsMsg += `\nWould you like me to **analyze the requirement file** automatically? Or you can upload one if it's missing.`;
+
+                    // Add interactive buttons for analysis
+                    setTimeout(() => {
+                        appendMessage(detailsMsg, "assistant", false);
+
+                        // Create a specific container for analysis buttons
+                        const btnWrapper = document.createElement('div');
+                        btnWrapper.className = "flex gap-2 mt-4 analysis-trigger-area";
+                        btnWrapper.innerHTML = `
+                            <button onclick="analyzeTaskRequirements('${taskId}')" class="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold py-2 px-4 rounded-xl transition-all shadow-sm">Analyze Requirements</button>
+                            <button onclick="document.getElementById('fileInput').click()" class="bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 text-xs font-bold py-2 px-4 rounded-xl transition-all">Upload File</button>
+                        `;
+
+                        const chatWrappers = chatBox.querySelectorAll('.flex.justify-start');
+                        const lastMsgDiv = chatWrappers[chatWrappers.length - 1].querySelector('.bg-white');
+                        lastMsgDiv.appendChild(btnWrapper);
+                        scrollToBottom();
+                    }, 1000);
+                } else {
+                    detailsMsg += `\nNo attachments found for this task. Please upload the requirement file to proceed.`;
+                    appendMessage(detailsMsg, "assistant", true);
+                }
+
+                addAgentLog(`Task details fetched for ${title}`, 'info');
+                updateAgentStep(`Waiting for requirement analysis...`);
+            }
+        } catch (e) {
+            addAgentLog(`Error fetching task details: ${e.message}`, 'error');
+            appendMessage("Sorry, I couldn't fetch the task details. Please try again.", "assistant");
+        }
+    }
+
+    function addAgentLog(message, type = 'info') {
+        const logs = document.getElementById('agentLogs');
+        if (!logs) return;
+
+        const log = document.createElement('div');
+        const colors = {
+            'info': 'text-gray-500',
+            'success': 'text-emerald-500',
+            'error': 'text-red-500',
+            'warning': 'text-amber-500'
+        };
+
+        const icon = {
+            'info': 'fa-circle-info',
+            'success': 'fa-circle-check',
+            'error': 'fa-circle-xmark',
+            'warning': 'fa-triangle-exclamation'
+        };
+
+        log.className = `flex gap-2 text-[11px] leading-relaxed py-1 fade-in ${colors[type] || colors.info}`;
+        const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        log.innerHTML = `
+            <span class="text-[9px] font-mono opacity-50 shrink-0 mt-0.5">${time}</span>
+            <i class="fa-solid ${icon[type] || icon.info} mt-1 shrink-0"></i>
+            <span class="font-medium">${message}</span>
+        `;
+        logs.insertBefore(log, logs.firstChild);
+
+        if (logs.children.length > 50) logs.removeChild(logs.lastChild);
+    }
+
+    function updateAgentStep(step) {
+        const el = document.getElementById('currentAgentStep');
+        if (el) {
+            el.className = "text-sm font-semibold text-gray-800 fade-in";
+            el.textContent = step;
+        }
+    }
+
+    function toggleLogExpansion() {
+        isLogExpanded = !isLogExpanded;
+        const logs = document.getElementById('agentLogs');
+        const chevron = document.getElementById('logChevron');
+        if (logs && chevron) {
+            if (isLogExpanded) {
+                logs.style.maxHeight = '300px';
+                chevron.style.transform = 'rotate(0deg)';
+            } else {
+                logs.style.maxHeight = '0px';
+                chevron.style.transform = 'rotate(-90deg)';
+            }
+        }
+    }
+
+    async function analyzeTaskRequirements(taskId) {
+        updateAgentStep("Analyzing Requirements...");
+        addAgentLog("Starting requirement analysis", "info");
+
+        const loading = appendLoadingBubble();
+        loading.querySelector('.thinking-status').textContent = 'Analyzing Requirements...';
+
+        try {
+            const res = await fetch(`/api/procurement/analyze/${taskId}`);
+            const data = await res.json();
+
+            loading.remove();
+
+            if (data.success) {
+                addAgentLog("Requirements analyzed successfully", "success");
+                let itemsList = data.items.map(i => `- **${i.name}** (${i.type})`).join('\n');
+                appendMessage(`Analysis complete! I have identified the following items needed:\n\n${itemsList}\n\nI will now search for distributors in our database and online.`, "assistant", true);
+
+                searchDistributors(data.items);
+            } else {
+                addAgentLog(`Analysis failed: ${data.error}`, "error");
+                appendMessage(`Analysis failed: ${data.error}`, "assistant");
+            }
+        } catch (e) {
+            if (loading) loading.remove();
+            addAgentLog(`Error in analysis: ${e.message}`, "error");
+            appendMessage("There was an error analyzing the requirements.", "assistant");
+        }
+    }
+
+    async function searchDistributors(items) {
+        updateAgentStep("Searching for Distributors...");
+        addAgentLog(`Searching for distributors for ${items.length} items`, "info");
+
+        const distributorArea = document.getElementById('distributorArea');
+        const distributorList = document.getElementById('distributorList');
+        if (distributorArea && distributorList) {
+            distributorArea.classList.remove('hidden');
+            distributorList.innerHTML = `<div class="py-4 text-center text-gray-400 text-[11px]"><i class="fa-solid fa-circle-notch fa-spin mr-2"></i>Searching...</div>`;
+        }
+
+        try {
+            const res = await fetch('/api/procurement/find_distributors', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ items: items })
+            });
+            const data = await res.json();
+
+            if (data.distributors && data.distributors.length > 0) {
+                renderDistributors(data.distributors);
+                addAgentLog(`Found ${data.distributors.length} potential distributors`, "success");
+                updateAgentStep("Distributors found. Select one to draft email.");
+                appendMessage(`I have found some potential distributors. You can see them in the sidebar. Select one to initiate an email draft.`, "assistant", true);
+            } else {
+                if (distributorList) distributorList.innerHTML = `<div class="py-4 text-center text-gray-400 text-[11px]">No distributors found.</div>`;
+                addAgentLog("No distributors found for the items", "warning");
+            }
+        } catch (e) {
+            addAgentLog(`Search error: ${e.message}`, "error");
+            if (distributorList) distributorList.innerHTML = `<div class="py-4 text-center text-red-400 text-[11px]">Search failed.</div>`;
+        }
+    }
+
+    function renderDistributors(distributors) {
+        const list = document.getElementById('distributorList');
+        if (!list) return;
+
+        list.innerHTML = "";
+        distributors.forEach((dist, idx) => {
+            const item = document.createElement('div');
+            item.className = "p-3 rounded-xl border border-gray-100 hover:border-indigo-200 hover:bg-indigo-50/30 cursor-pointer transition-all group";
+            item.onclick = () => selectDistributor(dist);
+
+            item.innerHTML = `
+                <div class="flex items-center justify-between mb-1">
+                    <span class="text-sm font-bold text-gray-800">${dist.name}</span>
+                    <i class="fa-solid fa-chevron-right text-[10px] text-gray-300 group-hover:text-indigo-400 transition-colors"></i>
+                </div>
+                <div class="text-[10px] text-gray-500 truncate">${dist.email || 'No email found'}</div>
+                <div class="mt-2 flex gap-1 flex-wrap">
+                    ${dist.source === 'internal' ? '<span class="text-[8px] bg-emerald-100 text-emerald-600 px-1.5 py-0.5 rounded font-bold uppercase">Internal DB</span>' : '<span class="text-[8px] bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded font-bold uppercase">Web</span>'}
+                </div>
+            `;
+            list.appendChild(item);
+        });
+    }
+
+    async function selectDistributor(distributor) {
+        addAgentLog(`Selected distributor: ${distributor.name}`, "info");
+        updateAgentStep("Drafting Email...");
+
+        appendMessage(`Drafting an email to **${distributor.name}**...`, "assistant", true);
+
+        try {
+            const res = await fetch('/api/procurement/draft_email', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ distributor: distributor })
+            });
+            const data = await res.json();
+
+            if (data.draft) {
+                appendMessage(`EMAIL_DRAFT_START\n${JSON.stringify(data.draft)}\nEMAIL_DRAFT_END`, "assistant", false);
+                addAgentLog("Email draft created", "success");
+                updateAgentStep("Draft ready for review");
+            }
+        } catch (e) {
+            addAgentLog(`Drafting error: ${e.message}`, "error");
+        }
+    }
+
     // Auto-resize textarea
     messageInput.addEventListener('input', function () {
         this.style.height = 'auto';
@@ -604,7 +1064,30 @@
     .prose-custom ul {
         list-style-type: disc;
         padding-left: 1.5rem;
-        margin-bottom: 0.75rem;
+        margin-bottom: 1rem;
+    }
+
+    .glass-card {
+        background: rgba(255, 255, 255, 0.4);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+    }
+
+    .custom-scrollbar::-webkit-scrollbar {
+        width: 6px;
+    }
+
+    .custom-scrollbar::-webkit-scrollbar-track {
+        background: transparent;
+    }
+
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+        background: rgba(0, 0, 0, 0.05);
+        border-radius: 10px;
+    }
+
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+        background: rgba(0, 0, 0, 0.1);
     }
 
     .prose-custom ol {

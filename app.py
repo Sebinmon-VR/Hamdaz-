@@ -21,7 +21,9 @@ from uuid import uuid4
 # from openai import OpenAI
 from assistant import *
 import docx
-from cosmos import get_user_sessions, get_session_messages, save_session_message, delete_session
+import pypdf
+import io
+from cosmos import get_user_sessions, get_session_messages, save_session_message, delete_session, search_item_distributors
 # ================== LOAD ENVIRONMENT ==================
 load_dotenv(override=True)
 
@@ -1318,7 +1320,9 @@ Document Text:
 
         try:
             # NOTE: Ensure 'openai' library is configured before running.
-            response = openai.ChatCompletion.create(
+            from openai import OpenAI
+            client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+            response = client.chat.completions.create(
                 model="gpt-4o",
                 messages=[
                     {"role": "system", "content": "You are an expert RFQ/SOW analyst."},
@@ -1328,7 +1332,7 @@ Document Text:
                 max_tokens=2000
             )
 
-            ai_output = response['choices'][0]['message']['content']
+            ai_output = response.choices[0].message.content
             ai_output_clean = ai_output.replace("```json", "").replace("```", "").strip()
 
             try:
@@ -1410,7 +1414,9 @@ def find_distributors():
         If no distributors are found, return an empty list for 'distributors'.
         """
         
-        response = openai.ChatCompletion.create(
+        from openai import OpenAI
+        client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        response = client.chat.completions.create(
             model="gpt-4o", # Use a model with strong web-browsing capabilities
             messages=[
                 {"role": "system", "content": "You are a specialized procurement agent who searches the web for product distributors and returns results in a clean JSON format."},
@@ -1420,7 +1426,7 @@ def find_distributors():
             max_tokens=1000
         )
 
-        ai_output = response['choices'][0]['message']['content']
+        ai_output = response.choices[0].message.content
         ai_output_clean = ai_output.replace("```json", "").replace("```", "").strip()
 
         try:
@@ -1514,9 +1520,11 @@ def process_files():
         
         # --- CONSOLIDATED LOGIC: AI COMPARISON ---
         
-        openai.api_key = os.getenv("OPENAI_API_KEY")
-        if not openai.api_key:
+        from openai import OpenAI
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
             return jsonify({'message': "Configuration Error: OPENAI_API_KEY not set."}), 500
+        client = OpenAI(api_key=api_key)
 
         json_structure = {
             "items_requested": "[list of items requested in RFQ]",
@@ -1548,7 +1556,7 @@ def process_files():
         ---
         """
         
-        response = openai.ChatCompletion.create(
+        response = client.chat.completions.create(
             model="gpt-4o",
             messages=[
                 {"role": "system", 
@@ -1579,7 +1587,7 @@ def process_files():
         return jsonify({'message': f'File Processing Error (Unsupported Type/Content): {str(ve)}'}), 400
     except json.JSONDecodeError as e:
         return jsonify({'message': f'AI Model Error: Failed to parse JSON response. Details: {str(e)}'}), 500
-    except openai.error.OpenAIError as e:
+    except Exception as e:
         return jsonify({'message': f'OpenAI API Error: {str(e)}'}), 500
     except Exception as e:
         print(f"Error during file processing: {e}")
@@ -1611,10 +1619,16 @@ def assist():
     
     user_name = user.get("displayName").replace(" ", "")
     
-    tasks = fetch_sharepoint_list(SITE_DOMAIN, test_path, test_proposals_list)
+    tasks = fetch_sharepoint_list(SITE_DOMAIN, SITE_PATH, LIST_NAME)
     df = items_to_dataframe(tasks)
     
-    user_items =[t for t in tasks if t.get("AssignedTo", "").replace(" ", "") == user_name]
+    # Filter for the current user and set fallbacks for Title
+    user_items = []
+    for t in tasks:
+        if t.get("AssignedTo", "").replace(" ", "") == user_name:
+            if not t.get('Title'):
+                t['Title'] = t.get('ProjectName') or t.get('ProposalName') or t.get('Name') or t.get('ItemName') or 'Unnamed Task'
+            user_items.append(t)
     print(f"User {user_name} has {len(user_items)} assigned items.", flush=True)
     
     return render_template("assist.html", user=user, tasks=user_items)
@@ -1627,12 +1641,242 @@ def assist():
 #     return render_template("line_items.html", user=user)
 
 # ==============================================================
-# START FLASK + BACKGROUND UPDATER``
+# PROCUREMENT AGENT API ROUTES
+# ==============================================================
+
+@app.route('/api/procurement/tasks', methods=['GET'])
+def get_procurement_tasks():
+    if "user" not in session:
+        return jsonify({"error": "Unauthorized"}), 401
+    
+    user = session["user"]
+    display_name = user.get("displayName", "").replace(" ", "")
+    
+    try:
+        # Using the main Proposals list
+        tasks_list = fetch_sharepoint_list(SITE_DOMAIN, SITE_PATH, LIST_NAME)
+        # Filter for the current user
+        user_tasks = [t for t in tasks_list if str(t.get("AssignedTo", "")).replace(" ", "").lower() == display_name.lower()]
+        
+        # Add basic priority and step data for the UI
+        for t in user_tasks:
+            if 'Priority' not in t: t['Priority'] = 'Medium'
+            if 'steps_completed' not in t: t['steps_completed'] = 2
+            if 'total_steps' not in t: t['total_steps'] = 5
+            if 'DueAt' not in t: t['DueAt'] = t.get('BCD', 'N/A')
+            
+            # Create a robust Title fallback
+            title_val = str(t.get('Title') or t.get('ProjectName') or t.get('ProposalName') or t.get('Name') or t.get('ItemName') or '').strip()
+            if not title_val:
+                title_val = "Unnamed Task"
+            t['Title'] = title_val
+            
+        return jsonify({"tasks": user_tasks})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/procurement/tasks/<task_id>', methods=['GET'])
+def get_procurement_task_details(task_id):
+    if "user" not in session:
+        return jsonify({"error": "Unauthorized"}), 401
+    
+    try:
+        task_data = fetch_sharepoint_item_by_id(SITE_DOMAIN, SITE_PATH, LIST_NAME, task_id)
+        if not task_data:
+            return jsonify({"error": "Task not found"}), 404
+        
+        attachments_list = get_item_attachments(SITE_DOMAIN, SITE_PATH, LIST_NAME, task_id)
+        return jsonify({
+            "task": task_data,
+            "attachments": attachments_list
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/procurement/analyze/<task_id>', methods=['GET'])
+def analyze_procurement_requirements(task_id):
+    if "user" not in session:
+        return jsonify({"error": "Unauthorized"}), 401
+    
+    try:
+        attachments = get_item_attachments(SITE_DOMAIN, SITE_PATH, LIST_NAME, task_id)
+        if not attachments:
+            return jsonify({"success": False, "error": "No attachments found to analyze."}), 400
+        
+        content_to_analyze = ""
+        access_token = get_access_token()
+        headers = {"Authorization": f"Bearer {access_token}"}
+        
+        for att in attachments:
+            name = att['name'].lower()
+            if any(name.endswith(ext) for ext in ['.pdf', '.xlsx', '.xls', '.docx', '.txt', '.csv']):
+                download_url = att['url']
+                resp = requests.get(download_url, headers=headers)
+                if resp.status_code == 200:
+                    ext = name.split('.')[-1]
+                    file_bytes = resp.content
+                    
+                    try:
+                        if ext == 'pdf':
+                            from pypdf import PdfReader
+                            reader = PdfReader(io.BytesIO(file_bytes))
+                            for page in reader.pages:
+                                content_to_analyze += (page.extract_text() or "") + "\n"
+                        elif ext in ['xlsx', 'xls']:
+                            df_att = pd.read_excel(io.BytesIO(file_bytes))
+                            content_to_analyze += df_att.to_markdown(index=False) + "\n"
+                        elif ext == 'csv':
+                            df_att = pd.read_csv(io.BytesIO(file_bytes))
+                            content_to_analyze += df_att.to_markdown(index=False) + "\n"
+                        elif ext == 'docx':
+                            import docx
+                            doc = docx.Document(io.BytesIO(file_bytes))
+                            content_to_analyze += "\n".join([p.text for p in doc.paragraphs]) + "\n"
+                        elif ext == 'txt':
+                            content_to_analyze += file_bytes.decode('utf-8') + "\n"
+                    except Exception as parse_error:
+                        print(f"Error parsing attachment {name}: {parse_error}")
+        
+        if not content_to_analyze.strip():
+            return jsonify({"success": False, "error": "Could not extract text from attachments."}), 400
+            
+        short_content = content_to_analyze[:10000]
+        prompt = f"Analyze the following requirement document and list the items/products that need to be procured. Return the result as a JSON list of objects, each having 'name' and 'type'.\n\nContent:\n{short_content}"
+        
+        from openai import OpenAI
+        client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        openai_res = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": "You are a procurement expert who extracts required items from documents. Return valid JSON only."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0
+        )
+        
+        res_text = openai_res.choices[0].message.content
+        try:
+            import json as py_json
+            match = re.search(r'\[.*\]', res_text, re.DOTALL)
+            items = py_json.loads(match.group(0)) if match else py_json.loads(res_text)
+            if isinstance(items, dict) and 'items' in items:
+                items = items['items']
+        except:
+            items = []
+            
+        return jsonify({"success": True, "items": items})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/procurement/find_distributors', methods=['POST'])
+def procurement_find_distributors():
+    if "user" not in session:
+        return jsonify({"error": "Unauthorized"}), 401
+    
+    data = request.get_json()
+    items_to_search = data.get('items', [])
+    
+    try:
+        all_distributors = []
+        for item in items_to_search:
+            name = item.get('name')
+            if not name: continue
+            
+            internal_results = search_item_distributors(name)
+            for res in internal_results:
+                history = res.get('purchase_history', [])
+                for h in history:
+                    vendor = h.get('Vendor') or h.get('Distributor')
+                    if vendor:
+                        all_distributors.append({
+                            "name": vendor,
+                            "email": h.get("Email", "Not in DB"),
+                            "source": "internal",
+                            "item": name
+                        })
+            
+            web_data = search_web(f"authorized distributors for {name} in UAE")
+            try:
+                import json as py_json
+                web_list = py_json.loads(web_data)
+                if isinstance(web_list, list):
+                    for w in web_list[:2]:
+                        all_distributors.append({
+                            "name": w.get('title', 'Unknown Distributor'),
+                            "email": w.get('email', 'Not Found'), 
+                            "source": "web",
+                            "item": name,
+                            "link": w.get('href', '#')
+                        })
+            except:
+                pass
+                
+        unique_list = []
+        seen_names = set()
+        for d in all_distributors:
+            if d['name'].lower() not in seen_names:
+                unique_list.append(d)
+                seen_names.add(d['name'].lower())
+        
+        return jsonify({"distributors": unique_list[:10]})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/procurement/draft_email', methods=['POST'])
+def procurement_draft_email():
+    if "user" not in session:
+        return jsonify({"error": "Unauthorized"}), 401
+    
+    data = request.get_json()
+    distributor_info = data.get('distributor')
+    if not distributor_info:
+        return jsonify({"error": "Missing distributor info"}), 400
+    
+    try:
+        dist_name = distributor_info.get('name')
+        items = data.get('items', [])
+        
+        items_req = "my task"
+        if items:
+             items_text = "\n".join([f"- {i.get('name', 'Item')} ({i.get('type', 'Category')})" for i in items])
+             items_req = f"the following items:\n{items_text}"
+             
+        prompt_email = f"Draft a professional procurement inquiry email to {dist_name}. Inquire about availability, lead times, and pricing for {items_req}. Return as JSON with 'subject' and 'body'."
+        
+        from openai import OpenAI
+        client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        draft_res = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": "You are a procurement assistant drafting emails. Return JSON only."},
+                {"role": "user", "content": prompt_email}
+            ],
+            temperature=0.7
+        )
+        
+        res_text = draft_res.choices[0].message.content
+        try:
+            import json as py_json
+            match_json = re.search(r'\{.*\}', res_text, re.DOTALL)
+            draft_data = py_json.loads(match_json.group(0)) if match_json else py_json.loads(res_text)
+            draft_data['to'] = distributor_info.get('email') if distributor_info.get('email') not in ["Searching...", "Not Found", None, ""] else ""
+        except:
+            draft_data = {
+                "subject": f"Inquiry for items - {dist_name}",
+                "body": f"Dear {dist_name},\n\nWe are interested in procuring {items_req}. Please provide a quote.",
+                "to": distributor_info.get('email') if distributor_info.get('email') not in ["Searching...", "Not Found", None, ""] else ""
+            }
+            
+        return jsonify({"draft": draft_data})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# ==============================================================
+# START FLASK + BACKGROUND UPDATER
 # ==============================================================
 threading.Thread(target=background_updater, daemon=True).start()
 
 if __name__ == "__main__":
     app.run(debug=True)
-    
 
 

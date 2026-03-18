@@ -178,6 +178,57 @@ def fetch_sharepoint_list(site_domain, site_path, list_name):
     return structured_items
 
 
+def fetch_sharepoint_item_by_id(site_domain, site_path, list_name, item_id):
+    """
+    Fetches a single SharePoint item by its ID and flattens its fields.
+    """
+    access_token = get_access_token()
+    user_cache = get_all_users(access_token)
+
+    site_id = get_site_id(access_token, site_domain, site_path)
+    list_id = get_list_id(access_token, site_id, list_name)
+    
+    headers = {"Authorization": f"Bearer {access_token}"}
+    url = f"{GRAPH_API}/sites/{site_id}/lists/{list_id}/items/{item_id}?expand=fields($expand=AssignedTo,Author,Editor)"
+    
+    resp = requests.get(url, headers=headers)
+    if resp.status_code != 200:
+        print(f"[SHAREPOINT ERROR] Failed to fetch item {item_id}: {resp.text}")
+        return None
+        
+    item = resp.json()
+    return flatten_fields(item.get("fields", {}), user_cache)
+
+
+def get_item_attachments(site_domain, site_path, list_name, item_id):
+    """
+    Fetches the attachments for a specific SharePoint list item.
+    """
+    access_token = get_access_token()
+    site_id = get_site_id(access_token, site_domain, site_path)
+    list_id = get_list_id(access_token, site_id, list_name)
+    
+    headers = {"Authorization": f"Bearer {access_token}"}
+    # In Graph API, attachments are under /items/{id}/attachments
+    url = f"{GRAPH_API}/sites/{site_id}/lists/{list_id}/items/{item_id}/attachments"
+    
+    resp = requests.get(url, headers=headers)
+    if resp.status_code != 200:
+        print(f"[SHAREPOINT ERROR] Failed to fetch attachments for item {item_id}: {resp.text}")
+        return []
+        
+    attachments = resp.json().get("value", [])
+    # Format attachments for the UI
+    result = []
+    for att in attachments:
+        result.append({
+            "name": att.get("name"),
+            "url": att.get("webUrl") or att.get("@microsoft.graph.downloadUrl"),
+            "id": att.get("id")
+        })
+    return result
+
+
 
 def items_to_dataframe(items):
     """
@@ -993,7 +1044,10 @@ def generate_sharepoint_filter_endpoint(site_domain, site_path, list_name, colum
         {"role": "user", "content": user_prompt}
     ]
 
-    response = openai.ChatCompletion.create(
+    import os
+    from openai import OpenAI
+    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    response = client.chat.completions.create(
         model="gpt-4o",
         messages=messages,
         temperature=0,
