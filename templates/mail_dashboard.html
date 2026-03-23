@@ -1,0 +1,821 @@
+{% extends "base.html" %}
+
+{% block head %}
+    <!-- Quill Rich Text Editor (Outlook Experience) -->
+    <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
+    <script src="https://cdn.quilljs.com/1.3.6/quill.min.js"></script>
+
+<style>
+    body {
+        overflow: hidden;
+    }
+    .mail-container {
+        height: calc(100vh - 65px);
+        display: flex;
+        background-color: #f3f4f6;
+    }
+    .folder-pane {
+        width: 220px;
+        min-width: 150px;
+        max-width: 300px;
+        background-color: #f8fafc;
+        display: flex;
+        flex-direction: column;
+    }
+    .message-list-pane {
+        width: 300px;
+        min-width: 250px;
+        max-width: 500px;
+        background-color: #ffffff;
+        display: flex;
+        flex-direction: column;
+    }
+    .reading-pane {
+        flex: 1;
+        min-width: 300px;
+        background-color: #ffffff;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
+    
+    /* Resizer styling */
+    .resizer {
+        width: 4px;
+        background-color: #e5e7eb;
+        cursor: col-resize;
+        transition: background-color 0.2s;
+        z-index: 10;
+    }
+    .resizer:hover, .resizer.dragging {
+        background-color: #2564eb;
+    }
+
+    .scrollable-content {
+        flex: 1;
+        overflow-y: auto;
+    }
+    .scrollable-content::-webkit-scrollbar {
+        width: 8px;
+    }
+    .scrollable-content::-webkit-scrollbar-thumb {
+        background: #cbd5e1;
+        border-radius: 4px;
+    }
+
+    .folder-item {
+        padding: 8px 16px;
+        display: flex;
+        align-items: center;
+        color: #475569;
+        cursor: pointer;
+        font-size: 13px;
+        font-weight: 500;
+        margin: 2px 8px;
+        border-radius: 6px;
+        transition: background-color 0.1s;
+    }
+    .folder-item:hover {
+        background-color: #e2e8f0;
+    }
+    .folder-item.active {
+        background-color: #e0e7ff;
+        color: #1d4ed8;
+    }
+    .folder-item i {
+        margin-right: 12px;
+        width: 16px;
+        text-align: center;
+        font-size: 14px;
+    }
+
+    .message-item {
+        padding: 12px 16px;
+        border-bottom: 1px solid #f1f5f9;
+        cursor: pointer;
+        transition: background-color 0.1s;
+    }
+    .message-item:hover {
+        background-color: #f8fafc;
+    }
+    .message-item.active {
+        background-color: #eff6ff;
+        border-right: 3px solid #2564eb;
+    }
+    
+    .unread .sender-name, .unread .subject-text {
+        font-weight: 700 !important;
+        color: #0f172a !important;
+    }
+    .unread .message-item-indicator {
+        display: block;
+        width: 8px;
+        height: 8px;
+        background-color: #2564eb;
+        border-radius: 50%;
+        position: absolute;
+        left: 4px;
+        top: 24px;
+    }
+
+    .avatar-circle {
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 14px;
+        font-weight: 600;
+        background-color: #6366f1; /* Changed per item randomly below */
+    }
+
+    .toolbar-btn {
+        padding: 4px 8px;
+        border-radius: 4px;
+        color: #475569;
+        font-size: 13px;
+        font-weight: 500;
+        transition: background-color 0.1s;
+    }
+    .toolbar-btn:hover {
+        background-color: #f1f5f9;
+        color: #0f172a;
+    }
+
+    .compose-input-btn {
+        background-color: #f1f5f9;
+        color: #475569;
+        font-size: 12px;
+        font-weight: 600;
+        border: 1px solid #e2e8f0;
+        padding: 3px 10px;
+        border-radius: 4px;
+        cursor: pointer;
+    }
+    .compose-input-btn:hover {
+        background-color: #e2e8f0;
+    }
+
+    .ql-toolbar.ql-snow {
+        border: none !important;
+        background-color: #f8fafc;
+        border-top: 1px solid #e2e8f0 !important;
+        border-bottom: 1px solid #e2e8f0 !important;
+        padding: 6px 12px !important;
+    }
+    .ql-container.ql-snow {
+        border: none !important;
+        font-family: inherit !important;
+        font-size: 14px !important;
+    }
+
+    /* Search bar */
+    .search-input {
+        width: 100%;
+        padding: 6px 10px 6px 30px;
+        border: 1px solid #cbd5e1;
+        border-radius: 4px;
+        font-size: 13px;
+        outline: none;
+        background-color: #f8fafc;
+    }
+    .search-input:focus {
+        background-color: #ffffff;
+        border-color: #2564eb;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="mail-container w-full h-full bg-white relative"> 
+    
+    <!-- Left Pane: Folders -->
+    <div class="folder-pane border-r border-gray-200" id="folder-pane">
+        <div class="px-4 py-3">
+            <button onclick="openComposePane()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-1.5 px-3 rounded shadow-sm flex items-center gap-2 text-sm justify-center transition-colors">
+                <i class="fa-solid fa-pen"></i> New mail
+            </button>
+        </div>
+        
+        <div class="px-4 py-1 text-xs font-bold text-gray-500 flex items-center justify-between">
+            <i class="fa-solid fa-chevron-down cursor-pointer"></i> Favorites
+        </div>
+        
+        <div class="scrollable-content py-1">
+            <div class="folder-item active" onclick="loadFolder('inbox', this, 'Inbox')">
+                <i class="fa-regular fa-inbox"></i> Inbox <span class="ml-auto text-xs text-blue-600 font-bold" id="badge-inbox"></span>
+            </div>
+            <div class="folder-item" onclick="loadFolder('drafts', this, 'Drafts')">
+                <i class="fa-regular fa-file-lines"></i> Drafts
+            </div>
+            <div class="folder-item" onclick="loadFolder('sentitems', this, 'Sent Items')">
+                <i class="fa-regular fa-paper-plane"></i> Sent Items
+            </div>
+            <div class="folder-item" onclick="loadFolder('deleteditems', this, 'Deleted Items')">
+                <i class="fa-regular fa-trash-can"></i> Deleted Items
+            </div>
+            <div class="folder-item" onclick="loadFolder('junkemail', this, 'Junk Email')">
+                <i class="fa-solid fa-ban"></i> Junk Email
+            </div>
+            <div class="folder-item" onclick="loadFolder('archive', this, 'Archive')">
+                <i class="fa-solid fa-box-archive"></i> Archive
+            </div>
+        </div>
+    </div>
+
+    <!-- Divider 1 -->
+    <div class="resizer" id="resizer1"></div>
+
+    <!-- Middle Pane: Message List -->
+    <div class="message-list-pane relative border-r border-gray-200" id="message-list-pane">
+        <div id="inbox-tabs" class="flex items-center px-4 pt-3 pb-2 gap-4 text-sm font-semibold text-gray-500 border-b border-gray-200">
+            <div id="tab-focused" onclick="switchTab('focused')" class="text-blue-600 border-b-2 border-blue-600 pb-1 cursor-pointer">Focused</div>
+            <div id="tab-other" onclick="switchTab('other')" class="cursor-pointer hover:text-gray-800 pb-1 border-b-2 border-transparent">Other</div>
+            <div class="ml-auto flex gap-3 text-lg items-center">
+                <button class="hover:text-gray-800" title="Filter"><i class="fa-solid fa-filter"></i></button>
+                <button onclick="refreshCurrentFolder()" class="hover:text-gray-800" title="Refresh"><i class="fa-solid fa-rotate-right"></i></button>
+            </div>
+        </div>
+        
+        <div class="px-4 py-2 border-b border-gray-100 bg-gray-50">
+            <div class="relative flex items-center">
+                <i class="fa-solid fa-magnifying-glass absolute left-2.5 text-gray-400 text-xs"></i>
+                <input type="text" class="search-input" id="mail-search" placeholder="Search" onkeyup="applyFilters()">
+            </div>
+        </div>
+        
+        <div id="message-list-loader" class="absolute inset-x-0 top-32 bottom-0 bg-white/60 flex items-center justify-center z-20 hidden">
+            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        </div>
+
+        <div id="message-list-container" class="scrollable-content relative bg-white pb-10">
+            <!-- Messages injected here -->
+        </div>
+    </div>
+
+    <!-- Divider 2 -->
+    <div class="resizer" id="resizer2"></div>
+
+    <!-- Right Pane: Reading & Compose -->
+    <div class="reading-pane relative bg-slate-50" id="reading-pane">
+        
+        <!-- Empty State -->
+        <div id="reading-pane-empty" class="absolute inset-0 flex flex-col items-center justify-center text-gray-400">
+            <i class="fa-regular fa-envelope-open text-5xl mb-3 text-gray-300"></i>
+            <p class="text-sm font-medium">Select an item to read</p>
+        </div>
+
+        <div id="reading-pane-loader" class="absolute inset-0 bg-white/60 flex items-center justify-center z-20 hidden">
+            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        </div>
+
+        <!-- Compose Pane (Outlook Right Pane style) -->
+        <div id="compose-pane" class="hidden absolute inset-0 bg-white flex flex-col shadow-[-4px_0_15px_-3px_rgba(0,0,0,0.05)] z-30">
+            <!-- Toolbar Top -->
+            <div class="flex items-center justify-between px-3 py-2 border-b border-gray-200 bg-white">
+                <div class="flex items-center gap-4">
+                    <button onclick="sendEmail()" id="compose-send-api-btn" class="bg-blue-600 hover:bg-blue-700 text-white pl-3 pr-2 py-1.5 rounded flex items-center gap-2 text-sm font-semibold shadow-sm transition-colors">
+                        <i class="fa-regular fa-paper-plane"></i> Send <span class="border-l border-blue-400 pl-1"><i class="fa-solid fa-chevron-down text-[10px]"></i></span>
+                    </button>
+                    <span class="text-xs text-gray-500 font-medium hover:bg-gray-100 cursor-pointer px-2 py-1 rounded">From: {{ user.mail }} <i class="fa-solid fa-chevron-down text-[10px] ml-1"></i></span>
+                </div>
+                <div class="flex items-center gap-1 text-gray-500">
+                    <button onclick="closeComposePane()" class="p-1.5 hover:bg-gray-100 rounded text-sm text-red-500" title="Discard"><i class="fa-regular fa-trash-can"></i></button>
+                    <button class="p-1.5 hover:bg-gray-100 rounded text-sm"><i class="fa-solid fa-up-right-and-down-left-from-center"></i></button>
+                    <button class="p-1.5 hover:bg-gray-100 rounded text-sm"><i class="fa-solid fa-ellipsis"></i></button>
+                </div>
+            </div>
+
+            <!-- Headers -->
+            <div class="px-6 py-2 flex flex-col bg-white">
+                <div class="flex items-center border-b border-gray-200 py-2">
+                    <button class="compose-input-btn mr-3">To</button>
+                    <input type="text" id="compose-to" class="flex-1 focus:outline-none text-[13px] text-gray-800" autocomplete="off">
+                    <button class="toolbar-btn ml-2" onclick="document.getElementById('compose-cc-row').classList.toggle('hidden')">Cc</button>
+                    <button class="toolbar-btn ml-1">Bcc</button>
+                </div>
+                
+                <div id="compose-cc-row" class="hidden flex items-center border-b border-gray-200 py-2">
+                    <button class="compose-input-btn mr-3">Cc</button>
+                    <input type="text" id="compose-cc" class="flex-1 focus:outline-none text-[13px] text-gray-800" autocomplete="off">
+                </div>
+
+                <div class="flex items-center border-b border-gray-200 py-3 relative">
+                    <input type="text" id="compose-subject" placeholder="Add a subject" class="w-full focus:outline-none text-[15px] font-semibold text-gray-800 placeholder-gray-400" autocomplete="off">
+                </div>
+            </div>
+
+            <!-- Top Toolbar (Moved here per user request) -->
+            <div id="quill-toolbar" class="bg-gray-50 border-t border-b border-gray-200">
+                <span class="ql-formats">
+                    <button class="ql-bold"></button>
+                    <button class="ql-italic"></button>
+                    <button class="ql-underline"></button>
+                    <button class="ql-strike"></button>
+                </span>
+                <span class="ql-formats">
+                    <select class="ql-font"></select>
+                    <select class="ql-size"></select>
+                </span>
+                <span class="ql-formats">
+                    <select class="ql-color"></select>
+                    <select class="ql-background"></select>
+                </span>
+                <span class="ql-formats">
+                    <button class="ql-list" value="ordered"></button>
+                    <button class="ql-list" value="bullet"></button>
+                    <select class="ql-align"></select>
+                </span>
+                <span class="ql-formats">
+                    <button class="ql-link"></button>
+                    <button class="ql-image"></button>
+                </span>
+                <span class="ql-formats">
+                    <button class="ql-clean"></button>
+                </span>
+            </div>
+
+            <!-- Body -->
+            <div class="flex-1 flex flex-col overflow-hidden bg-white">
+                <div id="quill-editor" class="flex-1 w-full text-[14px] text-gray-800">
+                    <p><br><br><br></p>
+                    <div style="font-family: inherit; font-size: 13px; color: #4b5563; border-top: 1px solid #e5e7eb; padding-top: 10px; margin-top: 20px;">
+                        <strong>{{ user.displayName }}</strong><br>
+                        {{ user.mail }}<br>
+                        <em>Hamdaz Organization</em>
+                    </div>
+                </div>
+            </div>
+            
+        </div>
+
+        <!-- Read content -->
+        <div id="reading-pane-content" class="absolute inset-0 bg-white overflow-hidden flex flex-col hidden z-10">
+            <!-- Top Right Outlook Actions -->
+            <div class="flex items-center justify-end px-4 py-2 border-b border-gray-200 bg-white gap-2">
+                <button onclick="openComposePane('reply')" class="toolbar-btn"><i class="fa-solid fa-reply text-blue-600 mr-2"></i> Reply</button>
+                <button onclick="openComposePane('replyAll')" class="toolbar-btn"><i class="fa-solid fa-reply-all mr-2"></i> Reply all</button>
+                <button onclick="openComposePane('forward')" class="toolbar-btn"><i class="fa-solid fa-share mr-2"></i> Forward</button>
+                <div class="w-px h-4 bg-gray-300 mx-1"></div>
+                <button onclick="deleteCurrentEmail()" class="toolbar-btn text-red-600"><i class="fa-regular fa-trash-can mt-[2px]"></i></button>
+            </div>
+            
+            <div class="flex-1 overflow-y-auto px-8 py-6">
+                <!-- Header -->
+                <div class="mb-6">
+                    <h1 id="email-detail-subject" class="text-[22px] font-bold text-gray-900 leading-snug mb-4"></h1>
+                    
+                    <div class="flex items-start gap-4">
+                        <div id="email-detail-avatar" class="avatar-circle shrink-0 w-10 h-10 text-[15px]"></div>
+                        <div class="flex-1 min-w-0">
+                            <div class="flex justify-between items-baseline mb-0.5">
+                                <span id="email-detail-sender" class="font-bold text-gray-900 text-[14px]"></span>
+                                <span id="email-detail-time" class="text-[12px] text-gray-500"></span>
+                            </div>
+                            <div class="text-[12px] text-gray-500 flex items-center gap-1">
+                                To: <span id="email-detail-to" class="truncate font-medium"></span>
+                                <i class="fa-solid fa-chevron-down text-[10px] ml-1 cursor-pointer"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Email Body -->
+                <div id="email-detail-body" class="text-[14px] text-gray-800 leading-relaxed max-w-none">
+                    <!-- Body injected here -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let currentFolder = 'inbox';
+    let loadedMessages = [];
+    let quillObj = null;
+    let selectedEmailData = null;
+    let composeActionType = 'new';
+    let currentTab = 'focused';
+
+    // --- Resizable Panes Logic ---
+    function makeResizable(resizerId, leftPaneId, isLeftMost = true) {
+        const resizer = document.getElementById(resizerId);
+        const leftPane = document.getElementById(leftPaneId);
+        
+        let x = 0;
+        let w = 0;
+
+        const mouseDownHandler = function(e) {
+            x = e.clientX;
+            const styles = window.getComputedStyle(leftPane);
+            w = parseInt(styles.width, 10);
+
+            document.addEventListener('mousemove', mouseMoveHandler);
+            document.addEventListener('mouseup', mouseUpHandler);
+            resizer.classList.add('dragging');
+        };
+
+        const mouseMoveHandler = function(e) {
+            const dx = e.clientX - x;
+            leftPane.style.width = `${w + dx}px`;
+        };
+
+        const mouseUpHandler = function() {
+            resizer.classList.remove('dragging');
+            document.removeEventListener('mousemove', mouseMoveHandler);
+            document.removeEventListener('mouseup', mouseUpHandler);
+        };
+
+        resizer.addEventListener('mousedown', mouseDownHandler);
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        makeResizable('resizer1', 'folder-pane');
+        makeResizable('resizer2', 'message-list-pane', false);
+        loadFolder('inbox', null, 'Inbox');
+    });
+
+    // --- Colors & Initials ---
+    const colors = ['#dc2626', '#16a34a', '#2564eb', '#9333ea', '#c026d3', '#e11d48', '#0d9488'];
+    function getColorForName(name) {
+        let hash = 0;
+        for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+        return colors[Math.abs(hash) % colors.length];
+    }
+    
+    function getInitials(name) {
+        if (!name) return '?';
+        const parts = name.split(' ').filter(p => validateAlnum(p[0]));
+        if (parts.length === 0) return name.charAt(0).toUpperCase();
+        if (parts.length === 1) return parts[0].substring(0,2).toUpperCase();
+        return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    }
+    function validateAlnum(c) {
+        return /^[a-z0-9]+$/i.test(c);
+    }
+
+    function formatTime(isoString) {
+        if (!isoString) return '';
+        const date = new Date(isoString);
+        const now = new Date();
+        if (date.toDateString() === now.toDateString()) {
+            return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }).toLowerCase();
+        }
+        if (date.getFullYear() === now.getFullYear()) {
+            return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+        }
+        return date.toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' });
+    }
+
+    // --- Compose Pane ---
+    function initQuill() {
+        if (!quillObj) {
+            quillObj = new Quill('#quill-editor', {
+                theme: 'snow',
+                modules: {
+                    toolbar: '#quill-toolbar'
+                }
+            });
+        }
+    }
+
+    function openComposePane(action = 'new') {
+        initQuill();
+        composeActionType = action;
+        
+        const composePane = document.getElementById('compose-pane');
+        const readPane = document.getElementById('reading-pane-content');
+        const emptyPane = document.getElementById('reading-pane-empty');
+        
+        readPane.classList.add('hidden');
+        emptyPane.classList.add('hidden');
+        composePane.classList.remove('hidden');
+
+        const toField = document.getElementById('compose-to');
+        const subjectField = document.getElementById('compose-subject');
+
+        if ((action === 'reply' || action === 'replyAll' || action === 'forward') && selectedEmailData) {
+            const senderEmail = selectedEmailData.sender?.emailAddress?.address || '';
+            const allRecipients = (selectedEmailData.toRecipients || []).map(r => r.emailAddress.address).join(', ');
+            
+            if (action === 'reply') toField.value = senderEmail;
+            else if (action === 'replyAll') toField.value = `${senderEmail}, ${allRecipients}`;
+            else if (action === 'forward') toField.value = '';
+
+            let prefix = action === 'forward' ? 'FW:' : 'RE:';
+            subjectField.value = selectedEmailData.subject?.startsWith(prefix) ? selectedEmailData.subject : `${prefix} ${selectedEmailData.subject || ''}`;
+            
+            quillObj.root.innerHTML = `<br><br><div style="border-top:solid 1px #e1e7f0; padding-top:10px;"><b>From:</b> ${selectedEmailData.sender?.emailAddress?.name}<br><b>Sent:</b> ${new Date(selectedEmailData.receivedDateTime).toLocaleString()}<br><b>Subject:</b> ${selectedEmailData.subject}<br><br>${selectedEmailData.body?.content || ''}</div>`;
+        } else {
+            toField.value = '';
+            subjectField.value = '';
+            quillObj.root.innerHTML = `<p><br><br><br></p>
+                <div style="font-family: inherit; font-size: 13px; color: #4b5563; border-top: 1px solid #e5e7eb; padding-top: 10px; margin-top: 20px;">
+                    <strong>{{ user.displayName }}</strong><br>
+                    {{ user.mail }}<br>
+                    <em>Hamdaz Organization</em>
+                </div>`;
+        }
+    }
+
+    function closeComposePane() {
+        document.getElementById('compose-pane').classList.add('hidden');
+        if (selectedEmailData) {
+            document.getElementById('reading-pane-content').classList.remove('hidden');
+        } else {
+            document.getElementById('reading-pane-empty').classList.remove('hidden');
+        }
+    }
+
+    async function sendEmail() {
+        const to = document.getElementById('compose-to').value.trim();
+        const subject = document.getElementById('compose-subject').value.trim();
+        const bodyContent = quillObj.root.innerHTML;
+        const btn = document.getElementById('compose-send-api-btn');
+
+        if (!to && composeActionType !== 'reply' && composeActionType !== 'replyAll') {
+            alert("Please provide a recipient (To).");
+            return;
+        }
+
+        const orgHtml = btn.innerHTML;
+        btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Sending...`;
+        btn.disabled = true;
+
+        try {
+            let endpoint = '/api/mails/send';
+            let payload = { to: to, subject: subject, body: bodyContent };
+
+            if (composeActionType !== 'new' && selectedEmailData) {
+                endpoint = `/api/mails/${selectedEmailData.id}/${composeActionType}`;
+                payload = { comment: bodyContent };
+                if (composeActionType === 'forward') {
+                    payload.toRecipients = to.split(',').map(e => e.trim()).filter(e => e);
+                }
+            }
+
+            const response = await fetch(endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) {
+                let errStr = "Failed to send email.";
+                try {
+                   const errData = await response.json();
+                   errStr = errData.details || errData.error || errStr;
+                } catch(e) {}
+                throw new Error(errStr);
+            }
+
+            closeComposePane();
+            refreshCurrentFolder();
+
+        } catch (err) {
+            console.error(err);
+            alert("Error sending email: " + err.message);
+        } finally {
+            btn.innerHTML = orgHtml;
+            btn.disabled = false;
+        }
+    }
+
+    async function deleteCurrentEmail() {
+        if (!selectedEmailData) return;
+        if (!confirm("Are you sure you want to delete this email?")) return;
+        
+        try {
+            const response = await fetch(`/api/mails/${selectedEmailData.id}`, { method: 'DELETE' });
+            if (!response.ok) throw new Error("Failed to delete email");
+            
+            document.getElementById('reading-pane-content').classList.add('hidden');
+            document.getElementById('reading-pane-empty').classList.remove('hidden');
+            selectedEmailData = null;
+            refreshCurrentFolder();
+        } catch (error) {
+            alert("Error: " + error.message);
+        }
+    }
+
+    function switchTab(tab) {
+        currentTab = tab;
+        const focusedEl = document.getElementById('tab-focused');
+        const otherEl = document.getElementById('tab-other');
+        
+        if (tab === 'focused') {
+            focusedEl.className = "text-blue-600 border-b-2 border-blue-600 pb-1 cursor-pointer";
+            otherEl.className = "cursor-pointer hover:text-gray-800 pb-1 text-gray-500 border-b-2 border-transparent";
+        } else {
+            otherEl.className = "text-blue-600 border-b-2 border-blue-600 pb-1 cursor-pointer";
+            focusedEl.className = "cursor-pointer hover:text-gray-800 pb-1 text-gray-500 border-b-2 border-transparent";
+        }
+        applyFilters();
+    }
+
+    // --- Search & Filters ---
+    function applyFilters() {
+        const query = document.getElementById('mail-search').value.toLowerCase();
+        const items = document.querySelectorAll('.message-item');
+        items.forEach(item => {
+            const textMatch = item.innerText.toLowerCase().includes(query);
+            let tabMatch = true;
+            if (currentFolder === 'inbox') {
+                tabMatch = (item.dataset.classification === currentTab);
+            }
+            if (textMatch && tabMatch) item.style.display = 'block';
+            else item.style.display = 'none';
+        });
+    }
+
+    // --- Fetching ---
+    async function loadFolder(folderId, element, displayName) {
+        currentFolder = folderId;
+        
+        document.querySelectorAll('.folder-item').forEach(el => el.classList.remove('active'));
+        if (element) {
+            element.classList.add('active');
+        } else {
+            const defaultEl = document.querySelector(`.folder-item[onclick*="'${folderId}'"]`);
+            if(defaultEl) defaultEl.classList.add('active');
+        }
+
+        document.getElementById('reading-pane-content').classList.add('hidden');
+        document.getElementById('compose-pane').classList.add('hidden');
+        document.getElementById('reading-pane-empty').classList.remove('hidden');
+        selectedEmailData = null;
+        
+        const tabsEl = document.getElementById('inbox-tabs');
+        if (folderId === 'inbox') {
+            tabsEl.classList.remove('hidden');
+            tabsEl.classList.add('flex');
+        } else {
+            tabsEl.classList.add('hidden');
+            tabsEl.classList.remove('flex');
+        }
+
+        await fetchMessages(folderId);
+    }
+
+    async function refreshCurrentFolder() {
+        await fetchMessages(currentFolder);
+    }
+
+    async function fetchMessages(folderId) {
+        const container = document.getElementById('message-list-container');
+        const loader = document.getElementById('message-list-loader');
+        
+        loader.classList.remove('hidden');
+        container.innerHTML = '';
+
+        try {
+            const response = await fetch(`/api/mails?folder=${folderId}`);
+            
+            if (!response.ok) {
+                let errorDetails = 'HTTP ' + response.status;
+                try {
+                    const errData = await response.json();
+                    errorDetails += ' - ' + (errData.details || errData.error || response.statusText);
+                } catch (e) {
+                    errorDetails += ' - ' + response.statusText;
+                }
+                throw new Error(errorDetails);
+            }
+            
+            const data = await response.json();
+            const messages = data.value || [];
+            loadedMessages = messages;
+
+            if (folderId === 'inbox') {
+                const unreadCount = messages.filter(m => !m.isRead).length;
+                document.getElementById('badge-inbox').innerText = unreadCount > 0 ? unreadCount : '';
+            }
+
+            if (messages.length === 0) {
+                container.innerHTML = `
+                    <div class="px-6 py-12 flex flex-col items-center justify-center text-center text-gray-500">
+                        <i class="fa-regular fa-folder-open text-4xl mb-4 text-gray-300"></i>
+                        <p class="text-sm">Nothing to see here right now.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            // Group by date simplified (just list them all matching Outlook style)
+            messages.forEach(msg => {
+                const senderName = msg.sender?.emailAddress?.name || msg.sender?.emailAddress?.address || 'System';
+                const timeStr = formatTime(msg.receivedDateTime);
+                const unreadClass = msg.isRead ? '' : 'unread';
+                const avatarColor = getColorForName(senderName);
+                const initials = getInitials(senderName);
+                const subjectStr = msg.subject || '(No Subject)';
+                const classification = msg.inferenceClassification || 'focused';
+                
+                const div = document.createElement('div');
+                div.className = `message-item relative hover:bg-gray-50 ${unreadClass}`;
+                div.id = `msg-item-${msg.id}`;
+                div.dataset.classification = classification;
+                div.onclick = () => loadEmailContent(msg.id, div);
+                
+                div.innerHTML = `
+                    <span class="message-item-indicator hidden"></span>
+                    <div class="flex gap-3">
+                        <div class="shrink-0 mt-0.5">
+                            <div class="w-9 h-9 rounded-full text-white flex items-center justify-center text-[13px] font-semibold shadow-sm" style="background-color: ${avatarColor};">
+                                ${initials}
+                            </div>
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <div class="flex justify-between items-baseline mb-0.5">
+                                <span class="sender-name font-semibold text-gray-900 truncate pr-2 text-[14px]">${senderName}</span>
+                                <span class="time-text text-xs text-blue-600 whitespace-nowrap">${timeStr}</span>
+                            </div>
+                            <div class="subject-text text-[13px] font-medium text-blue-600 truncate mb-0.5">${subjectStr}</div>
+                            <div class="preview-text text-[12px] text-gray-500 leading-tight">${msg.bodyPreview || ''}</div>
+                        </div>
+                    </div>
+                `;
+                
+                container.appendChild(div);
+            });
+            
+            applyFilters();
+
+        } catch (error) {
+            container.innerHTML = `
+                <div class="p-6 text-center text-red-500 bg-red-50 mx-4 my-4 rounded-md shadow-sm border border-red-100">
+                    <p class="font-bold text-sm mb-2"><i class="fa-solid fa-triangle-exclamation mr-1"></i> Failed to load messages.</p>
+                    <p class="text-xs break-words px-2 py-1 bg-white rounded border border-red-200">${error.message}</p>
+                </div>
+            `;
+        } finally {
+            loader.classList.add('hidden');
+        }
+    }
+
+    async function loadEmailContent(messageId, element) {
+        document.querySelectorAll('.message-item').forEach(el => el.classList.remove('active'));
+        if (element) {
+            element.classList.add('active');
+            element.classList.remove('unread'); 
+        }
+
+        const composePane = document.getElementById('compose-pane');
+        const emptyPane = document.getElementById('reading-pane-empty');
+        const contentPane = document.getElementById('reading-pane-content');
+        const loader = document.getElementById('reading-pane-loader');
+
+        emptyPane.classList.add('hidden');
+        contentPane.classList.add('hidden');
+        composePane.classList.add('hidden');
+        loader.classList.remove('hidden');
+
+        try {
+            const response = await fetch(`/api/mails/${messageId}`);
+            if (!response.ok) throw new Error('Fetch details failed');
+            
+            const msg = await response.json();
+            selectedEmailData = msg;
+            
+            const senderName = msg.sender?.emailAddress?.name || 'System';
+            const toStr = (msg.toRecipients || []).map(r => r.emailAddress.name || r.emailAddress.address).join('; ') || 'You';
+            
+            document.getElementById('email-detail-subject').innerText = msg.subject || '(No Subject)';
+            document.getElementById('email-detail-sender').innerText = senderName;
+            
+            const avatarEl = document.getElementById('email-detail-avatar');
+            avatarEl.innerText = getInitials(senderName);
+            avatarEl.style.backgroundColor = getColorForName(senderName);
+            
+            document.getElementById('email-detail-time').innerText = formatTime(msg.receivedDateTime);
+            document.getElementById('email-detail-to').innerText = toStr;
+            
+            const bodyEl = document.getElementById('email-detail-body');
+            if (msg.body?.contentType === 'html') {
+                bodyEl.innerHTML = msg.body.content;
+            } else {
+                bodyEl.innerText = msg.body?.content || '';
+                bodyEl.innerHTML = bodyEl.innerHTML.replace(/\n/g, '<br>');
+            }
+
+            contentPane.classList.remove('hidden');
+            
+        } catch (error) {
+            emptyPane.innerHTML = `
+                <div class="text-center text-red-500 p-6 opacity-80 mt-10">
+                    <i class="fa-solid fa-triangle-exclamation text-5xl mb-4"></i>
+                    <p class="font-bold">Failed to load email</p>
+                    <p class="text-xs mt-2 font-mono">${error.message}</p>
+                </div>
+            `;
+            emptyPane.classList.remove('hidden');
+        } finally {
+            loader.classList.add('hidden');
+        }
+    }
+</script>
+
+{% endblock %}

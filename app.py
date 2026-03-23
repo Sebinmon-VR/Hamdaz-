@@ -38,7 +38,7 @@ REDIRECT_URI = os.getenv("REDIRECT_URI")
 AUTHORITY = f"https://login.microsoftonline.com/{TENANT_ID}"
 SCOPE = ["User.Read", "Mail.Send"]
 
-SUPERUSERS = ["jishad@hamdaz.com", "hisham@hamdaz.com" , "sebin@hamdaz.com" , "sujeel@hamdaz.com","shibit@hamdaz.com", "althaf@hamdaz.com"]
+SUPERUSERS = ["jishad@hamdaz.com", "hisham@hamdaz.com"  , "sujeel@hamdaz.com","shibit@hamdaz.com", "althaf@hamdaz.com"]
 approvers = ["shibit@hamdaz.com", "althaf@hamdaz.com" ,"sebin@hamdaz.com" , "sujeel@hamdaz.com"]
 LIMITED_USERS = [""]
 
@@ -1868,6 +1868,222 @@ def procurement_draft_email():
             }
             
         return jsonify({"draft": draft_data})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# ==============================================================
+# MAIL DASHBOARD ROUTES
+# ==============================================================
+
+@app.route('/mails')
+def mail_dashboard():
+    if "user" not in session:
+        return redirect(url_for('login'))
+    user = session["user"]
+    return render_template('mail_dashboard.html', user=user)
+
+@app.route('/api/mails')
+def get_mails():
+    if "user" not in session:
+        return jsonify({"error": "Unauthorized"}), 401
+    
+    user = session["user"]
+    email = user.get("mail") or user.get("userPrincipalName")
+    
+    # Use application token instead of delegated token
+    try:
+        from sharepoint_items import get_access_token
+        access_token = get_access_token()
+    except Exception as e:
+        return jsonify({"error": "Failed to acquire app token", "details": str(e)}), 500
+
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json"
+    }
+    
+    folder = request.args.get('folder', 'inbox')
+    
+    well_known_folders = ['inbox', 'sentitems', 'drafts', 'deleteditems', 'junkemail', 'archive']
+    
+    try:
+        if folder in well_known_folders:
+            url = f"{GRAPH_API_ENDPOINT}/users/{email}/mailFolders/{folder}/messages?$top=50&$select=id,subject,bodyPreview,sender,receivedDateTime,isRead,inferenceClassification"
+        else:
+            url = f"{GRAPH_API_ENDPOINT}/users/{email}/messages?$top=50&$select=id,subject,bodyPreview,sender,receivedDateTime,isRead,inferenceClassification"
+            
+        response = requests.get(url, headers=headers)
+        
+        if response.status_code == 200:
+            return jsonify(response.json())
+        else:
+            return jsonify({"error": "Failed to fetch emails via App Token", "details": response.text}), response.status_code
+            
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/mails/<message_id>')
+def get_mail_details(message_id):
+    if "user" not in session:
+        return jsonify({"error": "Unauthorized"}), 401
+        
+    user = session["user"]
+    email = user.get("mail") or user.get("userPrincipalName")
+    
+    try:
+        from sharepoint_items import get_access_token
+        access_token = get_access_token()
+    except Exception as e:
+        return jsonify({"error": "Failed to acquire app token", "details": str(e)}), 500
+
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json"
+    }
+    
+    try:
+        url = f"{GRAPH_API_ENDPOINT}/users/{email}/messages/{message_id}?$select=id,subject,body,sender,toRecipients,receivedDateTime,isRead"
+        response = requests.get(url, headers=headers)
+        
+        if response.status_code == 200:
+            return jsonify(response.json())
+        else:
+            return jsonify({"error": "Failed to fetch email details via App Token", "details": response.text}), response.status_code
+            
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/mails/<message_id>', methods=['DELETE'])
+def delete_mail(message_id):
+    if "user" not in session:
+        return jsonify({"error": "Unauthorized"}), 401
+    user = session["user"]
+    email = user.get("mail") or user.get("userPrincipalName")
+    
+    try:
+        from sharepoint_items import get_access_token
+        access_token = get_access_token()
+    except Exception as e:
+        return jsonify({"error": "Failed to acquire app token", "details": str(e)}), 500
+        
+    headers = {"Authorization": f"Bearer {access_token}"}
+    
+    try:
+        url = f"{GRAPH_API_ENDPOINT}/users/{email}/messages/{message_id}"
+        response = requests.delete(url, headers=headers)
+        
+        if response.status_code == 204:
+            return jsonify({"success": True})
+        else:
+            return jsonify({"error": "Failed to delete email", "details": response.text}), response.status_code
+            
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/mails/<message_id>/<action>', methods=['POST'])
+def mail_action(message_id, action):
+    # action can be: reply, replyAll, forward
+    if "user" not in session:
+        return jsonify({"error": "Unauthorized"}), 401
+    if action not in ['reply', 'replyAll', 'forward']:
+        return jsonify({"error": "Invalid action"}), 400
+        
+    user = session["user"]
+    email_addr = user.get("mail") or user.get("userPrincipalName")
+    
+    data = request.get_json()
+    comment = data.get('comment', '')
+    to_recipients = data.get('toRecipients', []) # only needed strictly for forward or adding people
+    
+    try:
+        from sharepoint_items import get_access_token
+        access_token = get_access_token()
+    except Exception as e:
+        return jsonify({"error": "Failed to acquire app token", "details": str(e)}), 500
+        
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json"
+    }
+    
+    payload = {
+        "message": {
+            "body": {
+                "contentType": "HTML",
+                "content": comment
+            }
+        }
+    }
+    
+    if action == 'forward' and to_recipients:
+        payload["message"]["toRecipients"] = [{"emailAddress": {"address": addr}} for addr in to_recipients]
+    
+    try:
+        url = f"{GRAPH_API_ENDPOINT}/users/{email_addr}/messages/{message_id}/{action}"
+        response = requests.post(url, headers=headers, json=payload)
+        
+        if response.status_code == 202:
+            return jsonify({"success": True})
+        else:
+            return jsonify({"error": f"Failed to {action} email", "details": response.text}), response.status_code
+            
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/mails/send', methods=['POST'])
+def send_mail():
+    if "user" not in session:
+        return jsonify({"error": "Unauthorized"}), 401
+        
+    user = session["user"]
+    user_email = user.get("mail") or user.get("userPrincipalName")
+    
+    data = request.get_json()
+    to_email = data.get('to')
+    subject = data.get('subject')
+    body_content = data.get('body')
+    
+    if not all([to_email, subject, body_content]):
+        return jsonify({"error": "Missing required fields: to, subject, or body"}), 400
+        
+    try:
+        from sharepoint_items import get_access_token
+        access_token = get_access_token()
+    except Exception as e:
+        return jsonify({"error": "Failed to acquire app token", "details": str(e)}), 500
+
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json"
+    }
+    
+    mail_payload = {
+        "message": {
+            "subject": subject,
+            "body": {
+                "contentType": "HTML",
+                "content": body_content
+            },
+            "toRecipients": [
+                {
+                    "emailAddress": {
+                        "address": to_email.strip()
+                    }
+                }
+            ]
+        },
+        "saveToSentItems": "true"
+    }
+    
+    try:
+        url = f"{GRAPH_API_ENDPOINT}/users/{user_email}/sendMail"
+        response = requests.post(url, headers=headers, json=mail_payload)
+        
+        if response.status_code == 202:
+            return jsonify({"success": True})
+        else:
+            return jsonify({"error": "Failed to send email via App Token", "details": response.text}), response.status_code
+            
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

@@ -29,8 +29,7 @@
     </div>
 
     <!-- Main Chat Area (Premium Elevated) -->
-    <div
-        class="flex-1 flex flex-col bg-transparent rounded-[2rem] border-2 border-slate-200 overflow-hidden relative">
+    <div class="flex-1 flex flex-col bg-transparent rounded-[2rem] border-2 border-slate-200 overflow-hidden relative">
         <!-- Header (Solid & Elevated) -->
         <div
             class="border-b-2 border-slate-200 p-6 shrink-0 flex items-center justify-between bg-white/40 backdrop-blur-md z-10 relative">
@@ -93,8 +92,7 @@
                 </button>
             </div>
             <div class="flex-1 overflow-y-auto w-full custom-scrollbar">
-                <div id="taskList"
-                    class="flex flex-col gap-3 max-w-5xl mx-auto pb-20">
+                <div id="taskList" class="flex flex-col gap-3 max-w-5xl mx-auto pb-20">
                     <!-- Task items will be inserted here -->
                 </div>
             </div>
@@ -114,15 +112,20 @@
         <!-- Input Box (Solid) -->
         <div class="p-4 bg-transparent shrink-0 relative">
             <!-- Anchored Progress Box -->
-            <div id="inlineAgentProgress" class="hidden absolute bottom-full left-0 w-full px-4 pb-2 z-10 transition-all">
-                <details open id="inlineAgentDetails" class="max-w-4xl mx-auto bg-slate-50/80 backdrop-blur-md border-2 border-slate-200 rounded-xl overflow-hidden group">
-                   <summary class="cursor-pointer px-4 py-2.5 font-bold text-slate-700 hover:bg-slate-100/50 flex items-center transition-colors select-none text-xs">
-                       <i class="fa-solid fa-circle-notch fa-spin text-indigo-500 mr-2" id="inlineSpinner"></i> 
-                       <span class="flex-1" id="inlineStatusText">Agent is working...</span>
-                       <i class="fa-solid fa-chevron-down text-[10px] text-slate-400 group-open:rotate-180 transition-transform ml-2"></i>
-                   </summary>
-                   <div class="px-4 py-2 border-t-2 border-slate-200 bg-white/60 space-y-1 text-[11px] font-mono text-slate-700 max-h-40 overflow-y-auto custom-scrollbar" id="inlineLogsContainer">
-                   </div>
+            <div id="inlineAgentProgress"
+                class="hidden absolute bottom-full left-0 w-full px-4 pb-2 z-10 transition-all">
+                <details open id="inlineAgentDetails"
+                    class="max-w-4xl mx-auto bg-slate-50/80 backdrop-blur-md border-2 border-slate-200 rounded-xl overflow-hidden group">
+                    <summary
+                        class="cursor-pointer px-4 py-2.5 font-bold text-slate-700 hover:bg-slate-100/50 flex items-center transition-colors select-none text-xs">
+                        <i class="fa-solid fa-circle-notch fa-spin text-indigo-500 mr-2" id="inlineSpinner"></i>
+                        <span class="flex-1" id="inlineStatusText">Agent is working...</span>
+                        <i
+                            class="fa-solid fa-chevron-down text-[10px] text-slate-400 group-open:rotate-180 transition-transform ml-2"></i>
+                    </summary>
+                    <div class="px-4 py-2 border-t-2 border-slate-200 bg-white/60 space-y-1 text-[11px] font-mono text-slate-700 max-h-40 overflow-y-auto custom-scrollbar"
+                        id="inlineLogsContainer">
+                    </div>
                 </details>
             </div>
 
@@ -183,7 +186,8 @@
             </div>
         </div>
 
-        <div class="p-4 border-t-2 border-slate-200 bg-white/40 backdrop-blur-md text-[10px] text-slate-500 font-bold tracking-wider uppercase text-center">
+        <div
+            class="p-4 border-t-2 border-slate-200 bg-white/40 backdrop-blur-md text-[10px] text-slate-500 font-bold tracking-wider uppercase text-center">
             Procurement Agent Session
         </div>
     </div>
@@ -541,7 +545,7 @@
 
         let actualMessage = message;
         let displayMsg = message;
-        
+
         if (files.length > 0) {
             if (selectedAgent === 'procurement' && (!message || message.toLowerCase().includes('analyze'))) {
                 actualMessage = message ? (message + ". Please extract items for procurement from the attached file(s) and return them strictly as a JSON array.") : "Please extract items for procurement from the attached file(s) and return them strictly as a JSON array.";
@@ -691,7 +695,7 @@
         const spinner = document.getElementById('inlineSpinner');
         const details = document.getElementById('inlineAgentDetails');
         const logs = document.getElementById('inlineLogsContainer');
-        
+
         if (progress) {
             progress.classList.remove('hidden');
             if (status) status.textContent = statusText;
@@ -712,8 +716,8 @@
             if (spinner) spinner.className = "fa-solid fa-check-circle text-emerald-500 mr-2";
             if (status) status.textContent = successText;
             if (details) {
-                 setTimeout(() => { details.open = false; }, 2000);
-                 setTimeout(() => { document.getElementById('inlineAgentProgress').classList.add('hidden'); }, 4000);
+                setTimeout(() => { details.open = false; }, 2000);
+                setTimeout(() => { document.getElementById('inlineAgentProgress').classList.add('hidden'); }, 4000);
             }
             isInlineProgressActive = false;
             return;
@@ -982,7 +986,7 @@
             el.className = "text-sm font-semibold text-gray-800 fade-in";
             el.textContent = step;
         }
-        
+
         // Anchored Status
         if (isInlineProgressActive) {
             const status = document.getElementById('inlineStatusText');
