@@ -1911,6 +1911,28 @@ def procurement_draft_email():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route('/api/procurement/feedback', methods=['POST'])
+def procurement_feedback():
+    if "user" not in session:
+        return jsonify({"error": "Unauthorized"}), 401
+        
+    data = request.get_json()
+    items = data.get('items', [])
+    distributors = data.get('distributors', [])
+    is_true_data = data.get('is_true_data', False)
+    notes = data.get('notes', "")
+    
+    user = session["user"]
+    user_email = user.get("mail") or user.get("userPrincipalName")
+    
+    from cosmos import save_procurement_feedback
+    success = save_procurement_feedback(user_email, items, distributors, is_true_data, notes)
+    
+    if success:
+        return jsonify({"success": True, "message": "Feedback saved successfully."})
+    else:
+        return jsonify({"success": False, "error": "Failed to save feedback."}), 500
+
 # ==============================================================
 # MAIL DASHBOARD ROUTES
 # ==============================================================

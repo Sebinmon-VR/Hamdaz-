@@ -103,11 +103,107 @@
             </div>
         </div>
 
+
+        <!-- File Upload Info -->
+        <div id="fileInfo"
+            class="hidden px-6 py-2.5 text-sm text-indigo-700 bg-indigo-50/80 border-t-2 border-slate-200 flex items-center justify-between backdrop-blur-sm">
+            <div class="flex items-center gap-2">
+                <i class="fa-solid fa-file-lines text-indigo-500"></i>
+                <span id="fileNameDisplay" class="font-medium"></span>
+            </div>
+            <button onclick="clearFiles()"
+                class="text-indigo-400 hover:text-indigo-600 font-bold transition-colors w-6 h-6 flex items-center justify-center rounded-full hover:bg-indigo-100">&times;</button>
+        </div>
+
+        <!-- Input Box (Solid) -->
+        <div class="p-4 bg-transparent shrink-0 relative">
+            <!-- Anchored Progress Box -->
+            <div id="inlineAgentProgress"
+                class="hidden absolute bottom-full left-0 w-full px-4 pb-2 z-10 transition-all">
+                <details open id="inlineAgentDetails"
+                    class="max-w-4xl mx-auto bg-slate-50/80 backdrop-blur-md border-2 border-slate-200 rounded-xl overflow-hidden group">
+                    <summary
+                        class="cursor-pointer px-4 py-2.5 font-bold text-slate-700 hover:bg-slate-100/50 flex items-center transition-colors select-none text-xs">
+                        <i class="fa-solid fa-circle-notch fa-spin text-indigo-500 mr-2" id="inlineSpinner"></i>
+                        <span class="flex-1" id="inlineStatusText">Agent is working...</span>
+                        <i
+                            class="fa-solid fa-chevron-down text-[10px] text-slate-400 group-open:rotate-180 transition-transform ml-2"></i>
+                    </summary>
+                    <div class="px-4 py-2 border-t-2 border-slate-200 bg-white/60 space-y-1 text-[11px] font-mono text-slate-700 max-h-40 overflow-y-auto custom-scrollbar"
+                        id="inlineLogsContainer">
+                    </div>
+                </details>
+            </div>
+
+            <div
+                class="flex items-end space-x-2 bg-white/60 backdrop-blur-md rounded-2xl border-2 border-slate-200 focus-within:border-indigo-400 transition-all duration-300 relative group p-1.5">
+                <label for="fileInput"
+                    class="cursor-pointer p-3.5 pl-4 text-gray-400 hover:text-indigo-600 transition-colors"
+                    title="Attach Files">
+                    <i class="fa-solid fa-paperclip text-lg"></i>
+                </label>
+                <input type="file" id="fileInput" class="hidden" multiple accept=".pdf,.xlsx,.xls,.doc,.docx,.csv,.txt"
+                    onchange="updateFileInfo()">
+
+                <textarea id="messageInput" rows="1"
+                    class="flex-1 py-4 flex items-center pr-14 bg-transparent border-none focus: resize-none max-h-32 text-gray-700 placeholder-gray-400 text-[15px] leading-relaxed"
+                    placeholder="Ask me anything..."></textarea>
+
+                <button id="sendBtn"
+                    class="absolute right-2 bottom-2 p-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl transition-all  shrink-0 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed w-10 h-10 hover:scale-105 active:scale-95">
+                    <i class="fa-solid fa-paper-plane text-sm ml-0.5 mt-0.5"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Right Sidebar (Agent Logs & Distributors) -->
+    <div id="rightSidebar"
+        class="hidden w-80 flex flex-col bg-transparent rounded-[2rem] border-2 border-slate-200 overflow-hidden shrink-0 transition-all duration-300">
+        <!-- Step Indicator -->
+        <div class="p-4 border-b-2 border-slate-200 bg-indigo-50/50 backdrop-blur-md">
+            <div class="flex items-center gap-2 mb-1">
+                <span class="flex h-2 w-2 rounded-full bg-indigo-600 animate-pulse"></span>
+                <span class="text-[10px] font-bold text-indigo-600 uppercase tracking-widest">Active Step</span>
+            </div>
+            <p id="currentAgentStep" class="text-sm font-semibold text-gray-800">Ready</p>
+        </div>
+
+        <!-- Scrollable content -->
+        <div class="flex-1 overflow-y-auto w-full p-4 space-y-6">
+            <!-- Agent Logs -->
+            <div>
+                <div class="flex items-center justify-between mb-3 cursor-pointer group" onclick="toggleLogExpansion()">
+                    <h4 class="text-xs font-bold text-gray-400 uppercase tracking-wider">Agent Logs</h4>
+                    <i id="logChevron"
+                        class="fa-solid fa-chevron-down text-[10px] text-gray-300 transition-transform"></i>
+                </div>
+                <div id="agentLogs" class="space-y-2 max-h-48 overflow-hidden transition-all duration-300">
+                    <!-- Logs will be inserted here -->
+                </div>
+            </div>
+
+            <!-- Distributor Selection -->
+            <div id="distributorArea" class="hidden">
+                <h4 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Target Distributor</h4>
+                <div id="distributorList" class="space-y-2">
+                    <!-- Distributor buttons/radios will be inserted here -->
+                </div>
+            </div>
+        </div>
+
+        <div
+            class="p-4 border-t-2 border-slate-200 bg-white/40 backdrop-blur-md text-[10px] text-slate-500 font-bold tracking-wider uppercase text-center">
+            Procurement Agent Session
+        </div>
+    </div>
+</div>
+
         <!-- Outlook-style Compose Modal Overlay -->
         <div id="compose-pane"
-            class="hidden fixed inset-0 z-50 backdrop-blur-md bg-slate-900/40 flex items-center justify-center p-3 sm:p-6 md:p-12">
+            class="hidden fixed inset-0 z-[9999] backdrop-blur-sm bg-slate-900/60 flex items-center justify-center p-4 sm:p-6 md:p-8">
             <div
-                class="w-full max-w-5xl h-[95vh] sm:h-[85vh] bg-white sm:rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-gray-200">
+                class="w-full max-w-4xl max-h-[90vh] min-h-[500px] h-[800px] bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-gray-200 relative mx-auto my-auto">
                 <!-- Toolbar Top -->
                 <div class="flex flex-col border-b border-gray-200 bg-gray-50/80">
                     <div class="flex items-center justify-between px-4 py-3">
@@ -213,101 +309,6 @@
                 </div>
             </div>
         </div>
-
-        <!-- File Upload Info -->
-        <div id="fileInfo"
-            class="hidden px-6 py-2.5 text-sm text-indigo-700 bg-indigo-50/80 border-t-2 border-slate-200 flex items-center justify-between backdrop-blur-sm">
-            <div class="flex items-center gap-2">
-                <i class="fa-solid fa-file-lines text-indigo-500"></i>
-                <span id="fileNameDisplay" class="font-medium"></span>
-            </div>
-            <button onclick="clearFiles()"
-                class="text-indigo-400 hover:text-indigo-600 font-bold transition-colors w-6 h-6 flex items-center justify-center rounded-full hover:bg-indigo-100">&times;</button>
-        </div>
-
-        <!-- Input Box (Solid) -->
-        <div class="p-4 bg-transparent shrink-0 relative">
-            <!-- Anchored Progress Box -->
-            <div id="inlineAgentProgress"
-                class="hidden absolute bottom-full left-0 w-full px-4 pb-2 z-10 transition-all">
-                <details open id="inlineAgentDetails"
-                    class="max-w-4xl mx-auto bg-slate-50/80 backdrop-blur-md border-2 border-slate-200 rounded-xl overflow-hidden group">
-                    <summary
-                        class="cursor-pointer px-4 py-2.5 font-bold text-slate-700 hover:bg-slate-100/50 flex items-center transition-colors select-none text-xs">
-                        <i class="fa-solid fa-circle-notch fa-spin text-indigo-500 mr-2" id="inlineSpinner"></i>
-                        <span class="flex-1" id="inlineStatusText">Agent is working...</span>
-                        <i
-                            class="fa-solid fa-chevron-down text-[10px] text-slate-400 group-open:rotate-180 transition-transform ml-2"></i>
-                    </summary>
-                    <div class="px-4 py-2 border-t-2 border-slate-200 bg-white/60 space-y-1 text-[11px] font-mono text-slate-700 max-h-40 overflow-y-auto custom-scrollbar"
-                        id="inlineLogsContainer">
-                    </div>
-                </details>
-            </div>
-
-            <div
-                class="flex items-end space-x-2 bg-white/60 backdrop-blur-md rounded-2xl border-2 border-slate-200 focus-within:border-indigo-400 transition-all duration-300 relative group p-1.5">
-                <label for="fileInput"
-                    class="cursor-pointer p-3.5 pl-4 text-gray-400 hover:text-indigo-600 transition-colors"
-                    title="Attach Files">
-                    <i class="fa-solid fa-paperclip text-lg"></i>
-                </label>
-                <input type="file" id="fileInput" class="hidden" multiple accept=".pdf,.xlsx,.xls,.doc,.docx,.csv,.txt"
-                    onchange="updateFileInfo()">
-
-                <textarea id="messageInput" rows="1"
-                    class="flex-1 py-4 flex items-center pr-14 bg-transparent border-none focus: resize-none max-h-32 text-gray-700 placeholder-gray-400 text-[15px] leading-relaxed"
-                    placeholder="Ask me anything..."></textarea>
-
-                <button id="sendBtn"
-                    class="absolute right-2 bottom-2 p-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl transition-all  shrink-0 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed w-10 h-10 hover:scale-105 active:scale-95">
-                    <i class="fa-solid fa-paper-plane text-sm ml-0.5 mt-0.5"></i>
-                </button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Right Sidebar (Agent Logs & Distributors) -->
-    <div id="rightSidebar"
-        class="hidden w-80 flex flex-col bg-transparent rounded-[2rem] border-2 border-slate-200 overflow-hidden shrink-0 transition-all duration-300">
-        <!-- Step Indicator -->
-        <div class="p-4 border-b-2 border-slate-200 bg-indigo-50/50 backdrop-blur-md">
-            <div class="flex items-center gap-2 mb-1">
-                <span class="flex h-2 w-2 rounded-full bg-indigo-600 animate-pulse"></span>
-                <span class="text-[10px] font-bold text-indigo-600 uppercase tracking-widest">Active Step</span>
-            </div>
-            <p id="currentAgentStep" class="text-sm font-semibold text-gray-800">Ready</p>
-        </div>
-
-        <!-- Scrollable content -->
-        <div class="flex-1 overflow-y-auto w-full p-4 space-y-6">
-            <!-- Agent Logs -->
-            <div>
-                <div class="flex items-center justify-between mb-3 cursor-pointer group" onclick="toggleLogExpansion()">
-                    <h4 class="text-xs font-bold text-gray-400 uppercase tracking-wider">Agent Logs</h4>
-                    <i id="logChevron"
-                        class="fa-solid fa-chevron-down text-[10px] text-gray-300 transition-transform"></i>
-                </div>
-                <div id="agentLogs" class="space-y-2 max-h-48 overflow-hidden transition-all duration-300">
-                    <!-- Logs will be inserted here -->
-                </div>
-            </div>
-
-            <!-- Distributor Selection -->
-            <div id="distributorArea" class="hidden">
-                <h4 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Target Distributor</h4>
-                <div id="distributorList" class="space-y-2">
-                    <!-- Distributor buttons/radios will be inserted here -->
-                </div>
-            </div>
-        </div>
-
-        <div
-            class="p-4 border-t-2 border-slate-200 bg-white/40 backdrop-blur-md text-[10px] text-slate-500 font-bold tracking-wider uppercase text-center">
-            Procurement Agent Session
-        </div>
-    </div>
-</div>
 
 <script>
     const chatBox = document.getElementById("chatBox");
@@ -1180,6 +1181,10 @@
                 body: JSON.stringify({ items: items })
             });
             const data = await res.json();
+            
+            // Save state for feedback
+            window.currentEnquiryItems = items;
+            window.currentFoundDistributors = data.distributors || [];
 
             if (data.distributors && data.distributors.length > 0) {
                 renderDistributors(data.distributors);
@@ -1210,15 +1215,19 @@
             grouped[itemName].push(dist);
         });
 
+        let globalDistIdx = 0;
         for (const [itemName, dists] of Object.entries(grouped)) {
             const groupHeader = document.createElement('div');
             groupHeader.className = "text-[10px] font-black text-indigo-500 uppercase tracking-widest mt-4 mb-2 border-b border-indigo-100 pb-1";
             groupHeader.innerHTML = `<i class="fa-solid fa-box-open mr-1"></i> ${itemName}`;
             list.appendChild(groupHeader);
 
-            dists.forEach((dist, idx) => {
+            dists.forEach((dist) => {
+                const idx = globalDistIdx++;
+                dist._idx = idx; // tie to global list
+
                 const item = document.createElement('div');
-                item.className = "p-3 mb-2 rounded-xl border border-gray-100 hover:border-indigo-200 hover:bg-indigo-50/30 cursor-pointer transition-all group";
+                item.className = "p-3 mb-2 rounded-xl border border-gray-100 hover:border-indigo-200 hover:bg-indigo-50/30 cursor-pointer transition-all group flex flex-col";
                 item.onclick = () => selectDistributor(dist);
 
                 // Ensure items appear explicitly in UI
@@ -1237,17 +1246,114 @@
                         <span class="text-sm font-bold text-gray-800">${dist.name}</span>
                         <i class="fa-solid fa-chevron-right text-[10px] text-gray-300 group-hover:text-indigo-400 transition-colors"></i>
                     </div>
-                    <div class="text-[10px] text-gray-500 truncate">${dist.email || 'No email found'}</div>
+                    <div class="text-[10px] text-gray-500 truncate mb-1">${dist.email || 'No email found'}</div>
                     ${websiteHtml}
-                    <div class="mt-2.5 flex flex-wrap gap-1">
+                    <div class="mt-2 flex flex-wrap gap-1">
                         ${itemTags}
                     </div>
                     <div class="mt-2 flex gap-1 flex-wrap">
                         ${dist.source === 'internal' ? '<span class="text-[8px] bg-emerald-100 text-emerald-600 px-1.5 py-0.5 rounded font-bold uppercase">Internal DB</span>' : '<span class="text-[8px] bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded font-bold uppercase">Web</span>'}
                     </div>
+                    
+                    <div class="mt-3 pt-2 border-t border-gray-100/50 flex items-center justify-between" onclick="event.stopPropagation()">
+                        <span class="text-[10px] font-bold text-gray-400 uppercase tracking-widest shrink-0 mr-2">Feedback:</span>
+                        <div class="flex gap-3">
+                            <label class="flex items-center gap-1 cursor-pointer text-[11px] font-semibold text-gray-500 hover:text-emerald-600 transition-colors">
+                                <input type="radio" name="fb_dist_${idx}" value="true" class="w-3 h-3 text-emerald-500 focus:ring-emerald-500"> True
+                            </label>
+                            <label class="flex items-center gap-1 cursor-pointer text-[11px] font-semibold text-gray-500 hover:text-rose-600 transition-colors">
+                                <input type="radio" name="fb_dist_${idx}" value="false" class="w-3 h-3 text-rose-500 focus:ring-rose-500"> False
+                            </label>
+                        </div>
+                    </div>
                 `;
                 list.appendChild(item);
             });
+        }
+        
+        // --- Add Feedback UI Block ---
+        const feedbackContainer = document.createElement('div');
+        feedbackContainer.className = "mt-6 pt-4 border-t border-indigo-100 pb-2";
+        feedbackContainer.innerHTML = `
+            <div class="text-[10px] font-black text-indigo-500 uppercase tracking-widest mb-1"><i class="fa-solid fa-clipboard-check mr-1"></i> Result Feedback</div>
+            
+            <div class="mb-3 bg-indigo-50/50 border border-indigo-100 rounded-lg p-2.5 flex gap-2">
+                <i class="fa-solid fa-shield-halved text-indigo-400 mt-0.5 text-xs"></i>
+                <p class="text-[9px] text-slate-500 leading-relaxed font-medium">
+                    The results of the agent and your feedback will be saved for future uses to provide more accurate results. These records may be used for continuous AI training and development purposes.
+                </p>
+            </div>
+            
+            <textarea id="fbNotes" rows="2" class="w-full text-xs p-2 border border-gray-200 rounded-lg focus:ring-1 focus:ring-indigo-300 focus:border-indigo-300 transition-all resize-none shadow-sm mb-2 custom-scrollbar" placeholder="Add overall notes (optional)..."></textarea>
+            <button onclick="submitDistributorFeedback()" id="fbSubmitBtn" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold py-2 rounded-lg transition-colors shadow-sm flex items-center justify-center gap-2">
+                <i class="fa-solid fa-paper-plane"></i> Save Feedback to Database
+            </button>
+        `;
+        list.appendChild(feedbackContainer);
+    }
+    
+    async function submitDistributorFeedback() {
+        const notes = document.getElementById('fbNotes').value.trim();
+        const items = window.currentEnquiryItems || [];
+        const distributorsClone = JSON.parse(JSON.stringify(window.currentFoundDistributors || []));
+        
+        let feedbackGiven = false;
+        let anyTrue = false;
+        
+        distributorsClone.forEach((dist) => {
+            const trueRadio = document.querySelector(`input[name="fb_dist_${dist._idx}"][value="true"]`);
+            const falseRadio = document.querySelector(`input[name="fb_dist_${dist._idx}"][value="false"]`);
+            
+            if (trueRadio && trueRadio.checked) {
+                dist.is_true = true;
+                feedbackGiven = true;
+                anyTrue = true;
+            } else if (falseRadio && falseRadio.checked) {
+                dist.is_true = false;
+                feedbackGiven = true;
+            } else {
+                dist.is_true = null;
+            }
+        });
+        
+        if (!feedbackGiven && notes === "") {
+            alert("Please mark at least one distributor as True/False or write a note to provide feedback.");
+            return;
+        }
+        
+        const btn = document.getElementById('fbSubmitBtn');
+        try {
+            btn.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i> Saving...`;
+            btn.disabled = true;
+            btn.className = "w-full bg-indigo-400 text-white text-[11px] font-bold py-2 rounded-lg shadow-sm flex items-center justify-center gap-2 cursor-not-allowed";
+            
+            const res = await fetch('/api/procurement/feedback', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    items: items,
+                    distributors: distributorsClone,
+                    is_true_data: anyTrue,
+                    notes: notes
+                })
+            });
+            const data = await res.json();
+            
+            if (data.success) {
+                btn.className = "w-full bg-emerald-600 text-white text-[11px] font-bold py-2 rounded-lg shadow-sm flex items-center justify-center gap-2";
+                btn.innerHTML = `<i class="fa-solid fa-check"></i> Feedback Saved`;
+                if (typeof addAgentLog === 'function') addAgentLog("Saved verified distributor data to knowledge base", "success");
+            } else {
+                alert("Error: " + data.error);
+                btn.disabled = false;
+                btn.innerHTML = `<i class="fa-solid fa-paper-plane"></i> Save Feedback to Database`;
+                btn.className = "w-full bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold py-2 rounded-lg shadow-sm flex items-center justify-center gap-2 transition-colors";
+            }
+        } catch (e) {
+            alert("Error saving feedback: " + e.message);
+            btn.disabled = false;
+            btn.innerHTML = `<i class="fa-solid fa-paper-plane"></i> Save Feedback to Database`;
+            btn.className = "w-full bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold py-2 rounded-lg shadow-sm flex items-center justify-center gap-2 transition-colors";
         }
     }
 

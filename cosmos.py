@@ -45,6 +45,18 @@ try:
         except Exception as e_sess:
             print(f"[COSMOS ERROR] Could not create/get chat_sessions container: {e_sess}", flush=True)
             sessions_container = None
+            
+        # --- Dedicated container for Procurement Knowledge & Feedback ---
+        try:
+            procurement_knowledge_container = database.create_container_if_not_exists(
+                id="procurement_knowledge",
+                partition_key=PartitionKey(path="/id")
+            )
+            print("[COSMOS INFO] procurement_knowledge container ready.", flush=True)
+        except Exception as e_pk:
+            print(f"[COSMOS ERROR] Could not create/get procurement_knowledge container: {e_pk}", flush=True)
+            procurement_knowledge_container = None
+            
     else:
         print("Warning: COSMOS_ENDPOINT or COSMOS_KEY is missing. Cosmos DB features will be disabled.")
         client = None
@@ -398,6 +410,72 @@ def search_item_distributors(search_term):
         return results
     except Exception as e:
         print(f"[COSMOS ERROR] Error searching distributors: {e}", flush=True)
+        return []
+
+# =======================
+# PROCUREMENT KNOWLEDGE & FEEDBACK
+# =======================
+
+def save_procurement_feedback(user_email, original_items, distributors, is_true_data, notes):
+    """
+    Saves a curated record of an enquiry, the found distributors, and the user's feedback.
+    """
+    if procurement_knowledge_container is None:
+        print("[COSMOS WARN] procurement_knowledge_container is None. Cannot save feedback.", flush=True)
+        return False
+        
+    doc_id = str(uuid.uuid4())
+    doc = {
+        "id": doc_id,
+        "user_email": user_email,
+        "items_enquired": original_items,
+        "distributors": distributors,
+        "is_true_data": is_true_data,
+        "notes": notes,
+        "created_at": datetime.datetime.utcnow().isoformat()
+    }
+    
+    try:
+        procurement_knowledge_container.upsert_item(body=doc)
+        print(f"[COSMOS INFO] Saved procurement knowledge feedback. ID: {doc_id}", flush=True)
+        return True
+    except Exception as e:
+        print(f"[COSMOS ERROR] Error saving procurement feedback: {e}", flush=True)
+        return False
+
+def search_procurement_knowledge(query):
+    """
+    Searches procurement knowledge feedback for the given query. 
+    Only returns records where is_true_data is True.
+    """
+    if procurement_knowledge_container is None:
+        return []
+        
+    print(f"🔍 Searching curated procurement knowledge for: '{query}'...")
+    
+    # We look for the query in notes, distributors' names/items, or enquired items
+    sql_query = {
+        "query": """
+            SELECT c.id, c.items_enquired, c.distributors, c.notes, c.user_email, c.created_at
+            FROM c
+            WHERE c.is_true_data = true
+              AND (
+                  CONTAINS(UPPER(c.notes), UPPER(@search))
+                  OR EXISTS(SELECT VALUE i FROM i IN c.items_enquired WHERE CONTAINS(UPPER(i.name), UPPER(@search)) OR CONTAINS(UPPER(i.type), UPPER(@search)))
+                  OR EXISTS(SELECT VALUE d FROM d IN c.distributors WHERE CONTAINS(UPPER(d.name), UPPER(@search)) OR CONTAINS(UPPER(d.item), UPPER(@search)))
+              )
+            ORDER BY c.created_at DESC
+        """,
+        "parameters": [
+            {"name": "@search", "value": query}
+        ]
+    }
+    
+    try:
+        results = list(procurement_knowledge_container.query_items(query=sql_query, enable_cross_partition_query=True))
+        return results
+    except Exception as e:
+        print(f"[COSMOS ERROR] Error searching procurement knowledge: {e}", flush=True)
         return []
 
 # =======================

@@ -4,7 +4,7 @@ import openai
 # from duckduckgo_search import DDGS removed
 import pandas as pd
 from datetime import datetime
-from cosmos import search_quotes_by_item, search_item_distributors
+from cosmos import search_quotes_by_item, search_item_distributors, search_procurement_knowledge
 from sharepoint_items import fetch_sharepoint_list
 
 SITE_DOMAIN = "hamdaz1.sharepoint.com"
@@ -84,6 +84,23 @@ def search_item_purchase_history(query):
     except Exception as e:
         return f"Error searching purchase history: {str(e)}"
 
+def search_procurement_curated_knowledge(query):
+    """Searches the curated procurement knowledge (other users' past enquiries and verified distributors) in Cosmos DB."""
+    try:
+        results = search_procurement_knowledge(query)
+        filtered_results = []
+        for doc in results:
+            good_dists = [d for d in doc.get('distributors', []) if d.get('is_true', True) is True]
+            if good_dists:
+                doc['distributors'] = good_dists
+                filtered_results.append(doc)
+
+        if not filtered_results:
+            return "No previous experiences or curated distributors found for this query."
+        return json.dumps(filtered_results[:3], default=str)
+    except Exception as e:
+        return f"Error searching curated procurement knowledge: {str(e)}"
+
 def search_web(query):
     """Uses real web search data via OpenAI."""
     try:
@@ -132,11 +149,11 @@ You are an ADMIN, which means you have access to data of ALL users.
 You can help the user with queries, fetch ALL tasks of EVERYONE or specific users, analyze files, check prices in the local Cosmos DB, and search online.
 
 IMPORTANT INSTRUCTIONS FOR PRICES AND DISTRIBUTORS:
-If the user asks about the price or details of a product, you MUST FIRST use `search_cosmos_db` to check the local database for quotes.
-To find historical distributors, vendors, or previous purchase prices for an item, use `search_item_purchase_history`. 
-If it is not in the database, or if you need to provide online alternatives/links/competitors, you MUST use `search_web` to find online prices and links.
-EXTREMELY IMPORTANT: If the user explicitly asks to search online, search the web, or asks for internet distributors, YOU MUST immediately use the `search_web` tool without hesitation. Do not just rely on local databases.
-Do not hallucinate prices or links; clearly cite from web results if used.
+1. CURATED KNOWLEDGE: If the user explicitly or implicitly asks about previous experiences, other users' enquiries, or verified distributors, or if you are looking for distributors/suppliers for an item, YOU MUST FIRST use `search_procurement_curated_knowledge`. This contains 'True Data' verified by users.
+2. LOCAL DATABASE: If you need standard historical internal quotes, use `search_cosmos_db`.
+3. PURCHASE HISTORY: To find historical distributors or previous purchase prices, use `search_item_purchase_history`. 
+4. WEB SEARCH: If you need to provide online alternatives/links/competitors, or if the user explicitly asks to search online/internet, YOU MUST immediately use `search_web`.
+Do not hallucinate prices or links; clearly cite from web or database results if used.
 Return markdown formatting.
 {time_context}
 """
@@ -146,11 +163,11 @@ Only data belonging to the current user ({username}) is accessible.
 You can help the user with their queries, assist them in tasks, fetch their tasks, analyze files, check prices in the local Cosmos DB, and search online for distributors, suppliers, or online prices.
 
 IMPORTANT INSTRUCTIONS FOR PRICES AND DISTRIBUTORS:
-If the user asks about the price or details of a product, you MUST FIRST use `search_cosmos_db` to check the local database for quotes.
-To find historical distributors, vendors, or previous purchase prices for an item, use `search_item_purchase_history`. 
-If it is not in the database, or if you need to provide online alternatives/links/competitors, you MUST use `search_web` to find online prices and links.
-EXTREMELY IMPORTANT: If the user explicitly asks to search online, search the web, or asks for internet distributors, YOU MUST immediately use the `search_web` tool without hesitation. Do not just rely on local databases.
-Do not hallucinate prices or links; clearly cite from web results if used.
+1. CURATED KNOWLEDGE: If the user explicitly or implicitly asks about previous experiences, other users' enquiries, or verified distributors, or if you are looking for distributors/suppliers for an item, YOU MUST FIRST use `search_procurement_curated_knowledge`. This contains 'True Data' verified by users.
+2. LOCAL DATABASE: If you need standard historical internal quotes, use `search_cosmos_db`.
+3. PURCHASE HISTORY: To find historical distributors or previous purchase prices, use `search_item_purchase_history`. 
+4. WEB SEARCH: If you need to provide online alternatives/links/competitors, or if the user explicitly asks to search online/internet, YOU MUST immediately use `search_web`.
+Do not hallucinate prices or links; clearly cite from web or database results if used.
 Return markdown formatting.
 {time_context}
 """
@@ -234,6 +251,23 @@ Return markdown formatting.
         {
             "type": "function",
             "function": {
+                "name": "search_procurement_curated_knowledge",
+                "description": "Searches curated procurement knowledge containing other users' past enquiries and verified ('True Data') distributors.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "The product/item name, category, or distributor attribute to search for in the curated knowledge database."
+                        }
+                    },
+                    "required": ["query"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
                 "name": "search_web",
                 "description": "Search the internet for product details, prices, distributors, and suppliers.",
                 "parameters": {
@@ -301,6 +335,8 @@ Return markdown formatting.
                     function_response = search_cosmos_db(function_args.get("query"))
                 elif function_name == "search_item_purchase_history":
                     function_response = search_item_purchase_history(function_args.get("query"))
+                elif function_name == "search_procurement_curated_knowledge":
+                    function_response = search_procurement_curated_knowledge(function_args.get("query"))
                 elif function_name == "search_web":
                     function_response = search_web(function_args.get("query"))
                 elif function_name == "draft_email":
