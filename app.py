@@ -1683,6 +1683,12 @@ def get_procurement_tasks():
                 title_val = "Unnamed Task"
             t['Title'] = title_val
             
+        # Sort tasks by Created date descending (newest on top)
+        def get_task_date(t):
+            return t.get('Created', '')
+            
+        user_tasks.sort(key=get_task_date, reverse=True)
+            
         return jsonify({"tasks": user_tasks})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -1865,7 +1871,13 @@ def procurement_draft_email():
              items_text = "\n".join([f"- {i.get('name') or i.get('Name', 'Item')} (Qty: {i.get('quantity') or i.get('Quantity', '1')} {i.get('unit') or i.get('Unit', '')})" for i in items])
              items_req = f"the following items:\n{items_text}"
              
-        prompt_email = f"Draft a professional procurement inquiry email to {dist_name}. Inquire about availability, lead times, and pricing for {items_req}. Return as JSON with 'subject' and 'body'."
+        custom_prompt = data.get('customPrompt')
+        current_draft = data.get('currentDraft')
+        
+        if custom_prompt and current_draft:
+            prompt_email = f"You are a procurement assistant. Rewrite the following email draft. \n\nCURRENT DRAFT:\n{current_draft}\n\nUSER INSTRUCTIONS:\n{custom_prompt}\n\nReturn as JSON with 'subject' and 'body'. The body should be formatted in clean HTML (e.g., using <br> or <p> tags)."
+        else:
+            prompt_email = f"Draft a professional procurement inquiry email to {dist_name}. Inquire about availability, lead times, and pricing for {items_req}. Return as JSON with 'subject' and 'body'. The body must consist of professional HTML."
         
         from openai import OpenAI
         client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -2066,10 +2078,17 @@ def send_mail():
     user = session["user"]
     user_email = user.get("mail") or user.get("userPrincipalName")
     
-    data = request.get_json()
-    to_email = data.get('to')
-    subject = data.get('subject')
-    body_content = data.get('body')
+    if request.is_json:
+        data = request.get_json()
+        to_email = data.get('to')
+        subject = data.get('subject')
+        body_content = data.get('body')
+        files = []
+    else:
+        to_email = request.form.get('to')
+        subject = request.form.get('subject')
+        body_content = request.form.get('body')
+        files = request.files.getlist('attachments')
     
     if not all([to_email, subject, body_content]):
         return jsonify({"error": "Missing required fields: to, subject, or body"}), 400
@@ -2102,6 +2121,22 @@ def send_mail():
         },
         "saveToSentItems": "true"
     }
+    
+    if files:
+        import base64
+        attachments_list = []
+        for f in files:
+            if f.filename:
+                file_bytes = f.read()
+                b64_content = base64.b64encode(file_bytes).decode('utf-8')
+                attachments_list.append({
+                    "@odata.type": "#microsoft.graph.fileAttachment",
+                    "name": f.filename,
+                    "contentBytes": b64_content
+                })
+        if attachments_list:
+            mail_payload["message"]["hasAttachments"] = True
+            mail_payload["message"]["attachments"] = attachments_list
     
     try:
         url = f"{GRAPH_API_ENDPOINT}/users/{user_email}/sendMail"
