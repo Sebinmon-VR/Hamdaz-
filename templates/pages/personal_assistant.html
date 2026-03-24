@@ -1167,10 +1167,15 @@
                 item.onclick = () => selectDistributor(dist);
 
                 // Ensure items appear explicitly in UI
-                let itemNames = '<span class="italic text-gray-300">Searching category...</span>';
+                let itemTags = '<span class="italic text-gray-300">Searching category...</span>';
                 if (dist.items_list && dist.items_list.length > 0) {
-                    itemNames = dist.items_list.map(i => i.name || i.Name).join(", ");
+                    itemTags = dist.items_list.map(i => `<span class="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-md text-[9px] font-bold border border-indigo-100">${i.name || i.Name}</span>`).join(" ");
                 }
+                
+                let websiteLink = dist.link || dist.website || '';
+                let websiteHtml = websiteLink && websiteLink !== '#' && websiteLink !== 'Not Found' 
+                    ? `<a href="${websiteLink.startsWith('http') ? websiteLink : 'https://' + websiteLink}" target="_blank" onclick="event.stopPropagation()" class="text-[10px] text-indigo-500 hover:text-indigo-700 hover:underline flex items-center gap-1 mt-1 font-medium"><i class="fa-solid fa-arrow-up-right-from-square"></i> Visit Website</a>` 
+                    : '';
 
                 item.innerHTML = `
                     <div class="flex items-center justify-between mb-1">
@@ -1178,8 +1183,9 @@
                         <i class="fa-solid fa-chevron-right text-[10px] text-gray-300 group-hover:text-indigo-400 transition-colors"></i>
                     </div>
                     <div class="text-[10px] text-gray-500 truncate">${dist.email || 'No email found'}</div>
-                    <div class="mt-2 text-[10px] text-gray-600 line-clamp-2 leading-tight">
-                        <i class="fa-solid fa-layer-group text-slate-300 mr-1"></i> ${itemNames}
+                    ${websiteHtml}
+                    <div class="mt-2.5 flex flex-wrap gap-1">
+                        ${itemTags}
                     </div>
                     <div class="mt-2 flex gap-1 flex-wrap">
                         ${dist.source === 'internal' ? '<span class="text-[8px] bg-emerald-100 text-emerald-600 px-1.5 py-0.5 rounded font-bold uppercase">Internal DB</span>' : '<span class="text-[8px] bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded font-bold uppercase">Web</span>'}
