@@ -2,6 +2,8 @@
 
 {% block head %}
 <link rel="stylesheet" href="{{ url_for('static', filename='chatbot_tailwind.css') }}">
+<link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
+<script src="https://cdn.quilljs.com/1.3.6/quill.min.js"></script>
 {% endblock %}
 
 {% block content %}
@@ -97,6 +99,70 @@
             <div class="flex-1 overflow-y-auto w-full custom-scrollbar">
                 <div id="taskList" class="flex flex-col gap-3 max-w-5xl mx-auto pb-20">
                     <!-- Task items will be inserted here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Outlook-style Compose Modal Overlay -->
+        <div id="compose-pane" class="hidden absolute inset-0 z-50 backdrop-blur-md bg-slate-900/40 flex items-center justify-center p-6 sm:p-12">
+            <div class="w-full max-w-4xl h-full max-h-[800px] bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-gray-200">
+                <!-- Toolbar Top -->
+                <div class="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-gray-50/80">
+                    <div class="flex items-center gap-3">
+                        <button onclick="sendEmailFromComposer()" id="compose-send-api-btn" class="bg-blue-600 hover:bg-blue-700 text-white pl-4 pr-3 py-2 rounded-lg flex items-center gap-2 text-sm font-bold shadow-sm transition-colors">
+                            <i class="fa-regular fa-paper-plane mr-1"></i> Send <span class="border-l border-blue-400 pl-2 ml-1"><i class="fa-solid fa-chevron-down text-[10px]"></i></span>
+                        </button>
+                        <span class="text-xs text-gray-500 font-semibold hover:bg-gray-200 cursor-pointer px-2 py-1.5 rounded-md transition-colors">From: {{ user.mail }} <i class="fa-solid fa-chevron-down text-[10px] ml-1"></i></span>
+                    </div>
+                    <div class="flex items-center gap-2 text-gray-400">
+                        <button onclick="closeComposePane()" class="p-2 hover:bg-red-50 hover:text-red-500 rounded-lg text-sm transition-colors" title="Discard"><i class="fa-regular fa-trash-can shadow-sm"></i></button>
+                        <button onclick="closeComposePane()" class="p-2 hover:bg-gray-200 rounded-lg text-sm text-gray-600 transition-colors" title="Close"><i class="fa-solid fa-xmark text-lg"></i></button>
+                    </div>
+                </div>
+
+                <!-- Headers -->
+                <div class="px-6 py-2 flex flex-col bg-white">
+                    <div class="flex items-center border-b border-gray-100 py-2.5">
+                        <button class="bg-gray-50 text-gray-600 text-[11px] font-bold border border-gray-200 px-3 py-1 rounded cursor-pointer hover:bg-gray-100 mr-3 uppercase tracking-wider">To</button>
+                        <input type="text" id="compose-to" class="flex-1 focus:outline-none text-[14px] text-gray-800 font-medium" autocomplete="off">
+                        <button class="text-gray-400 text-xs font-bold hover:bg-gray-50 px-2 py-1 rounded transition-colors ml-2" onclick="document.getElementById('compose-cc-row').classList.toggle('hidden')">Cc</button>
+                        <button class="text-gray-400 text-xs font-bold hover:bg-gray-50 px-2 py-1 rounded transition-colors ml-1">Bcc</button>
+                    </div>
+                    
+                    <div id="compose-cc-row" class="hidden flex items-center border-b border-gray-100 py-2.5">
+                        <button class="bg-gray-50 text-gray-600 text-[11px] font-bold border border-gray-200 px-3 py-1 rounded cursor-pointer hover:bg-gray-100 mr-3 uppercase tracking-wider">Cc</button>
+                        <input type="text" id="compose-cc" class="flex-1 focus:outline-none text-[14px] text-gray-800 font-medium" autocomplete="off">
+                    </div>
+
+                    <div class="flex items-center border-b border-gray-100 py-3 relative">
+                        <input type="text" id="compose-subject" placeholder="Add a subject" class="w-full focus:outline-none text-[16px] font-bold text-gray-800 placeholder-gray-300" autocomplete="off">
+                    </div>
+                </div>
+
+                <!-- Top Toolbar -->
+                <div id="quill-toolbar" class="bg-gray-50 border-t border-b border-gray-200">
+                    <span class="ql-formats">
+                        <button class="ql-bold"></button>
+                        <button class="ql-italic"></button>
+                        <button class="ql-underline"></button>
+                    </span>
+                    <span class="ql-formats">
+                        <select class="ql-color"></select>
+                        <select class="ql-background"></select>
+                    </span>
+                    <span class="ql-formats">
+                        <button class="ql-list" value="ordered"></button>
+                        <button class="ql-list" value="bullet"></button>
+                    </span>
+                    <span class="ql-formats">
+                        <button class="ql-clean"></button>
+                    </span>
+                </div>
+
+                <!-- Body Text Area -->
+                <div class="flex-1 flex flex-col overflow-hidden bg-white">
+                    <div id="quill-editor" class="flex-1 w-full text-[14px] text-gray-800 !border-0 !font-sans">
+                    </div>
                 </div>
             </div>
         </div>
@@ -1080,45 +1146,71 @@
         if (!list) return;
 
         list.innerHTML = "";
-        distributors.forEach((dist, idx) => {
-            const item = document.createElement('div');
-            item.className = "p-3 rounded-xl border border-gray-100 hover:border-indigo-200 hover:bg-indigo-50/30 cursor-pointer transition-all group";
-            item.onclick = () => selectDistributor(dist);
-
-            item.innerHTML = `
-                <div class="flex items-center justify-between mb-1">
-                    <span class="text-sm font-bold text-gray-800">${dist.name}</span>
-                    <i class="fa-solid fa-chevron-right text-[10px] text-gray-300 group-hover:text-indigo-400 transition-colors"></i>
-                </div>
-                <div class="text-[10px] text-gray-500 truncate">${dist.email || 'No email found'}</div>
-                <div class="mt-2 flex gap-1 flex-wrap">
-                    ${dist.source === 'internal' ? '<span class="text-[8px] bg-emerald-100 text-emerald-600 px-1.5 py-0.5 rounded font-bold uppercase">Internal DB</span>' : '<span class="text-[8px] bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded font-bold uppercase">Web</span>'}
-                </div>
-            `;
-            list.appendChild(item);
+        
+        // Group by item category
+        const grouped = {};
+        distributors.forEach(dist => {
+            const itemName = dist.item || "General";
+            if (!grouped[itemName]) grouped[itemName] = [];
+            grouped[itemName].push(dist);
         });
+
+        for (const [itemName, dists] of Object.entries(grouped)) {
+            const groupHeader = document.createElement('div');
+            groupHeader.className = "text-[10px] font-black text-indigo-500 uppercase tracking-widest mt-4 mb-2 border-b border-indigo-100 pb-1";
+            groupHeader.innerHTML = `<i class="fa-solid fa-box-open mr-1"></i> ${itemName}`;
+            list.appendChild(groupHeader);
+
+            dists.forEach((dist, idx) => {
+                const item = document.createElement('div');
+                item.className = "p-3 mb-2 rounded-xl border border-gray-100 hover:border-indigo-200 hover:bg-indigo-50/30 cursor-pointer transition-all group";
+                item.onclick = () => selectDistributor(dist);
+
+                // Ensure items appear explicitly in UI
+                let itemNames = '<span class="italic text-gray-300">Searching category...</span>';
+                if (dist.items_list && dist.items_list.length > 0) {
+                    itemNames = dist.items_list.map(i => i.name || i.Name).join(", ");
+                }
+
+                item.innerHTML = `
+                    <div class="flex items-center justify-between mb-1">
+                        <span class="text-sm font-bold text-gray-800">${dist.name}</span>
+                        <i class="fa-solid fa-chevron-right text-[10px] text-gray-300 group-hover:text-indigo-400 transition-colors"></i>
+                    </div>
+                    <div class="text-[10px] text-gray-500 truncate">${dist.email || 'No email found'}</div>
+                    <div class="mt-2 text-[10px] text-gray-600 line-clamp-2 leading-tight">
+                        <i class="fa-solid fa-layer-group text-slate-300 mr-1"></i> ${itemNames}
+                    </div>
+                    <div class="mt-2 flex gap-1 flex-wrap">
+                        ${dist.source === 'internal' ? '<span class="text-[8px] bg-emerald-100 text-emerald-600 px-1.5 py-0.5 rounded font-bold uppercase">Internal DB</span>' : '<span class="text-[8px] bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded font-bold uppercase">Web</span>'}
+                    </div>
+                `;
+                list.appendChild(item);
+            });
+        }
     }
 
     async function selectDistributor(distributor) {
-        const loading = appendLoadingBubble("Drafting Email...");
+        const loading = appendLoadingBubble(`Drafting Email to ${distributor.name}...`);
         addAgentLog(`Selected distributor: ${distributor.name}`, "info");
         updateAgentStep("Drafting Email...");
 
-        appendMessage(`Drafting an email to **${distributor.name}**...`, "assistant", true);
+        appendMessage(`Drafting an email to **${distributor.name}** covering the **${distributor.item || 'items'}** category...`, "assistant", true);
 
         try {
             const res = await fetch('/api/procurement/draft_email', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ distributor: distributor })
+                body: JSON.stringify({ distributor: distributor, items: distributor.items_list || [] })
             });
             const data = await res.json();
 
             if (data.draft) {
                 finishLoadingBubble(loading, "Draft Created");
-                appendMessage(`EMAIL_DRAFT_START\n${JSON.stringify(data.draft)}\nEMAIL_DRAFT_END`, "assistant", false);
-                addAgentLog("Email draft created", "success");
-                updateAgentStep("Draft ready for review");
+                addAgentLog("Email draft created and loaded into composer", "success");
+                updateAgentStep("Draft ready for review in Composer");
+                
+                openComposePane(distributor.email, data.draft.subject, data.draft.body);
             }
         } catch (e) {
             finishLoadingBubble(loading, "Drafting Error");
@@ -1132,9 +1224,98 @@
         this.style.height = (this.scrollHeight) + 'px';
         if (this.value === '') this.style.height = 'auto';
     });
+
+    // --- Outlook Compose Logic ---
+    let quillObj = null;
+
+    function initQuill() {
+        if (!quillObj) {
+            quillObj = new Quill('#quill-editor', {
+                theme: 'snow',
+                modules: { toolbar: '#quill-toolbar' }
+            });
+        }
+    }
+
+    function openComposePane(to, subject, bodyContent) {
+        initQuill();
+        const pane = document.getElementById('compose-pane');
+        pane.classList.remove('hidden');
+        document.getElementById('compose-to').value = to && to !== "Not Found" && to !== "Searching..." ? to : "";
+        document.getElementById('compose-subject').value = subject || "";
+        
+        let safeBody = bodyContent || "";
+        if (typeof safeBody !== 'string') safeBody = String(safeBody);
+
+        let signature = `<div style="font-family: inherit; font-size: 13px; color: #4b5563; border-top: 1px solid #e5e7eb; padding-top: 10px; margin-top: 20px;">
+                <strong>{{ user.displayName }}</strong><br>
+                {{ user.mail }}<br>
+                <em>Hamdaz Organization</em>
+            </div>`;
+            
+        let finalHtml = `<div style="font-family: inherit; font-size: 14px; color: #1f2937;">${safeBody.replace(/\n/g, '<br>')}</div><br><br>${signature}`;
+        
+        quillObj.setContents([]); // Clear previous content
+        quillObj.clipboard.dangerouslyPasteHTML(0, finalHtml, 'api');
+    }
+
+    function closeComposePane() {
+        document.getElementById('compose-pane').classList.add('hidden');
+    }
+
+    async function sendEmailFromComposer() {
+        const to = document.getElementById('compose-to').value.trim();
+        const subject = document.getElementById('compose-subject').value.trim();
+        const bodyContent = quillObj.root.innerHTML;
+        const btn = document.getElementById('compose-send-api-btn');
+
+        if (!to) {
+            alert("Please provide a recipient (To) address.");
+            return;
+        }
+
+        const orgHtml = btn.innerHTML;
+        btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Sending...`;
+        btn.disabled = true;
+
+        try {
+            const response = await fetch('/api/mails/send', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ to: to, subject: subject, body: bodyContent })
+            });
+
+            if (!response.ok) throw new Error("Failed to send email");
+            
+            closeComposePane();
+            addAgentLog("Email sent successfully", "success");
+            appendMessage("I have successfully sent the inquiry email on your behalf!", "assistant", true);
+            updateAgentStep("Email Sent");
+
+        } catch (err) {
+            alert("Error sending email: " + err.message);
+        } finally {
+            btn.innerHTML = orgHtml;
+            btn.disabled = false;
+        }
+    }
 </script>
 
 <style>
+    /* Quill Custom CSS */
+    .ql-toolbar.ql-snow {
+        border: none !important;
+        background-color: #f8fafc;
+        border-top: 1px solid #e2e8f0 !important;
+        border-bottom: 1px solid #e2e8f0 !important;
+        padding: 8px 16px !important;
+    }
+    .ql-container.ql-snow {
+        border: none !important;
+        font-family: inherit !important;
+        font-size: 14px !important;
+    }
+
     /* Custom Markdown Prose Styling */
     .prose-custom p {
         margin-bottom: 0.75em;

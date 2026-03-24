@@ -8,26 +8,51 @@ from cosmos import search_quotes_by_item, search_item_distributors
 from sharepoint_items import fetch_sharepoint_list
 
 SITE_DOMAIN = "hamdaz1.sharepoint.com"
-test_path = "/sites/Test"
-test_proposals_list = "testproposals"
+SITE_PATH = "/sites/ProposalTeam"
+LIST_NAME = "Proposals"
 
-def get_user_tasks(current_username, is_admin_user=False, target_username=None):
+def get_user_tasks(current_username, is_admin_user=False, target_username=None, search_keyword=None):
     """Fetches tasks from SharePoint."""
     try:
-        tasks = fetch_sharepoint_list(SITE_DOMAIN, test_path, test_proposals_list)
+        tasks = fetch_sharepoint_list(SITE_DOMAIN, SITE_PATH, LIST_NAME)
+        
+        if search_keyword:
+            keyword = search_keyword.lower()
+            filtered_tasks = []
+            for t in tasks:
+                title = str(t.get('Title') or t.get('ProjectName') or t.get('ProposalName') or t.get('Name') or '').lower()
+                client = str(t.get('CustomerID') or t.get('ClientName') or '').lower()
+                status = str(t.get('JobStatus') or t.get('ApprovalStatus') or '').lower()
+                if keyword in title or keyword in client or keyword in status:
+                    filtered_tasks.append(t)
+            tasks = filtered_tasks
+
+        # Limit to 15 tasks to prevent blowing up the 128K context window
+        def safe_return(task_list):
+            if len(task_list) > 15:
+                return json.dumps(task_list[:15], default=str) + f"\n... (Showing 15 of {len(task_list)} tasks. Please use search_keyword to be more specific)."
+            return json.dumps(task_list, default=str)
+
         if is_admin_user:
-            if target_username and target_username.lower() != "all":
-                user_tasks = [t for t in tasks if str(t.get("AssignedTo", "")).replace(" ", "").lower() == target_username.lower()]
+            if target_username and target_username.lower() == "all":
+                return safe_return(tasks)
+            elif target_username and target_username.lower() not in ["my", "me", "mine"]:
+                # Fetch a specific other user's tasks
+                user_tasks = [t for t in tasks if str(t.get("AssignedTo", "")).replace(" ", "").lower() == target_username.replace(" ", "").lower() or target_username.lower() in str(t.get("AssignedTo", "")).lower()]
                 if not user_tasks:
                     return f"No tasks found for user: {target_username}"
-                return json.dumps(user_tasks, default=str)
+                return safe_return(user_tasks)
             else:
-                return json.dumps(tasks, default=str)
+                # Target is empty or is "my/me/mine". Fetch Admin's own tasks
+                user_tasks = [t for t in tasks if str(t.get("AssignedTo", "")).replace(" ", "").lower() == current_username.lower() or current_username.lower() in str(t.get("AssignedTo", "")).lower()]
+                if not user_tasks:
+                    return f"No tasks found for the current user ({current_username})."
+                return safe_return(user_tasks)
         else:
-            user_tasks = [t for t in tasks if str(t.get("AssignedTo", "")).replace(" ", "") == current_username]
+            user_tasks = [t for t in tasks if str(t.get("AssignedTo", "")).replace(" ", "").lower() == current_username.lower() or current_username.lower() in str(t.get("AssignedTo", "")).lower()]
             if not user_tasks:
-                return "No tasks found for the current user."
-            return json.dumps(user_tasks, default=str)
+                return f"No tasks found for the current user ({current_username})."
+            return safe_return(user_tasks)
     except Exception as e:
         return f"Error fetching tasks: {str(e)}"
 
@@ -110,6 +135,7 @@ IMPORTANT INSTRUCTIONS FOR PRICES AND DISTRIBUTORS:
 If the user asks about the price or details of a product, you MUST FIRST use `search_cosmos_db` to check the local database for quotes.
 To find historical distributors, vendors, or previous purchase prices for an item, use `search_item_purchase_history`. 
 If it is not in the database, or if you need to provide online alternatives/links/competitors, you MUST use `search_web` to find online prices and links.
+EXTREMELY IMPORTANT: If the user explicitly asks to search online, search the web, or asks for internet distributors, YOU MUST immediately use the `search_web` tool without hesitation. Do not just rely on local databases.
 Do not hallucinate prices or links; clearly cite from web results if used.
 Return markdown formatting.
 {time_context}
@@ -123,6 +149,7 @@ IMPORTANT INSTRUCTIONS FOR PRICES AND DISTRIBUTORS:
 If the user asks about the price or details of a product, you MUST FIRST use `search_cosmos_db` to check the local database for quotes.
 To find historical distributors, vendors, or previous purchase prices for an item, use `search_item_purchase_history`. 
 If it is not in the database, or if you need to provide online alternatives/links/competitors, you MUST use `search_web` to find online prices and links.
+EXTREMELY IMPORTANT: If the user explicitly asks to search online, search the web, or asks for internet distributors, YOU MUST immediately use the `search_web` tool without hesitation. Do not just rely on local databases.
 Do not hallucinate prices or links; clearly cite from web results if used.
 Return markdown formatting.
 {time_context}
@@ -160,6 +187,10 @@ Return markdown formatting.
                         "target_username": {
                             "type": "string",
                             "description": "(Optional) If admin, the specific user's tasks to fetch. Leave empty or pass 'all' to get all tasks."
+                        },
+                        "search_keyword": {
+                            "type": "string",
+                            "description": "(Optional) Filter the tasks by a specific keyword, project name, or client. Highly recommended if searching all tasks to avoid token limits."
                         }
                     },
                     "required": ["username"]
@@ -264,7 +295,8 @@ Return markdown formatting.
                 
                 if function_name == "get_user_tasks":
                     target_username = function_args.get("target_username")
-                    function_response = get_user_tasks(username, is_admin_user, target_username)
+                    search_keyword = function_args.get("search_keyword")
+                    function_response = get_user_tasks(username, is_admin_user, target_username, search_keyword)
                 elif function_name == "search_cosmos_db":
                     function_response = search_cosmos_db(function_args.get("query"))
                 elif function_name == "search_item_purchase_history":

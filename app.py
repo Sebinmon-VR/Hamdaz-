@@ -38,7 +38,7 @@ REDIRECT_URI = os.getenv("REDIRECT_URI")
 AUTHORITY = f"https://login.microsoftonline.com/{TENANT_ID}"
 SCOPE = ["User.Read", "Mail.Send"]
 
-SUPERUSERS = ["jishad@hamdaz.com", "hisham@hamdaz.com"  , "sujeel@hamdaz.com","shibit@hamdaz.com", "althaf@hamdaz.com"]
+SUPERUSERS = ["jishad@hamdaz.com", "hisham@hamdaz.com" , "sebin@hamdaz.com" , "sujeel@hamdaz.com","shibit@hamdaz.com", "althaf@hamdaz.com"]
 approvers = ["shibit@hamdaz.com", "althaf@hamdaz.com" ,"sebin@hamdaz.com" , "sujeel@hamdaz.com"]
 LIMITED_USERS = [""]
 
@@ -1001,14 +1001,18 @@ def pa_chat():
                     for page in reader.pages:
                         files_text += (page.extract_text() or "") + "\n"
                 elif ext in ['xlsx', 'xls']:
-                    df_file = pd.read_excel(io.BytesIO(file_bytes))
-                    files_text += df_file.to_markdown(index=False) + "\n"
+                    df_dict = pd.read_excel(io.BytesIO(file_bytes), sheet_name=None)
+                    for sheet_name, df_sheet in df_dict.items():
+                        files_text += f"\n--- Sheet: {sheet_name} ---\n"
+                        files_text += df_sheet.to_csv(index=False) + "\n"
                 elif ext == 'csv':
                     df_file = pd.read_csv(io.BytesIO(file_bytes))
-                    files_text += df_file.to_markdown(index=False) + "\n"
+                    files_text += df_file.to_csv(index=False) + "\n"
                 elif ext == 'docx':
                     doc = docx.Document(io.BytesIO(file_bytes))
                     files_text += "\n".join([p.text for p in doc.paragraphs]) + "\n"
+                elif ext == 'doc':
+                    files_text += "[Error reading file: Legacy .doc format is not supported. Please save as .docx and re-upload.]\n"
                 elif ext == 'txt':
                     files_text += file_bytes.decode('utf-8') + "\n"
             except Exception as e:
@@ -1486,11 +1490,13 @@ def process_files():
                 
                 if ext == 'csv':
                     df = pd.read_csv(file_stream)
+                    return df.to_csv(index=False)
                 else:
-                    df = pd.read_excel(file_stream)
-                
-                # Convert DataFrame to Markdown format for clear input to the AI model
-                return df.to_markdown(index=False) 
+                    df_dict = pd.read_excel(file_stream, sheet_name=None)
+                    all_sheets_csv = ""
+                    for sheet_name, df_sheet in df_dict.items():
+                        all_sheets_csv += f"\n--- Sheet: {sheet_name} ---\n" + df_sheet.to_csv(index=False)
+                    return all_sheets_csv
 
             elif ext == 'pdf':
                 # --- PDF Text Extraction Implementation ---
@@ -1723,15 +1729,19 @@ def analyze_procurement_requirements(task_id):
                             for page in reader.pages:
                                 content_to_analyze += (page.extract_text() or "") + "\n"
                         elif ext in ['xlsx', 'xls']:
-                            df_att = pd.read_excel(io.BytesIO(file_bytes))
-                            content_to_analyze += df_att.to_markdown(index=False) + "\n"
+                            df_dict = pd.read_excel(io.BytesIO(file_bytes), sheet_name=None)
+                            for sheet_name, df_sheet in df_dict.items():
+                                content_to_analyze += f"\n--- Sheet: {sheet_name} ---\n"
+                                content_to_analyze += df_sheet.to_csv(index=False) + "\n"
                         elif ext == 'csv':
                             df_att = pd.read_csv(io.BytesIO(file_bytes))
-                            content_to_analyze += df_att.to_markdown(index=False) + "\n"
+                            content_to_analyze += df_att.to_csv(index=False) + "\n"
                         elif ext == 'docx':
                             import docx
                             doc = docx.Document(io.BytesIO(file_bytes))
                             content_to_analyze += "\n".join([p.text for p in doc.paragraphs]) + "\n"
+                        elif ext == 'doc':
+                            content_to_analyze += "[Error reading file: Legacy .doc format is not supported. Please save as .docx and re-upload.]\n"
                         elif ext == 'txt':
                             content_to_analyze += file_bytes.decode('utf-8') + "\n"
                     except Exception as parse_error:
@@ -1741,7 +1751,7 @@ def analyze_procurement_requirements(task_id):
             return jsonify({"success": False, "error": "Could not extract text from attachments."}), 400
             
         short_content = content_to_analyze[:10000]
-        prompt = f"Analyze the following requirement document and list the items/products that need to be procured. Return the result as a JSON list of objects, each having 'name' and 'type'.\n\nContent:\n{short_content}"
+        prompt = f"Analyze the following requirement document and list the items/products that need to be procured. Return the result as a JSON list of objects, each having 'name', 'type', 'quantity', and 'unit'. Group similar items by assigning them the exact same 'category' string (e.g. 'IT Equipment', 'Office Supplies').\n\nContent:\n{short_content}"
         
         from openai import OpenAI
         client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -1777,12 +1787,18 @@ def procurement_find_distributors():
     items_to_search = data.get('items', [])
     
     try:
-        all_distributors = []
+        categories = {}
         for item in items_to_search:
-            name = item.get('name')
-            if not name: continue
-            
-            internal_results = search_item_distributors(name)
+            cat = item.get('category') or item.get('Category') or item.get('type') or item.get('Type') or 'General'
+            if cat not in categories:
+                categories[cat] = []
+            categories[cat].append(item)
+
+        all_distributors = []
+        for cat, items_in_cat in categories.items():
+            # Interally check the first item's name as representation of the category for past vendors
+            rep_name = items_in_cat[0].get('name', cat)
+            internal_results = search_item_distributors(rep_name)
             for res in internal_results:
                 history = res.get('purchase_history', [])
                 for h in history:
@@ -1792,10 +1808,11 @@ def procurement_find_distributors():
                             "name": vendor,
                             "email": h.get("Email", "Not in DB"),
                             "source": "internal",
-                            "item": name
+                            "item": cat,
+                            "items_list": items_in_cat
                         })
             
-            web_data = search_web(f"authorized distributors for {name} in UAE")
+            web_data = search_web(f"authorized distributors for {cat} in UAE")
             try:
                 import json as py_json
                 web_list = py_json.loads(web_data)
@@ -1805,7 +1822,8 @@ def procurement_find_distributors():
                             "name": w.get('title', 'Unknown Distributor'),
                             "email": w.get('email', 'Not Found'), 
                             "source": "web",
-                            "item": name,
+                            "item": cat,
+                            "items_list": items_in_cat,
                             "link": w.get('href', '#')
                         })
             except:
@@ -1818,7 +1836,7 @@ def procurement_find_distributors():
                 unique_list.append(d)
                 seen_names.add(d['name'].lower())
         
-        return jsonify({"distributors": unique_list[:10]})
+        return jsonify({"distributors": unique_list})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -1838,7 +1856,7 @@ def procurement_draft_email():
         
         items_req = "my task"
         if items:
-             items_text = "\n".join([f"- {i.get('name', 'Item')} ({i.get('type', 'Category')})" for i in items])
+             items_text = "\n".join([f"- {i.get('name') or i.get('Name', 'Item')} (Qty: {i.get('quantity') or i.get('Quantity', '1')} {i.get('unit') or i.get('Unit', '')})" for i in items])
              items_req = f"the following items:\n{items_text}"
              
         prompt_email = f"Draft a professional procurement inquiry email to {dist_name}. Inquire about availability, lead times, and pricing for {items_req}. Return as JSON with 'subject' and 'body'."
@@ -1859,6 +1877,10 @@ def procurement_draft_email():
             import json as py_json
             match_json = re.search(r'\{.*\}', res_text, re.DOTALL)
             draft_data = py_json.loads(match_json.group(0)) if match_json else py_json.loads(res_text)
+            
+            # Normalize keys to lowercase for robust frontend usage
+            draft_data = {k.lower(): v for k, v in draft_data.items()}
+            
             draft_data['to'] = distributor_info.get('email') if distributor_info.get('email') not in ["Searching...", "Not Found", None, ""] else ""
         except:
             draft_data = {
