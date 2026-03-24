@@ -1661,8 +1661,13 @@ def get_procurement_tasks():
     try:
         # Using the main Proposals list
         tasks_list = fetch_sharepoint_list(SITE_DOMAIN, SITE_PATH, LIST_NAME)
-        # Filter for the current user
-        user_tasks = [t for t in tasks_list if str(t.get("AssignedTo", "")).replace(" ", "").lower() == display_name.lower()]
+        
+        email = user.get("mail") or user.get("userPrincipalName", "")
+        # Filter comprehensively
+        if is_admin(email):
+            user_tasks = tasks_list
+        else:
+            user_tasks = [t for t in tasks_list if str(t.get("AssignedTo", "")).replace(" ", "").lower() == display_name.lower() or display_name.lower() in str(t.get("AssignedTo", "")).lower() or str(t.get("AssignedTo", "")).lower() in display_name.lower()]
         
         # Add basic priority and step data for the UI
         for t in user_tasks:
@@ -1699,7 +1704,7 @@ def get_procurement_task_details(task_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.route('/api/procurement/analyze/<task_id>', methods=['GET'])
+@app.route('/api/procurement/analyze/<task_id>', methods=['GET', 'POST'])
 def analyze_procurement_requirements(task_id):
     if "user" not in session:
         return jsonify({"error": "Unauthorized"}), 401
