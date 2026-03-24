@@ -1,0 +1,12 @@
+{
+  "name": "hamdaz-tailwind-builder",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "build:css": "tailwindcss -i ./tailwind_input.css -o ./static/chatbot_tailwind.css --content \"./templates/**/*.html\""
+  },
+  "devDependencies": {
+    "tailwindcss": "^3.4.1"
+  }
+}

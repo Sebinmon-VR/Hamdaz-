@@ -1,7 +1,10 @@
 {% extends "base.html" %}
 
+{% block head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='chatbot_tailwind.css') }}">
+{% endblock %}
+
 {% block content %}
-<script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/4.3.0/marked.min.js"></script>
 
 <div class="flex h-[calc(100vh-100px)] w-full pb-6 gap-6">
