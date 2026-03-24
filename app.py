@@ -2150,6 +2150,94 @@ def send_mail():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route('/api/mails/draft/save', methods=['POST'])
+def save_mail_draft():
+    if "user" not in session:
+        return jsonify({"error": "Unauthorized"}), 401
+        
+    user = session["user"]
+    user_email = user.get("mail") or user.get("userPrincipalName")
+    
+    if request.is_json:
+        data = request.get_json()
+        to_email = data.get('to')
+        subject = data.get('subject')
+        body_content = data.get('body')
+        draft_id = data.get('draftId')
+        files = []
+    else:
+        to_email = request.form.get('to')
+        subject = request.form.get('subject')
+        body_content = request.form.get('body')
+        draft_id = request.form.get('draftId')
+        files = request.files.getlist('attachments')
+        
+    if not all([to_email, subject, body_content]):
+        return jsonify({"error": "Missing required fields: to, subject, or body"}), 400
+        
+    try:
+        from sharepoint_items import get_access_token
+        access_token = get_access_token()
+    except Exception as e:
+        return jsonify({"error": "Failed to acquire app token", "details": str(e)}), 500
+
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json"
+    }
+    
+    mail_payload = {
+        "subject": subject,
+        "body": {
+            "contentType": "HTML",
+            "content": body_content
+        },
+        "toRecipients": [
+            {
+                "emailAddress": {
+                    "address": to_email.strip()
+                }
+            }
+        ]
+    }
+    
+    if files:
+        import base64
+        attachments_list = []
+        for f in files:
+            if f.filename:
+                file_bytes = f.read()
+                b64_content = base64.b64encode(file_bytes).decode('utf-8')
+                attachments_list.append({
+                    "@odata.type": "#microsoft.graph.fileAttachment",
+                    "name": f.filename,
+                    "contentBytes": b64_content
+                })
+        if attachments_list:
+            mail_payload["hasAttachments"] = True
+            mail_payload["attachments"] = attachments_list
+    
+    try:
+        if draft_id and draft_id != "null" and draft_id != "undefined":
+            url = f"{GRAPH_API_ENDPOINT}/users/{user_email}/messages/{draft_id}"
+            response = requests.patch(url, headers=headers, json=mail_payload)
+            if response.status_code == 200:
+                data = response.json()
+                return jsonify({"success": True, "webLink": data.get("webLink", ""), "id": data.get("id")})
+            else:
+                return jsonify({"error": "Failed to update draft", "details": response.text}), response.status_code
+        else:
+            url = f"{GRAPH_API_ENDPOINT}/users/{user_email}/messages"
+            response = requests.post(url, headers=headers, json=mail_payload)
+            if response.status_code == 201:
+                data = response.json()
+                return jsonify({"success": True, "webLink": data.get("webLink", ""), "id": data.get("id")})
+            else:
+                return jsonify({"error": "Failed to save draft", "details": response.text}), response.status_code
+            
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 # ==============================================================
 # START FLASK + BACKGROUND UPDATER
 # ==============================================================
