@@ -484,6 +484,9 @@
     let currentChatLogContainer = null;
     let activeLoadingWrapper = null;
     let isInlineProgressActive = false;
+    let currentUserEmail = "{{ user.get('mail') or user.get('userPrincipalName', '') }}".toLowerCase();
+    let lastSharedMessageCount = 0;
+    let messageSyncInterval = null;
 
     // Load sessions on init
     window.onload = function () {
@@ -557,7 +560,7 @@
 
             if (data.messages) {
                 if (data.messages.length === 0) showGreeting();
-                data.messages.forEach(m => appendMessage(m.content, m.role, false));
+                data.messages.forEach(m => appendMessage(m.content, m.role, false, m.user));
             } else {
                 showGreeting();
             }
@@ -632,31 +635,48 @@
     }
 
     // Append message with animation + styling
-    function appendMessage(message, sender, typing = false) {
+    function appendMessage(message, sender, typing = false, userName = null) {
         const wrapper = document.createElement("div");
-        wrapper.classList.add("w-full", "flex", "fade-in");
+        wrapper.classList.add("w-full", "flex", "fade-in", "mb-4"); // added margin-bottom for better spacing with avatars
 
         const div = document.createElement("div");
         div.classList.add(
-            "p-3.5", "rounded-2xl", "inline-block", "max-w-[85%]", // wider max-width for better reading
-            "break-words", "bubble-anim", "text-[15px]", "leading-relaxed"
+            "p-3.5", "rounded-2xl", "inline-block", "max-w-[80%]", // slightly narrower to fit avatars
+            "break-words", "bubble-anim", "text-[15px]", "leading-relaxed", "relative"
         );
 
         if (sender === "user") {
             div.classList.add("bg-indigo-600", "text-white", "ml-auto", "rounded-tr-sm");
             wrapper.classList.add("justify-end");
             div.innerHTML = marked.parse(message);
-            // fix user links color just in case
+            
+            // fix user links color
             const links = div.querySelectorAll("a");
             links.forEach(l => l.classList.add("underline", "text-indigo-100", "hover:text-white"));
-        } else {
-            // Assistant
+
+            // USER AVATAR (Right side)
             const avatar = document.createElement("div");
-            avatar.classList.add("w-8", "h-8", "rounded-full", "flex", "items-center", "justify-center", "shrink-0", "mt-auto", "mb-1.5", "overflow-hidden", "bg-indigo-50", "border-2", "border-indigo-100", "mr-3");
+            avatar.classList.add("w-8", "h-8", "rounded-full", "flex", "items-center", "justify-center", "shrink-0", "mt-auto", "mb-1", "overflow-hidden", "bg-indigo-500", "text-white", "text-[10px]", "font-black", "ml-3", "border-2", "border-indigo-100", "shadow-sm");
+            
+            let initials = "U";
+            if (userName) {
+                const parts = userName.split(/[.@]/);
+                initials = (parts[0].charAt(0) + (parts[0].charAt(1) || "")).toUpperCase();
+            }
+            avatar.textContent = initials;
+            avatar.title = userName || "User";
+            
+            wrapper.appendChild(div);
+            wrapper.appendChild(avatar);
+        } else {
+            // Assistant (AI)
+            const avatar = document.createElement("div");
+            avatar.classList.add("w-8", "h-8", "rounded-full", "flex", "items-center", "justify-center", "shrink-0", "mt-auto", "mb-1", "overflow-hidden", "bg-white", "border-2", "border-slate-200", "mr-3", "shadow-sm");
             avatar.innerHTML = `<img src="/static/images/bot_avatar.png" alt="Bot" class="w-full h-full object-cover">`;
+            avatar.title = "Hamdaz AI Assistant";
             wrapper.appendChild(avatar);
 
-            div.classList.add("bg-white/80", "backdrop-blur-sm", "text-gray-800", "mr-auto", "border-2", "border-slate-200", "rounded-bl-sm", "prose-custom");
+            div.classList.add("bg-white/80", "backdrop-blur-sm", "text-gray-800", "mr-auto", "border-2", "border-slate-200", "rounded-bl-sm", "prose-custom", "shadow-sm");
             wrapper.classList.add("justify-start");
 
             if (typing) {
@@ -687,9 +707,9 @@
                 }
                 div.innerHTML = marked.parse(message);
             }
+            wrapper.appendChild(div);
         }
 
-        wrapper.appendChild(div);
         chatBox.appendChild(wrapper);
         scrollToBottom();
     }
@@ -847,7 +867,7 @@
             }
         }
 
-        appendMessage(displayMsg, "user");
+        appendMessage(displayMsg, "user", false, currentUserEmail);
 
         messageInput.value = "";
         messageInput.style.height = 'auto'; 
@@ -2029,9 +2049,11 @@
 
             if (data.project) {
                 if (data.project.messages && data.project.messages.length > 0) {
-                    data.project.messages.forEach(m => appendMessage(m.content, m.role, false));
+                    data.project.messages.forEach(m => appendMessage(m.content, m.role, false, m.user));
+                    lastSharedMessageCount = data.project.messages.length;
                 } else {
-                    appendMessage(`Welcome to the shared workspace for: **${title}**. You can collaborate with your team here in real-time.`, "assistant");
+                    appendMessage(`Welcome to the shared workspace for: **${title}**. You can collaborate with your team here in real-time.`, "assistant", false, "AI");
+                    lastSharedMessageCount = 1; // The welcome message we just appended isn't in DB yet usually, but project load has it if it was there
                 }
                 
                 // Show presence bar
@@ -2058,16 +2080,43 @@
         
         presencePollingInterval = setInterval(() => pollPresence(projectId), 5000);
         activityPollingInterval = setInterval(() => pollActivity(projectId), 10000);
+        messageSyncInterval = setInterval(() => syncMessages(projectId), 4000);
         
         // Heartbeat
         updateHeartbeat(projectId);
         heartbeatInterval = setInterval(() => updateHeartbeat(projectId), 15000);
     }
 
+    async function syncMessages(projectId) {
+        if (!currentSharedProjectId || currentSharedProjectId !== projectId) return;
+        
+        try {
+            const res = await fetch(`/api/shared_projects/${projectId}`);
+            const data = await res.json();
+            if (data.project && data.project.messages) {
+                const messages = data.project.messages;
+                if (messages.length > lastSharedMessageCount) {
+                    const newMsgs = messages.slice(lastSharedMessageCount);
+                    newMsgs.forEach(m => {
+                        // Only append if it's NOT from the current user
+                        // Note: For AI responses, m.user is "AI" or null, so it will pass
+                        if (m.user && m.user.toLowerCase() !== currentUserEmail) {
+                            appendMessage(m.content, m.role, false, m.user);
+                        }
+                    });
+                    lastSharedMessageCount = messages.length;
+                }
+            }
+        } catch (e) {
+            console.warn("[SYNC] Message sync failed:", e);
+        }
+    }
+
     function stopSharedProjectPolling() {
         if (presencePollingInterval) clearInterval(presencePollingInterval);
         if (activityPollingInterval) clearInterval(activityPollingInterval);
-        if (typeof heartbeatInterval !== 'undefined') clearInterval(heartbeatInterval);
+        if (messageSyncInterval) clearInterval(messageSyncInterval);
+        if (typeof heartbeatInterval !== 'undefined' && heartbeatInterval) clearInterval(heartbeatInterval);
         
         document.getElementById('presenceBar').classList.add('hidden');
         document.getElementById('activityIndicator').classList.add('hidden');
