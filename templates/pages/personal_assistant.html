@@ -4,10 +4,145 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='chatbot_tailwind.css') }}">
 <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
 <script src="https://cdn.quilljs.com/1.3.6/quill.min.js"></script>
+<!-- Styles moved to separate style block below -->
+
+<style>
+    .prose-custom p { margin-bottom: 0.75rem; }
+    .prose-custom p:last-child { margin-bottom: 0; }
+    .custom-scrollbar::-webkit-scrollbar { width: 5px; }
+    .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #cbd5e1; }
+    
+    @keyframes slide-down {
+        from { transform: translateY(-100%); opacity: 0; }
+        to { transform: translateY(0); opacity: 1; }
+    }
+    .animate-slide-down { animation: slide-down 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
+    
+    @keyframes scale-up {
+        from { transform: scale(0.95); opacity: 0; }
+        to { transform: scale(1); opacity: 1; }
+    }
+    .animate-scale-up { animation: scale-up 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
+
+    /* For presence bar avatars */
+    .presence-avatar {
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        border: 2px solid white;
+        background: #f1f5f9;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 8px;
+        font-weight: bold;
+        color: #475569;
+        position: relative;
+    }
+    .presence-avatar::after {
+        content: '';
+        position: absolute;
+        bottom: 0;
+        right: 0;
+        width: 6px;
+        height: 6px;
+        background: #10b981;
+        border: 1.5px solid white;
+        border-radius: 50%;
+    }
+
+    /* Simple CSS Tooltip */
+    [data-tooltip] {
+        position: relative;
+    }
+    [data-tooltip]::before {
+        content: attr(data-tooltip);
+        position: absolute;
+        top: 135%;
+        left: 50%;
+        transform: translateX(-50%) translateY(-5px);
+        background: #1e293b;
+        color: white;
+        padding: 6px 10px;
+        border-radius: 8px;
+        font-size: 10px;
+        font-weight: bold;
+        white-space: nowrap;
+        opacity: 0;
+        pointer-events: none;
+        transition: all 0.2s cubic-bezier(0.165, 0.84, 0.44, 1);
+        z-index: 1000;
+        box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+    }
+    [data-tooltip]:hover::before {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+    }
+</style>
+
 {% endblock %}
 
 {% block content %}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/4.3.0/marked.min.js"></script>
+
+<!-- Task Sharing & Collaborator Modal -->
+<div id="colabModal" class="hidden fixed inset-0 backdrop-blur-md bg-slate-900/40 flex items-center justify-center p-4" style="z-index: 100000;">
+    <div class="bg-white rounded-[2rem] w-full max-w-4xl max-h-[85vh] overflow-hidden flex flex-col shadow-2xl border border-slate-200 animate-scale-up">
+        <div class="p-8 border-b border-slate-100 flex items-center justify-between bg-white shrink-0">
+            <div>
+                <h3 class="text-2xl font-black text-slate-800 tracking-tight">Project Collaboration</h3>
+                <p class="text-[11px] text-slate-400 font-bold uppercase tracking-[0.2em] mt-1">Manage team members and project details</p>
+            </div>
+            <button onclick="closeColabModal()" class="w-10 h-10 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-all">
+                <i class="fa-solid fa-xmark text-lg"></i>
+            </button>
+        </div>
+        
+        <div class="flex-1 flex overflow-hidden min-h-0">
+            <!-- Left Pane: Task Details -->
+            <div class="w-1/2 p-8 border-r border-slate-100 overflow-y-auto custom-scrollbar bg-slate-50/30">
+                <div class="space-y-6" id="modalTaskDetails">
+                    <!-- Task basic info will be injected here -->
+                </div>
+            </div>
+            
+            <!-- Right Pane: User Search & Invite -->
+            <div class="w-1/2 p-8 flex flex-col min-h-0 bg-white">
+                <div class="mb-6 shrink-0">
+                    <label class="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Add Team Members</label>
+                    <div class="relative group">
+                        <i class="fa-solid fa-user-plus absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-indigo-500 transition-colors"></i>
+                        <input type="text" id="userSearchBar" onkeyup="searchCollaborators(this.value)" 
+                               placeholder="Search by name or email..." 
+                               class="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl pl-11 pr-4 py-3.5 text-sm focus:outline-none focus:border-indigo-200 transition-all">
+                        <!-- Search results dropdown -->
+                        <div id="userSearchResults" class="hidden absolute top-full left-0 right-0 mt-2 bg-white border border-slate-200 rounded-2xl shadow-xl z-20 overflow-hidden max-h-60 overflow-y-auto custom-scrollbar"></div>
+                    </div>
+                </div>
+                
+                <div class="flex-1 flex flex-col min-h-0">
+                    <label class="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Selected Recipients</label>
+                    <div id="selectedUserChips" class="flex flex-wrap gap-2 mb-4 flex-1 overflow-y-auto content-start custom-scrollbar">
+                        <p class="text-[12px] text-slate-400 italic py-4">No users selected yet</p>
+                    </div>
+                    
+                    <div class="pt-6 border-t border-slate-100 space-y-3 shrink-0">
+                        <button id="sendInvitesBtn" onclick="sendInvites()" 
+                                class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-2xl shadow-lg shadow-indigo-200 transition-all active:scale-[0.98] disabled:opacity-50 disabled:grayscale">
+                            Send Invitations
+                        </button>
+                        <button id="openSharedChatBtn" onclick="openSharedChatFromModal()" 
+                                class="hidden w-full bg-emerald-50 text-emerald-600 hover:bg-emerald-100 font-bold py-4 rounded-2xl transition-all">
+                            Open Shared Workspace
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 
 <div class="flex h-[calc(100vh-100px)] w-full pb-6 gap-6">
 
@@ -37,41 +172,51 @@
     <div class="flex-1 flex flex-col bg-transparent rounded-[2rem] border-2 border-slate-200 overflow-hidden relative">
         <!-- Header (Solid & Elevated) -->
         <div
-            class="border-b-2 border-slate-200 p-6 shrink-0 flex items-center justify-between bg-white/40 backdrop-blur-md z-10 relative">
-            <div class="flex items-center space-x-4">
+            class="border-b-2 border-slate-200 p-6 shrink-0 flex items-center justify-between bg-white backdrop-blur-md z-30 relative min-h-[88px]">
+            <div class="flex items-center space-x-4 min-w-0 flex-1 mr-4">
                 <div
-                    class="w-12 h-12 rounded-2xl overflow-hidden flex items-center justify-center bg-indigo-50 border border-indigo-100  ">
-                    <img src="/static/images/bot_avatar.png" alt="AI Agent" class="w-full h-full object-cover">
+                    class="w-12 h-12 rounded-2xl overflow-hidden flex items-center justify-center bg-indigo-50 border border-indigo-100 shrink-0">
+                    <img id="activeAgentAvatar" src="/static/images/bot_avatar.png" alt="Agent"
+                        class="w-full h-full object-cover">
                 </div>
-                <div>
-                    <h2 class="text-lg font-black text-slate-800 tracking-tight" id="currentChatTitle">AI Assistant</h2>
-                    <p
-                        class="text-[10px] text-emerald-500 font-bold flex items-center gap-1.5 mt-0.5 uppercase tracking-widest">
-                        <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse  "></span>
-                        Online
-                    </p>
+                <div class="min-w-0 flex-1">
+                    <div class="flex items-center gap-2">
+                        <h2 id="currentChatTitle"
+                            class="text-xl font-black text-slate-800 tracking-tighter truncate max-w-[200px] lg:max-w-[400px]">
+                            AI Personal Assistant</h2>
+                        <span id="modeBadge" class="hidden px-2 py-0.5 rounded-md bg-indigo-100 text-indigo-700 text-[9px] font-black uppercase tracking-wider whitespace-nowrap">Personal</span>
+                    </div>
+                    <div class="flex items-center gap-3 mt-1 overflow-hidden">
+                        <div id="presenceBar" class="flex -space-x-2 hidden">
+                            <!-- Avatars injected here -->
+                        </div>
+                        <div id="activityIndicator" class="hidden flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-100">
+                            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                            <span id="activityText" class="text-[10px] font-bold text-emerald-600 uppercase tracking-widest whitespace-nowrap">Collaborative</span>
+                        </div>
+                    </div>
                 </div>
             </div>
 
-            <!-- Redesigned Agent Selection (Segmented Control - Professional Pill) -->
-            <div
-                class="bg-slate-100/80 p-1.5 rounded-2xl flex items-center relative group backdrop-blur-md border border-slate-200/50">
+            <!-- Redesigned Agent Selection (Icon Only Segmented Control) -->
+            <div class="bg-slate-100/80 p-1 rounded-xl flex items-center relative group backdrop-blur-md border border-slate-200/50 shrink-0 shadow-inner">
                 <div id="agentActiveIndicator"
-                    class="absolute h-9 bg-white rounded-[0.8rem] transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] z-0"
-                    style="width: 140px; transform: translateX(0px);"></div>
+                    class="absolute h-9 bg-white rounded-lg transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] z-0 shadow-sm"
+                    style="width: 44px; transform: translateX(0px);"></div>
 
-                <button onclick="selectAgent('general')" id="tabGeneral"
-                    class="relative z-10 flex items-center justify-center gap-2 px-6 py-2.5 text-xs font-black transition-all duration-300 text-indigo-600"
-                    style="width: 140px;">
-                    <i class="fa-solid fa-message text-[11px]"></i>
-                    <span class="tracking-tight">Personal AI</span>
+                <button onclick="selectAgent('general')" id="tabGeneral" data-tooltip="Personal AI Assistant"
+                    class="relative z-10 flex items-center justify-center w-11 h-9 transition-all duration-300 text-indigo-600">
+                    <i class="fa-solid fa-message text-sm"></i>
                 </button>
 
-                <button onclick="selectAgent('procurement')" id="tabProcurement"
-                    class="relative z-10 flex items-center justify-center gap-2 px-6 py-2.5 text-xs font-black transition-all duration-300 text-slate-400 hover:text-slate-600"
-                    style="width: 140px;">
-                    <i class="fa-solid fa-cart-shopping text-[11px]"></i>
-                    <span class="tracking-tight">Procurement</span>
+                <button onclick="selectAgent('procurement')" id="tabProcurement" data-tooltip="Procurement Agent"
+                    class="relative z-10 flex items-center justify-center w-11 h-9 transition-all duration-300 text-slate-400 hover:text-slate-600">
+                    <i class="fa-solid fa-cart-shopping text-sm"></i>
+                </button>
+
+                <button onclick="selectAgent('shared')" id="tabShared" data-tooltip="Collaborative Projects"
+                    class="relative z-10 flex items-center justify-center w-11 h-9 transition-all duration-300 text-slate-400 hover:text-slate-600">
+                    <i class="fa-solid fa-users text-sm"></i>
                 </button>
             </div>
         </div>
@@ -81,24 +226,24 @@
 
         <!-- Header-Integrated Task Selection Overlay -->
         <div id="taskOverlay"
-            class="hidden absolute inset-0 z-20 backdrop-blur-md bg-white/95 flex flex-col p-10 overflow-hidden">
-            <div class="flex items-center justify-between mb-8 max-w-7xl mx-auto w-full">
+            class="hidden absolute inset-0 z-40 backdrop-blur-md bg-white/98 flex flex-col p-10 overflow-hidden rounded-[2rem]">
+            <div class="flex items-center justify-between mb-8 w-full">
                 <div>
                     <h3 class="text-3xl font-black text-slate-800 tracking-tighter">Active Tasks</h3>
                     <p class="text-[11px] text-slate-400 font-bold uppercase tracking-[0.2em] mt-2">Select a task
                         assigned to you in SharePoint</p>
                 </div>
                 <button onclick="closeTaskOverlay()"
-                    class="group w-12 h-12 rounded-[1.2rem] bg-white border border-slate-100 flex items-center justify-center text-slate-400 hover:text-rose-500 transition-all hover:rotate-90 hover:scale-110 active:scale-90">
-                    <i class="fa-solid fa-xmark text-xl"></i>
-                    <div
-                        class="absolute inset-0 rounded-[1.2rem] bg-rose-500 opacity-0 group-hover:opacity-5 transition-opacity">
-                    </div>
+                    class="w-10 h-10 rounded-full bg-slate-50 border border-slate-200 flex items-center justify-center text-slate-500 hover:text-rose-500 hover:bg-rose-50 hover:border-rose-100 transition-all cursor-pointer shadow-sm active:scale-95">
+                    <i class="fa-solid fa-xmark text-lg"></i>
                 </button>
             </div>
             <div class="flex-1 overflow-y-auto w-full custom-scrollbar">
-                <div id="taskList" class="flex flex-col gap-3 max-w-5xl mx-auto pb-20">
-                    <!-- Task items will be inserted here -->
+                <div id="taskList" class="flex flex-col gap-3 max-w-5xl mx-auto pb-10">
+                    <!-- Procurement tasks will be inserted here -->
+                </div>
+                <div id="sharedProjectList" class="hidden flex flex-col gap-3 max-w-5xl mx-auto pb-10">
+                    <!-- Shared projects will be inserted here -->
                 </div>
             </div>
         </div>
@@ -199,116 +344,128 @@
     </div>
 </div>
 
-        <!-- Outlook-style Compose Modal Overlay -->
-        <div id="compose-pane"
-            class="hidden fixed inset-0 z-[9999] backdrop-blur-sm bg-slate-900/60 flex items-center justify-center p-4 sm:p-6 md:p-8">
-            <div
-                class="w-full max-w-4xl max-h-[90vh] min-h-[500px] h-[800px] bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-gray-200 relative mx-auto my-auto">
-                <!-- Toolbar Top -->
-                <div class="flex flex-col border-b border-gray-200 bg-gray-50/80">
-                    <div class="flex items-center justify-between px-4 py-3">
-                        <div class="flex items-center gap-2 flex-wrap">
-                            <button onclick="sendEmailFromComposer()" id="compose-send-api-btn"
-                                class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-bold shadow-sm transition-colors">
-                                <i class="fa-regular fa-paper-plane mr-1"></i> Send
-                            </button>
-                            
-                            <label class="text-sm text-gray-700 font-semibold hover:bg-gray-200 cursor-pointer px-3 py-2 rounded-md transition-colors flex items-center gap-1">
-                                <i class="fa-solid fa-paperclip"></i> Attach
-                                <input type="file" id="compose-attachments" multiple class="hidden" onchange="updateComposeAttachmentsInfo()">
-                            </label>
+<!-- Outlook-style Compose Modal Overlay -->
+<div id="compose-pane"
+    class="hidden fixed inset-0 z-[9999] backdrop-blur-sm bg-slate-900/60 flex items-center justify-center p-4 sm:p-6 md:p-8">
+    <div
+        class="w-full max-w-4xl max-h-[90vh] min-h-[500px] h-[800px] bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-gray-200 relative mx-auto my-auto">
+        <!-- Toolbar Top -->
+        <div class="flex flex-col border-b border-gray-200 bg-gray-50/80">
+            <div class="flex items-center justify-between px-4 py-3">
+                <div class="flex items-center gap-2 flex-wrap">
+                    <button onclick="sendEmailFromComposer()" id="compose-send-api-btn"
+                        class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-bold shadow-sm transition-colors">
+                        <i class="fa-regular fa-paper-plane mr-1"></i> Send
+                    </button>
 
-                            <button onclick="openInOutlook()" class="text-sm text-gray-700 font-semibold hover:bg-gray-200 cursor-pointer px-3 py-2 rounded-md transition-colors flex items-center gap-1" title="Open in Outlook Web">
-                                <i class="fa-brands fa-microsoft text-sky-600"></i> Outlook
-                            </button>
+                    <label
+                        class="text-sm text-gray-700 font-semibold hover:bg-gray-200 cursor-pointer px-3 py-2 rounded-md transition-colors flex items-center gap-1">
+                        <i class="fa-solid fa-paperclip"></i> Attach
+                        <input type="file" id="compose-attachments" multiple class="hidden"
+                            onchange="updateComposeAttachmentsInfo()">
+                    </label>
 
-                            <button onclick="copyFromComposer()" class="text-sm text-gray-700 font-semibold hover:bg-gray-200 cursor-pointer px-3 py-2 rounded-md transition-colors flex items-center gap-1 text-slate-600">
-                                <i class="fa-regular fa-copy"></i> Copy
-                            </button>
+                    <button onclick="openInOutlook()"
+                        class="text-sm text-gray-700 font-semibold hover:bg-gray-200 cursor-pointer px-3 py-2 rounded-md transition-colors flex items-center gap-1"
+                        title="Open in Outlook Web">
+                        <i class="fa-brands fa-microsoft text-sky-600"></i> Outlook
+                    </button>
 
-                            <button id="compose-redo-btn" onclick="toggleRedoInput()" class="text-sm text-amber-700 font-semibold hover:bg-amber-100 cursor-pointer px-3 py-2 rounded-md transition-colors flex items-center gap-1">
-                                <i class="fa-solid fa-wand-magic-sparkles"></i> AI Refine
-                            </button>
-                        </div>
+                    <button onclick="copyFromComposer()"
+                        class="text-sm text-gray-700 font-semibold hover:bg-gray-200 cursor-pointer px-3 py-2 rounded-md transition-colors flex items-center gap-1 text-slate-600">
+                        <i class="fa-regular fa-copy"></i> Copy
+                    </button>
 
-                        <div class="flex items-center gap-3">
-                            <span class="text-xs text-gray-500 font-semibold hidden md:block">
-                                From: {{ user.mail }}
-                            </span>
-                            <div class="h-6 w-px bg-gray-300 hidden md:block mx-1"></div>
-                            <button onclick="closeComposePane(false)"
-                                class="p-2 hover:bg-gray-200 rounded-lg text-sm text-gray-600 transition-colors"
-                                title="Close"><i class="fa-solid fa-xmark text-lg"></i></button>
-                        </div>
-                    </div>
-                    
-                    <!-- AI Refine Inline Box -->
-                    <div id="compose-redo-container" class="hidden px-4 py-2 bg-amber-50 border-t border-amber-100 flex items-center gap-2">
-                        <i class="fa-solid fa-wand-magic-sparkles text-amber-500"></i>
-                        <input type="text" id="compose-redo-input" placeholder="Instruct the AI on how to improve this draft (e.g., 'Make it shorter', 'Add more polite tone')" class="flex-1 text-sm px-3 py-1.5 rounded border border-amber-200 focus:outline-none focus:ring-1 focus:ring-amber-400 bg-white" onkeydown="if(event.key==='Enter') regenerateFromComposer(this.value)">
-                        <button onclick="regenerateFromComposer(document.getElementById('compose-redo-input').value)" class="bg-amber-500 text-white text-xs font-bold px-3 py-1.5 rounded shadow-sm hover:bg-amber-600">Regenerate</button>
-                        <button onclick="toggleRedoInput()" class="text-gray-400 hover:text-gray-600 px-2"><i class="fa-solid fa-xmark text-lg"></i></button>
-                    </div>
+                    <button id="compose-redo-btn" onclick="toggleRedoInput()"
+                        class="text-sm text-amber-700 font-semibold hover:bg-amber-100 cursor-pointer px-3 py-2 rounded-md transition-colors flex items-center gap-1">
+                        <i class="fa-solid fa-wand-magic-sparkles"></i> AI Refine
+                    </button>
                 </div>
 
-                <!-- Headers -->
-                <div class="px-6 py-2 flex flex-col bg-white">
-                    <div class="flex items-center border-b border-gray-100 py-2.5">
-                        <button
-                            class="bg-gray-50 text-gray-600 text-[11px] font-bold border border-gray-200 px-3 py-1 rounded cursor-pointer hover:bg-gray-100 mr-3 uppercase tracking-wider">To</button>
-                        <input type="text" id="compose-to"
-                            class="flex-1 focus:outline-none text-[14px] text-gray-800 font-medium" autocomplete="off">
-                        <button
-                            class="text-gray-400 text-xs font-bold hover:bg-gray-50 px-2 py-1 rounded transition-colors ml-2"
-                            onclick="document.getElementById('compose-cc-row').classList.toggle('hidden')">Cc</button>
-                        <button
-                            class="text-gray-400 text-xs font-bold hover:bg-gray-50 px-2 py-1 rounded transition-colors ml-1">Bcc</button>
-                    </div>
-
-                    <div id="compose-cc-row" class="hidden flex items-center border-b border-gray-100 py-2.5">
-                        <button
-                            class="bg-gray-50 text-gray-600 text-[11px] font-bold border border-gray-200 px-3 py-1 rounded cursor-pointer hover:bg-gray-100 mr-3 uppercase tracking-wider">Cc</button>
-                        <input type="text" id="compose-cc"
-                            class="flex-1 focus:outline-none text-[14px] text-gray-800 font-medium" autocomplete="off">
-                    </div>
-
-                    <div class="flex items-center border-b border-gray-100 py-3 relative">
-                        <input type="text" id="compose-subject" placeholder="Add a subject"
-                            class="w-full focus:outline-none text-[16px] font-bold text-gray-800 placeholder-gray-300"
-                            autocomplete="off">
-                    </div>
-                    <!-- Attachments List Preview -->
-                    <div id="compose-attachments-list" class="hidden flex flex-wrap gap-2 py-2 border-b border-gray-100">
-                    </div>
-                </div>
-
-                <!-- Top Toolbar -->
-                <div id="quill-toolbar" class="bg-gray-50 border-t border-b border-gray-200">
-                    <span class="ql-formats">
-                        <button class="ql-bold"></button>
-                        <button class="ql-italic"></button>
-                        <button class="ql-underline"></button>
+                <div class="flex items-center gap-3">
+                    <span class="text-xs text-gray-500 font-semibold hidden md:block">
+                        From: {{ user.mail }}
                     </span>
-                    <span class="ql-formats">
-                        <select class="ql-color"></select>
-                        <select class="ql-background"></select>
-                    </span>
-                    <span class="ql-formats">
-                        <button class="ql-list" value="ordered"></button>
-                        <button class="ql-list" value="bullet"></button>
-                    </span>
-                    <span class="ql-formats">
-                        <button class="ql-clean"></button>
-                    </span>
-                </div>
-
-                <!-- Body Text Area -->
-                <div class="flex-1 flex flex-col overflow-hidden bg-white">
-                    <div id="quill-editor" class="flex-1 w-full text-[14px] text-gray-800 !border-0 !font-sans">
-                    </div>
+                    <div class="h-6 w-px bg-gray-300 hidden md:block mx-1"></div>
+                    <button onclick="closeComposePane(false)"
+                        class="p-2 hover:bg-gray-200 rounded-lg text-sm text-gray-600 transition-colors"
+                        title="Close"><i class="fa-solid fa-xmark text-lg"></i></button>
                 </div>
             </div>
+
+            <!-- AI Refine Inline Box -->
+            <div id="compose-redo-container"
+                class="hidden px-4 py-2 bg-amber-50 border-t border-amber-100 flex items-center gap-2">
+                <i class="fa-solid fa-wand-magic-sparkles text-amber-500"></i>
+                <input type="text" id="compose-redo-input"
+                    placeholder="Instruct the AI on how to improve this draft (e.g., 'Make it shorter', 'Add more polite tone')"
+                    class="flex-1 text-sm px-3 py-1.5 rounded border border-amber-200 focus:outline-none focus:ring-1 focus:ring-amber-400 bg-white"
+                    onkeydown="if(event.key==='Enter') regenerateFromComposer(this.value)">
+                <button onclick="regenerateFromComposer(document.getElementById('compose-redo-input').value)"
+                    class="bg-amber-500 text-white text-xs font-bold px-3 py-1.5 rounded shadow-sm hover:bg-amber-600">Regenerate</button>
+                <button onclick="toggleRedoInput()" class="text-gray-400 hover:text-gray-600 px-2"><i
+                        class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
         </div>
+
+        <!-- Headers -->
+        <div class="px-6 py-2 flex flex-col bg-white">
+            <div class="flex items-center border-b border-gray-100 py-2.5">
+                <button
+                    class="bg-gray-50 text-gray-600 text-[11px] font-bold border border-gray-200 px-3 py-1 rounded cursor-pointer hover:bg-gray-100 mr-3 uppercase tracking-wider">To</button>
+                <input type="text" id="compose-to"
+                    class="flex-1 focus:outline-none text-[14px] text-gray-800 font-medium" autocomplete="off">
+                <button
+                    class="text-gray-400 text-xs font-bold hover:bg-gray-50 px-2 py-1 rounded transition-colors ml-2"
+                    onclick="document.getElementById('compose-cc-row').classList.toggle('hidden')">Cc</button>
+                <button
+                    class="text-gray-400 text-xs font-bold hover:bg-gray-50 px-2 py-1 rounded transition-colors ml-1">Bcc</button>
+            </div>
+
+            <div id="compose-cc-row" class="hidden flex items-center border-b border-gray-100 py-2.5">
+                <button
+                    class="bg-gray-50 text-gray-600 text-[11px] font-bold border border-gray-200 px-3 py-1 rounded cursor-pointer hover:bg-gray-100 mr-3 uppercase tracking-wider">Cc</button>
+                <input type="text" id="compose-cc"
+                    class="flex-1 focus:outline-none text-[14px] text-gray-800 font-medium" autocomplete="off">
+            </div>
+
+            <div class="flex items-center border-b border-gray-100 py-3 relative">
+                <input type="text" id="compose-subject" placeholder="Add a subject"
+                    class="w-full focus:outline-none text-[16px] font-bold text-gray-800 placeholder-gray-300"
+                    autocomplete="off">
+            </div>
+            <!-- Attachments List Preview -->
+            <div id="compose-attachments-list" class="hidden flex flex-wrap gap-2 py-2 border-b border-gray-100">
+            </div>
+        </div>
+
+        <!-- Top Toolbar -->
+        <div id="quill-toolbar" class="bg-gray-50 border-t border-b border-gray-200">
+            <span class="ql-formats">
+                <button class="ql-bold"></button>
+                <button class="ql-italic"></button>
+                <button class="ql-underline"></button>
+            </span>
+            <span class="ql-formats">
+                <select class="ql-color"></select>
+                <select class="ql-background"></select>
+            </span>
+            <span class="ql-formats">
+                <button class="ql-list" value="ordered"></button>
+                <button class="ql-list" value="bullet"></button>
+            </span>
+            <span class="ql-formats">
+                <button class="ql-clean"></button>
+            </span>
+        </div>
+
+        <!-- Body Text Area -->
+        <div class="flex-1 flex flex-col overflow-hidden bg-white">
+            <div id="quill-editor" class="flex-1 w-full text-[14px] text-gray-800 !border-0 !font-sans">
+            </div>
+        </div>
+    </div>
+</div>
 
 <script>
     const chatBox = document.getElementById("chatBox");
@@ -376,13 +533,14 @@
     }
 
     async function loadSession(sessionId, title) {
-        currentSessionId = sessionId;
-        sessionStorage.setItem('pa_session_id', sessionId);
-        currentChatTitle.textContent = title;
-        chatBox.innerHTML = "";
-
+        currentSharedProjectId = null;
+        stopSharedProjectPolling();
+        
         // refresh sidebar to highlight active session
         fetchSessions();
+        
+        // Reset Tabs to General if it's a personal session
+        selectAgent('general', true);
 
         // update URL
         const newUrl = window.location.protocol + "//" + window.location.host + window.location.pathname + '?session=' + sessionId;
@@ -412,7 +570,10 @@
 
     function startNewChat() {
         currentSessionId = null;
+        currentSharedProjectId = null;
+        stopSharedProjectPolling();
         sessionStorage.removeItem('pa_session_id');
+        
         currentChatTitle.textContent = selectedAgent === 'procurement' ? "Procurement Agent" : "AI Personal Assistant";
         chatBox.innerHTML = "";
         fetchSessions();
@@ -666,10 +827,18 @@
 
         let actualMessage = message;
         let displayMsg = message;
+        let is_analysis = false;
+
+        if (selectedAgent === 'procurement' && fileInput.files.length > 0) {
+            analyzeTaskRequirements(null, fileInput.files[0]);
+            clearFiles();
+            return;
+        }
 
         if (files.length > 0) {
             if (selectedAgent === 'procurement' && (!message || message.toLowerCase().includes('analyze'))) {
-                actualMessage = message ? (message + ". Please extract items for procurement from the attached file(s) and return them strictly as a JSON array.") : "Please extract items for procurement from the attached file(s) and return them strictly as a JSON array.";
+                actualMessage = message || "Analyze the attached file(s) for procurement.";
+                is_analysis = true; 
             }
             if (!message) {
                 displayMsg = "Please analyze this requirement file.";
@@ -681,10 +850,13 @@
         appendMessage(displayMsg, "user");
 
         messageInput.value = "";
-        messageInput.style.height = 'auto'; // reset height if auto-expanding
+        messageInput.style.height = 'auto'; 
         messageInput.disabled = true;
         sendBtn.disabled = true;
         fileInput.disabled = true;
+        
+        // Ensure buttons stay disabled until response
+        if (sendBtn) sendBtn.onclick = null;
 
         const loading = appendLoadingBubble();
 
@@ -704,6 +876,8 @@
 
             // Send context data
             formData.append("agent_mode", selectedAgent);
+            if (is_analysis) formData.append("is_analysis", "true");
+            
             if (selectedAgent === 'procurement' && currentTaskId) {
                 formData.append("task_id", currentTaskId);
             }
@@ -712,7 +886,7 @@
                 formData.append("files", files[i]);
             }
 
-            const res = await fetch("/api/personal_assistant/chat", {
+            const res = await fetch(currentSharedProjectId ? `/api/shared_projects/${currentSharedProjectId}/chat` : "/api/personal_assistant/chat", {
                 method: "POST",
                 body: formData
             });
@@ -723,31 +897,45 @@
             removePulsing();
             clearFiles();
 
-            if (data.reply) {
-                // Detect JSON array for uploaded requirement files
+            const replyText = data.reply || data.response;
+
+            if (replyText) {
+                // EXTRACT ITEMS FROM AGENT RESPONSE
                 let handledAsJSON = false;
                 try {
-                    let text = data.reply;
-                    let match = text.match(/\[[\s\S]*\]/);
-                    if (match && selectedAgent === 'procurement') {
-                        let parsed = JSON.parse(match[0]);
-                        if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].name) {
-                            addAgentLog("Requirements analyzed from upload successfully", "success");
-                            let itemsList = parsed.map(i => `- **${i.name}** (${i.type || 'Product'})`).join('\n');
-                            appendMessage(`Analysis complete! I have identified the following items needed from your upload:\n\n${itemsList}\n\nI will now search for distributors in our database and online.`, "assistant", true);
-                            searchDistributors(parsed);
-                            handledAsJSON = true;
+                    let text = replyText;
+                    // Detect JSON even inside code blocks - look for the JSON array specifically
+                    let match = text.match(/\[\s*\{\s*"name"\s*:[\s\S]*\}\s*\]/);
+                    if (!match) {
+                        // Try a more generic array of objects match if specific one fails
+                        match = text.match(/\[\s*\{[\s\S]*\}\s*\]/);
+                    }
+                    
+                    if (match) {
+                        try {
+                            const parsed = JSON.parse(match[0]);
+                            if (Array.isArray(parsed) && parsed.length > 0 && (parsed[0].name || parsed[0].item)) {
+                                appendMessage("Analysis complete! I have identified the following items needed. I will now search for distributors.", "assistant", true);
+                                searchDistributors(parsed);
+                                handledAsJSON = true;
+                            }
+                        } catch (parseError) {
+                            console.warn("[PA] Found JSON-like block but failed to parse:", parseError);
                         }
                     }
                 } catch (e) {
-                    console.log("Not a JSON response or failed to parse:", e.message);
+                    console.error("[RegEx] JSON match error:", e);
                 }
 
                 if (!handledAsJSON) {
-                    appendMessage(data.reply, "assistant", true);
+                    appendMessage(replyText, "assistant", true);
+                } else {
+                     // If handled as JSON, we don't show the raw text, 
+                     // but we might want to log it to console or handling was done.
+                     console.log("[PA] Requirement items identified and rendered as cards.");
                 }
 
-                if (data.session_id) {
+                if (data.session_id && !currentSharedProjectId) {
                     if (currentSessionId !== data.session_id) {
                         currentSessionId = data.session_id;
                         sessionStorage.setItem('pa_session_id', currentSessionId);
@@ -756,7 +944,7 @@
                     fetchSessions(); // always refresh sidebar
                 }
             } else {
-                appendMessage("Error: " + data.error, "assistant");
+                appendMessage("Error: " + (data.error || "Unknown error"), "assistant");
             }
         } catch (err) {
             if (loading && loading._thinkingInterval) clearInterval(loading._thinkingInterval);
@@ -767,6 +955,11 @@
             messageInput.disabled = false;
             sendBtn.disabled = false;
             fileInput.disabled = false;
+            if (currentSharedProjectId) {
+                 // In shared mode, sendBtn.onclick is handled by polling logic or reset here
+                 // But we should reset it to ensure it works for next message
+                 sendBtn.onclick = sendMessage;
+            }
             messageInput.focus();
         }
     }
@@ -861,35 +1054,74 @@
     // ============================================================
     // PROCUREMENT AGENT FUNCTIONS
     // ============================================================
-    function selectAgent(agent) {
+    function selectAgent(agent, skipOverlay = false) {
         selectedAgent = agent;
         const indicator = document.getElementById('agentActiveIndicator');
         const tabGen = document.getElementById('tabGeneral');
         const tabProc = document.getElementById('tabProcurement');
+        const tabShared = document.getElementById('tabShared');
         const rightSidebar = document.getElementById('rightSidebar');
         const taskOverlay = document.getElementById('taskOverlay');
+        const taskList = document.getElementById('taskList');
+        const sharedProjectList = document.getElementById('sharedProjectList');
 
-        if (agent === 'procurement') {
-            // Update Toggle UI
-            if (indicator) indicator.style.transform = 'translateX(140px)';
-            tabGen.className = "relative z-10 flex items-center gap-2 px-5 py-2 text-xs font-bold transition-all duration-300 text-gray-400";
-            tabProc.className = "relative z-10 flex items-center gap-2 px-5 py-2 text-xs font-bold transition-all duration-300 text-indigo-600";
+        // Reset UI active states
+        [tabGen, tabProc, tabShared].forEach(t => {
+            if (t) t.className = "relative z-10 flex items-center justify-center w-11 h-9 transition-all duration-300 text-slate-400 hover:text-slate-600";
+        });
 
-            rightSidebar.classList.remove('hidden');
-            openTaskOverlay();
-            currentChatTitle.textContent = "Procurement Agent";
-        } else {
-            // Update Toggle UI
-            if (indicator) indicator.style.transform = 'translateX(0px)';
-            tabGen.className = "relative z-10 flex items-center gap-2 px-5 py-2 text-xs font-bold transition-all duration-300 text-indigo-600";
-            tabProc.className = "relative z-10 flex items-center gap-2 px-5 py-2 text-xs font-bold transition-all duration-300 text-gray-400";
-
-            rightSidebar.classList.add('hidden');
-            taskOverlay.classList.add('hidden');
-            currentChatTitle.textContent = "AI Personal Assistant";
+        const avatar = document.getElementById('activeAgentAvatar');
+        
+        const badge = document.getElementById('modeBadge');
+        if (badge) {
+            badge.classList.remove('hidden');
+            if (agent === 'procurement') {
+                badge.textContent = currentSharedProjectId ? "Shared Procurement" : "Procurement Agent";
+                badge.className = "px-2 py-0.5 rounded-md bg-amber-100 text-amber-700 text-[9px] font-black uppercase tracking-wider whitespace-nowrap";
+            } else if (agent === 'shared') {
+                badge.textContent = "Projects Library";
+                badge.className = "px-2 py-0.5 rounded-md bg-indigo-100 text-indigo-700 text-[9px] font-black uppercase tracking-wider whitespace-nowrap";
+            } else {
+                badge.textContent = "Personal AI";
+                badge.className = "px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 text-[9px] font-black uppercase tracking-wider whitespace-nowrap";
+            }
         }
 
-        startNewChat();
+        if (agent === 'procurement') {
+            if (indicator) indicator.style.transform = 'translateX(44px)';
+            tabProc.className = "relative z-10 flex items-center justify-center w-11 h-9 transition-all duration-300 text-indigo-600";
+            if (avatar) avatar.src = "/static/images/bot_avatar.png"; 
+            rightSidebar.classList.remove('hidden');
+            if (!skipOverlay) openTaskOverlay();
+            if (taskList) taskList.classList.remove('hidden');
+            if (sharedProjectList) sharedProjectList.classList.add('hidden');
+            if (!currentSharedProjectId) currentChatTitle.textContent = "Procurement Agent";
+        } else if (agent === 'shared') {
+            if (indicator) indicator.style.transform = 'translateX(88px)';
+            tabShared.className = "relative z-10 flex items-center justify-center w-11 h-9 transition-all duration-300 text-indigo-600";
+            if (avatar) avatar.src = "/static/images/bot_avatar.png"; 
+            rightSidebar.classList.add('hidden'); 
+            if (!skipOverlay) openTaskOverlay(); // Ensure overlay opens if not skipped
+            if (taskList) taskList.classList.add('hidden');
+            if (sharedProjectList) sharedProjectList.classList.remove('hidden');
+            currentChatTitle.textContent = "Shared Collaborative Projects";
+            fetchSharedProjects();
+        } else {
+            if (indicator) indicator.style.transform = 'translateX(0px)';
+            tabGen.className = "relative z-10 flex items-center justify-center w-11 h-9 transition-all duration-300 text-indigo-600";
+            if (avatar) avatar.src = "/static/images/bot_avatar.png";
+            rightSidebar.classList.add('hidden');
+            if (taskOverlay) taskOverlay.classList.add('hidden');
+            currentChatTitle.textContent = "AI Personal Assistant";
+            currentSharedProjectId = null;
+            stopSharedProjectPolling();
+        }
+        
+        // Only start new chat if it's a real tab switch by user (not silent project load)
+        // and we aren't loading a shared project right now
+        if (agent !== 'shared' && !skipOverlay && !currentSharedProjectId) {
+            startNewChat();
+        }
     }
 
     let cachedTasks = null;
@@ -898,9 +1130,20 @@
     async function openTaskOverlay() {
         const overlay = document.getElementById('taskOverlay');
         const list = document.getElementById('taskList');
+        const sharedList = document.getElementById('sharedProjectList');
         if (!overlay || !list) return;
 
         overlay.classList.remove('hidden');
+        
+        // If we are in shared mode, don't auto-fetch procurement tasks here
+        if (selectedAgent === 'shared') {
+            list.classList.add('hidden');
+            sharedList.classList.remove('hidden');
+            return; 
+        }
+
+        list.classList.remove('hidden');
+        if (sharedList) sharedList.classList.add('hidden');
 
         if (cachedTasks) {
             if (cachedTasks.length > 0) {
@@ -994,10 +1237,16 @@
                     </div>
                 </div>
                 
-                <button onclick="selectTask('${task.id}', '${task.Title.replace(/'/g, "\\'")}')" 
-                    class="bg-indigo-600 hover:bg-indigo-700 text-white text-[12px] font-bold py-2.5 px-6 rounded-xl transition-colors shrink-0 ml-4 flex items-center gap-2 cursor-pointer">
-                    Start <i class="fa-solid fa-arrow-right text-[10px]"></i>
-                </button>
+                <div class="flex flex-col gap-2 shrink-0 ml-4">
+                    <button onclick="selectTask('${task.id}', '${task.Title.replace(/'/g, "\\'")}')" 
+                        class="bg-indigo-600 hover:bg-indigo-700 text-white text-[12px] font-bold py-2 px-6 rounded-xl transition-colors flex items-center gap-2 cursor-pointer whitespace-nowrap">
+                        Start <i class="fa-solid fa-arrow-right text-[10px]"></i>
+                    </button>
+                    <button onclick="openColabModal('${task.id}', '${task.Title.replace(/'/g, "\\'")}')" 
+                        class="bg-slate-100 hover:bg-slate-200 text-slate-600 text-[11px] font-bold py-1.5 px-4 rounded-lg transition-colors flex items-center justify-center gap-2 cursor-pointer border border-slate-200">
+                        <i class="fa-solid fa-share-nodes"></i> Share
+                    </button>
+                </div>
             `;
             list.appendChild(item);
         });
@@ -1005,6 +1254,7 @@
 
     async function selectTask(taskId, title) {
         currentTaskId = taskId; // Track current task
+        currentSharedProjectId = null; // Clear shared context when selecting personal task
         closeTaskOverlay();
         addAgentLog(`Selected task: ${title}`, 'success');
         updateAgentStep(`Fetching details for ${title}...`);
@@ -1134,14 +1384,23 @@
         }
     }
 
-    async function analyzeTaskRequirements(taskId) {
+    async function analyzeTaskRequirements(taskId, file = null) {
         updateAgentStep("Analyzing Requirements...");
         addAgentLog("Starting requirement analysis", "info");
 
         const loading = appendLoadingBubble("Analyzing Requirements...");
 
         try {
-            const res = await fetch(`/api/procurement/analyze/${taskId}`);
+            let url = currentSharedProjectId ? `/api/shared_projects/analyze/${currentSharedProjectId}` : `/api/procurement/analyze/${taskId}`;
+            
+            let options = { method: 'POST' };
+            if (file) {
+                const formData = new FormData();
+                formData.append('file', file);
+                options.body = formData;
+            }
+
+            const res = await fetch(url, options);
             const data = await res.json();
 
             finishLoadingBubble(loading, data.success ? "Analysis Completed" : "Analysis Failed");
@@ -1181,7 +1440,7 @@
                 body: JSON.stringify({ items: items })
             });
             const data = await res.json();
-            
+
             // Save state for feedback
             window.currentEnquiryItems = items;
             window.currentFoundDistributors = data.distributors || [];
@@ -1270,7 +1529,7 @@
                 list.appendChild(item);
             });
         }
-        
+
         // --- Add Feedback UI Block ---
         const feedbackContainer = document.createElement('div');
         feedbackContainer.className = "mt-6 pt-4 border-t border-indigo-100 pb-2";
@@ -1291,19 +1550,19 @@
         `;
         list.appendChild(feedbackContainer);
     }
-    
+
     async function submitDistributorFeedback() {
         const notes = document.getElementById('fbNotes').value.trim();
         const items = window.currentEnquiryItems || [];
         const distributorsClone = JSON.parse(JSON.stringify(window.currentFoundDistributors || []));
-        
+
         let feedbackGiven = false;
         let anyTrue = false;
-        
+
         distributorsClone.forEach((dist) => {
             const trueRadio = document.querySelector(`input[name="fb_dist_${dist._idx}"][value="true"]`);
             const falseRadio = document.querySelector(`input[name="fb_dist_${dist._idx}"][value="false"]`);
-            
+
             if (trueRadio && trueRadio.checked) {
                 dist.is_true = true;
                 feedbackGiven = true;
@@ -1315,18 +1574,18 @@
                 dist.is_true = null;
             }
         });
-        
+
         if (!feedbackGiven && notes === "") {
             alert("Please mark at least one distributor as True/False or write a note to provide feedback.");
             return;
         }
-        
+
         const btn = document.getElementById('fbSubmitBtn');
         try {
             btn.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i> Saving...`;
             btn.disabled = true;
             btn.className = "w-full bg-indigo-400 text-white text-[11px] font-bold py-2 rounded-lg shadow-sm flex items-center justify-center gap-2 cursor-not-allowed";
-            
+
             const res = await fetch('/api/procurement/feedback', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -1338,7 +1597,7 @@
                 })
             });
             const data = await res.json();
-            
+
             if (data.success) {
                 btn.className = "w-full bg-emerald-600 text-white text-[11px] font-bold py-2 rounded-lg shadow-sm flex items-center justify-center gap-2";
                 btn.innerHTML = `<i class="fa-solid fa-check"></i> Feedback Saved`;
@@ -1360,7 +1619,7 @@
     function appendDraftToChat(to, subject, bodyContent) {
         const chatBox = document.getElementById('chatBox');
         let safeBody = bodyContent || "";
-        
+
         const draftId = 'draft_' + Date.now();
         window[draftId] = { to, subject, body: bodyContent };
 
@@ -1381,7 +1640,7 @@
                 </div>
             </div>
         `;
-        
+
         const wrapper = document.createElement('div');
         wrapper.className = "flex gap-4 mb-6 assistant-msg animate-fade-in";
         wrapper.innerHTML = `
@@ -1393,7 +1652,7 @@
                 ${draftHtml}
             </div>
         `;
-        
+
         chatBox.appendChild(wrapper);
         scrollToBottom();
     }
@@ -1451,7 +1710,7 @@
 
     function openComposePane(to, subject, bodyContent) {
         initQuill();
-        
+
         currentDraftId = null;
         currentDraftWebLink = null;
         document.getElementById('compose-redo-container').classList.add('hidden');
@@ -1485,7 +1744,7 @@
 
         const to = document.getElementById('compose-to').value.trim();
         const subject = document.getElementById('compose-subject').value.trim();
-        
+
         // If there's content, ask to save
         if (to || subject || quillObj.getText().trim().length > 0) {
             const wantsToSave = confirm("Your draft is not saved. Would you like to save it to your Outlook Drafts before closing?");
@@ -1524,7 +1783,7 @@
     function toggleRedoInput() {
         const container = document.getElementById('compose-redo-container');
         const btn = document.getElementById('compose-redo-btn');
-        if(container.classList.contains('hidden')) {
+        if (container.classList.contains('hidden')) {
             container.classList.remove('hidden');
             btn.classList.add('hidden');
             document.getElementById('compose-redo-input').focus();
@@ -1537,15 +1796,15 @@
     async function regenerateFromComposer(customPromptStr = "") {
         const customPrompt = customPromptStr.trim();
         if (!customPrompt) return;
-        
+
         const to = document.getElementById('compose-to').value;
         const subject = document.getElementById('compose-subject').value;
         const currentBody = quillObj.root.innerText;
-        
+
         // Reset toggle
         toggleRedoInput();
         document.getElementById('compose-redo-input').value = '';
-        
+
         const btn = document.getElementById('compose-redo-btn');
         const orgHtml = btn.innerHTML;
         btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Redo`;
@@ -1555,7 +1814,7 @@
             const res = await fetch('/api/procurement/draft_email', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
+                body: JSON.stringify({
                     distributor: { email: to, name: to },
                     customPrompt: customPrompt,
                     currentDraft: `Subject: ${subject}\n\n${currentBody}`
@@ -1576,7 +1835,7 @@
             btn.disabled = false;
         }
     }
-    
+
     async function saveDraftToGraph(showToastMsg = false) {
         const to = document.getElementById('compose-to').value.trim();
         const subject = document.getElementById('compose-subject').value.trim();
@@ -1584,7 +1843,7 @@
         const fileInput = document.getElementById('compose-attachments');
 
         if (!to) {
-            if(showToastMsg) showToast("Need a Recipient to save draft.");
+            if (showToastMsg) showToast("Need a Recipient to save draft.");
             return false;
         }
 
@@ -1594,7 +1853,7 @@
             formData.append('subject', subject);
             formData.append('body', bodyContent);
             if (currentDraftId) formData.append('draftId', currentDraftId);
-            
+
             if (fileInput.files.length > 0) {
                 Array.from(fileInput.files).forEach(f => {
                     formData.append('attachments', f);
@@ -1607,23 +1866,23 @@
             });
 
             if (!response.ok) throw new Error("Failed to save draft");
-            
+
             const data = await response.json();
             currentDraftId = data.id;
             currentDraftWebLink = data.webLink;
-            
-            if(showToastMsg) showToast("Draft saved to Outlook successfully!");
+
+            if (showToastMsg) showToast("Draft saved to Outlook successfully!");
             return true;
         } catch (err) {
             console.error(err);
-            if(showToastMsg) showToast("Failed to save draft.");
+            if (showToastMsg) showToast("Failed to save draft.");
             return false;
         }
     }
 
     async function openInOutlook() {
         const success = await saveDraftToGraph(true);
-        if(success && currentDraftWebLink) {
+        if (success && currentDraftWebLink) {
             window.open(currentDraftWebLink, "_blank");
             closeComposePane(true); // force close completely
         }
@@ -1650,7 +1909,7 @@
             formData.append('to', to);
             formData.append('subject', subject);
             formData.append('body', bodyContent);
-            
+
             if (fileInput.files.length > 0) {
                 Array.from(fileInput.files).forEach(f => {
                     formData.append('attachments', f);
@@ -1679,6 +1938,349 @@
             btn.innerHTML = orgHtml;
             btn.disabled = false;
         }
+    }
+
+    // ============================================================
+    // COLLABORATION & SHARED PROJECTS FUNCTIONS
+    // ============================================================
+    let currentSharedProjectId = null;
+    let presencePollingInterval = null;
+    let activityPollingInterval = null;
+    let selectedCollaborators = [];
+
+    async function fetchSharedProjects() {
+        const list = document.getElementById('sharedProjectList');
+        if (!list) return;
+        list.innerHTML = "";
+        list.classList.remove('hidden');
+        list.innerHTML = `<div class="col-span-full py-20 text-center text-gray-400"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Loading Shared Projects...</div>`;
+
+        try {
+            const res = await fetch('/api/shared_projects');
+            const data = await res.json();
+            if (data.projects && data.projects.length > 0) {
+                renderSharedProjects(data.projects);
+            } else {
+                list.innerHTML = `
+                    <div class="col-span-full py-20 flex flex-col items-center justify-center text-gray-400">
+                        <i class="fa-solid fa-folder-open text-4xl mb-4 opacity-20"></i>
+                        <p>No shared projects yet.</p>
+                        <p class="text-xs mt-2">Go to "Procurement" to share a task with your team.</p>
+                    </div>`;
+            }
+        } catch (e) {
+            list.innerHTML = `<div class="col-span-full py-20 text-center text-red-400">Error loading shared projects.</div>`;
+        }
+    }
+
+    function renderSharedProjects(projects) {
+        const list = document.getElementById('sharedProjectList');
+        list.innerHTML = "";
+        projects.forEach(project => {
+            const card = document.createElement('div');
+            card.className = "flex items-center justify-between p-5 bg-white rounded-2xl border border-slate-200 hover:border-indigo-200 transition-all group";
+            
+            const collabCount = project.collaborators ? project.collaborators.length : 0;
+            const lastMsg = project.messages && project.messages.length > 0 ? project.messages[project.messages.length-1].content : "No messages yet";
+
+            card.innerHTML = `
+                <div class="flex items-center gap-5 flex-1 min-w-0">
+                    <div class="w-12 h-12 rounded-2xl bg-indigo-50 flex items-center justify-center text-indigo-600 shrink-0">
+                        <i class="fa-solid fa-users-rectangle text-xl"></i>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <h4 class="font-bold text-slate-800 text-[15px] truncate">${project.task_details.Title}</h4>
+                        <p class="text-[11px] text-slate-400 truncate mt-0.5">${lastMsg}</p>
+                    </div>
+                    <div class="flex items-center -space-x-2">
+                        ${(project.collaborators || []).slice(0, 3).map(email => `
+                            <div class="w-7 h-7 rounded-full bg-slate-100 border-2 border-white flex items-center justify-center text-[10px] font-bold text-slate-500" title="${email}">
+                                ${email.charAt(0).toUpperCase()}
+                            </div>
+                        `).join('')}
+                        ${collabCount > 3 ? `<div class="w-7 h-7 rounded-full bg-slate-200 border-2 border-white flex items-center justify-center text-[9px] font-bold text-slate-600">+${collabCount-3}</div>` : ''}
+                    </div>
+                </div>
+                <button onclick="loadSharedProjectChat('${project.id}', '${project.task_details.Title.replace(/'/g, "\\'")}')" 
+                        class="ml-6 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold py-2.5 px-6 rounded-xl transition-all shadow-md shadow-indigo-100 flex items-center gap-2">
+                    Open Workspace <i class="fa-solid fa-arrow-right text-[10px]"></i>
+                </button>
+            `;
+            list.appendChild(card);
+        });
+    }
+
+    async function loadSharedProjectChat(projectId, title) {
+        currentSharedProjectId = projectId;
+        closeTaskOverlay();
+        
+        // Redirect to Procurement Tab UI (Launcher Pattern)
+        selectAgent('procurement', true); // Silent switch to procurement tab
+        currentChatTitle.textContent = title;
+        chatBox.innerHTML = "";
+        
+        const loading = appendLoadingBubble();
+        if (loading) loading.querySelector('.thinking-status').textContent = 'Loading Shared Workspace...';
+
+        try {
+            const res = await fetch(`/api/shared_projects/${projectId}`);
+            const data = await res.json();
+            finishLoadingBubble(loading, "Workspace loaded");
+
+            if (data.project) {
+                if (data.project.messages && data.project.messages.length > 0) {
+                    data.project.messages.forEach(m => appendMessage(m.content, m.role, false));
+                } else {
+                    appendMessage(`Welcome to the shared workspace for: **${title}**. You can collaborate with your team here in real-time.`, "assistant");
+                }
+                
+                // Show presence bar
+                document.getElementById('presenceBar').classList.remove('hidden');
+                startSharedProjectPolling(projectId);
+            }
+        } catch (e) {
+            finishLoadingBubble(loading, "Error");
+            appendMessage("Failed to load shared project details.", "assistant");
+        }
+    }
+
+    // sendSharedMessage is now merged into sendMessage
+
+    function startSharedProjectPolling(projectId) {
+        stopSharedProjectPolling();
+        
+        // Show UI elements
+        document.getElementById('presenceBar').classList.remove('hidden');
+        
+        // Initial poll
+        pollPresence(projectId);
+        pollActivity(projectId);
+        
+        presencePollingInterval = setInterval(() => pollPresence(projectId), 5000);
+        activityPollingInterval = setInterval(() => pollActivity(projectId), 10000);
+        
+        // Heartbeat
+        updateHeartbeat(projectId);
+        heartbeatInterval = setInterval(() => updateHeartbeat(projectId), 15000);
+    }
+
+    function stopSharedProjectPolling() {
+        if (presencePollingInterval) clearInterval(presencePollingInterval);
+        if (activityPollingInterval) clearInterval(activityPollingInterval);
+        if (typeof heartbeatInterval !== 'undefined') clearInterval(heartbeatInterval);
+        
+        document.getElementById('presenceBar').classList.add('hidden');
+        document.getElementById('activityIndicator').classList.add('hidden');
+    }
+
+    async function pollPresence(projectId) {
+        try {
+            const res = await fetch(`/api/shared_projects/${projectId}/presence`);
+            const data = await res.json();
+            if (data.active_users) {
+                renderPresence(data.active_users);
+            }
+        } catch (e) {}
+    }
+
+    function renderPresence(users) {
+        const bar = document.getElementById('presenceBar');
+        bar.innerHTML = "";
+        users.forEach(user => {
+            const div = document.createElement('div');
+            div.className = "presence-avatar";
+            div.title = user;
+            div.textContent = user.charAt(0).toUpperCase();
+            bar.appendChild(div);
+        });
+    }
+
+    async function pollActivity(projectId) {
+        try {
+            const res = await fetch(`/api/shared_projects/${projectId}`);
+            const data = await res.json();
+            if (data.activity && data.activity.length > 0) {
+                const latest = data.activity[0];
+                const indicator = document.getElementById('activityIndicator');
+                const text = document.getElementById('activityText');
+                
+                if (latest.user_email && latest.action) {
+                    const userShort = latest.user_email.split('@')[0];
+                    const time = latest.timestamp ? new Date(latest.timestamp).toLocaleTimeString([], {hour:'numeric', minute:'2-digit'}) : 'recently';
+                    text.textContent = `${userShort}: ${latest.action}ed at ${time}`;
+                    indicator.classList.remove('hidden');
+                    // Hide after 8 seconds
+                    if (window.activityTimeout) clearTimeout(window.activityTimeout);
+                    window.activityTimeout = setTimeout(() => indicator.classList.add('hidden'), 8000);
+                }
+            }
+        } catch (e) {}
+    }
+
+    async function updateHeartbeat(projectId) {
+        try {
+            await fetch(`/api/shared_projects/${projectId}/heartbeat`, { method: "POST" });
+        } catch (e) {}
+    }
+
+    // Modal & Search Logic
+    function openColabModal(taskId, taskTitle) {
+        const modal = document.getElementById('colabModal');
+        const details = document.getElementById('modalTaskDetails');
+        modal.classList.remove('hidden');
+        
+        // Temporarily hide task overlay to prevent messy overlap if z-index fails
+        const overlay = document.getElementById('taskOverlay');
+        if (overlay) overlay.classList.add('hidden');
+        
+        details.innerHTML = `
+            <div class="p-6 bg-indigo-600 rounded-3xl text-white shadow-xl shadow-indigo-100 mb-6">
+                <p class="text-[10px] font-black uppercase opacity-60 tracking-widest mb-2">Project Subject</p>
+                <h4 class="text-xl font-black leading-tight">${taskTitle}</h4>
+            </div>
+            <div class="space-y-4">
+                <div class="flex items-center gap-4 p-4 bg-white rounded-2xl border border-slate-100">
+                    <div class="w-10 h-10 rounded-xl bg-orange-50 flex items-center justify-center text-orange-500">
+                        <i class="fa-solid fa-shield-halved"></i>
+                    </div>
+                    <div>
+                        <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Visibility</p>
+                        <p class="text-xs font-bold text-slate-700">Invite-Only Team Workspace</p>
+                    </div>
+                </div>
+                <div class="p-6 bg-emerald-50 rounded-2xl border border-emerald-100">
+                    <p class="text-xs font-medium text-emerald-800 leading-relaxed">
+                        <i class="fa-solid fa-circle-info mr-2"></i> Adding collaborators allows them to see this task in their "Shared" tab and chat with the AI about it.
+                    </p>
+                </div>
+            </div>
+        `;
+        
+        window.currentSharingTaskId = taskId;
+        window.currentSharingTaskTitle = taskTitle;
+        selectedCollaborators = [];
+        renderSelectedChips();
+    }
+
+    function closeColabModal() {
+        document.getElementById('colabModal').classList.add('hidden');
+        // Show task overlay back
+        const overlay = document.getElementById('taskOverlay');
+        if (overlay) overlay.classList.remove('hidden');
+    }
+
+    async function searchCollaborators(query) {
+        const resultsDiv = document.getElementById('userSearchResults');
+        if (query.length < 2) {
+            resultsDiv.classList.add('hidden');
+            return;
+        }
+
+        try {
+            const res = await fetch(`/api/users/search?q=${query}`);
+            const data = await res.json();
+            if (data.users && data.users.length > 0) {
+                resultsDiv.innerHTML = "";
+                resultsDiv.classList.remove('hidden');
+                data.users.forEach(user => {
+                    const div = document.createElement('div');
+                    div.className = "px-4 py-3 hover:bg-slate-50 cursor-pointer border-b border-slate-50 last:border-0 transition-colors";
+                    div.innerHTML = `
+                        <div class="font-bold text-slate-800 text-sm">${user.displayName}</div>
+                        <div class="text-[11px] text-slate-400">${user.mail || user.userPrincipalName}</div>
+                    `;
+                    div.onclick = () => selectUser(user);
+                    resultsDiv.appendChild(div);
+                });
+            } else {
+                resultsDiv.classList.add('hidden');
+            }
+        } catch (e) {
+            console.error(e);
+        }
+    }
+
+    function selectUser(user) {
+        const email = user.mail || user.userPrincipalName;
+        if (!selectedCollaborators.find(u => u.email === email)) {
+            selectedCollaborators.push({ name: user.displayName, email: email });
+            renderSelectedChips();
+        }
+        document.getElementById('userSearchBar').value = "";
+        document.getElementById('userSearchResults').classList.add('hidden');
+    }
+
+    function removeUser(email) {
+        selectedCollaborators = selectedCollaborators.filter(u => u.email !== email);
+        renderSelectedChips();
+    }
+
+    function renderSelectedChips() {
+        const container = document.getElementById('selectedUserChips');
+        if (selectedCollaborators.length === 0) {
+            container.innerHTML = `<p class="text-[12px] text-slate-400 italic py-4 w-full text-center">No users selected yet</p>`;
+            document.getElementById('sendInvitesBtn').disabled = true;
+            return;
+        }
+
+        document.getElementById('sendInvitesBtn').disabled = false;
+        container.innerHTML = "";
+        selectedCollaborators.forEach(u => {
+            const chip = document.createElement('div');
+            chip.className = "flex items-center gap-2 bg-indigo-50 text-indigo-700 px-3 py-2 rounded-xl border border-indigo-100 text-xs font-bold animate-scale-up";
+            chip.innerHTML = `
+                <span>${u.name}</span>
+                <button onclick="removeUser('${u.email}')" class="hover:text-rose-500 transition-colors">
+                    <i class="fa-solid fa-circle-xmark"></i>
+                </button>
+            `;
+            container.appendChild(chip);
+        });
+    }
+
+    async function sendInvites() {
+        const btn = document.getElementById('sendInvitesBtn');
+        const emails = selectedCollaborators.map(u => u.email);
+        
+        btn.disabled = true;
+        btn.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin mr-2"></i>Sending Invites...`;
+
+        try {
+            // 1. Create shared project first
+            const task = cachedTasks.find(t => t.id === window.currentSharingTaskId);
+            const createRes = await fetch('/api/shared_projects', {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ task: task })
+            });
+            const createData = await createRes.json();
+            
+            if (createData.success) {
+                const projectId = createData.project_id;
+                // 2. Send invites
+                const inviteRes = await fetch(`/api/shared_projects/${projectId}/invite`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ emails: emails })
+                });
+                
+                showToast(`Sent ${emails.length} invitations successfully!`);
+                btn.innerHTML = `Invitations Sent <i class="fa-solid fa-check ml-2"></i>`;
+                btn.className = "w-full bg-emerald-500 text-white font-bold py-4 rounded-2xl transition-all";
+                document.getElementById('openSharedChatBtn').classList.remove('hidden');
+                window.lastCreatedProjectId = projectId;
+            }
+        } catch (e) {
+            btn.disabled = false;
+            btn.innerHTML = "Send Invitations";
+            alert("Error sending invites.");
+        }
+    }
+
+    function openSharedChatFromModal() {
+        closeColabModal();
+        selectAgent('shared');
+        loadSharedProjectChat(window.lastCreatedProjectId, window.currentSharingTaskTitle);
     }
 </script>
 
@@ -1846,8 +2448,13 @@
     }
 
     @keyframes indeterminate {
-        0% { transform: translateX(-100%); }
-        100% { transform: translateX(300%); }
+        0% {
+            transform: translateX(-100%);
+        }
+
+        100% {
+            transform: translateX(300%);
+        }
     }
 
     .animate-indeterminate {

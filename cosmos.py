@@ -46,6 +46,29 @@ try:
             print(f"[COSMOS ERROR] Could not create/get chat_sessions container: {e_sess}", flush=True)
             sessions_container = None
             
+        # --- Dedicated container for Shared Projects ---
+        try:
+            shared_projects_container = database.create_container_if_not_exists(
+                id="shared_projects",
+                partition_key=PartitionKey(path="/id")
+            )
+            print("[COSMOS INFO] shared_projects container ready.", flush=True)
+        except Exception as e_sp:
+            print(f"[COSMOS ERROR] Could not create/get shared_projects container: {e_sp}", flush=True)
+            shared_projects_container = None
+
+        # --- Dedicated container for In-App Notifications ---
+        try:
+            notifications_container = database.create_container_if_not_exists(
+                id="in_app_notifications",
+                partition_key=PartitionKey(path="/id"),
+                default_ttl=2592000  # 30 days
+            )
+            print("[COSMOS INFO] in_app_notifications container ready.", flush=True)
+        except Exception as e_notif:
+            print(f"[COSMOS ERROR] Could not create/get in_app_notifications container: {e_notif}", flush=True)
+            notifications_container = None
+            
         # --- Dedicated container for Procurement Knowledge & Feedback ---
         try:
             procurement_knowledge_container = database.create_container_if_not_exists(
@@ -479,6 +502,187 @@ def search_procurement_knowledge(query):
         return []
 
 # =======================
+# COLLABORATION & SHARED PROJECTS
+# =======================
+
+def create_shared_project(task_data, creator_email):
+    """
+    Converts a SharePoint task into a shared project document.
+    """
+    if not shared_projects_container: return None
+    
+    project_id = str(uuid.uuid4())
+    doc = {
+        "id": project_id,
+        "type": "shared_project",
+        "task_details": task_data,
+        "creator": creator_email.lower(),
+        "collaborators": [creator_email.lower()],
+        "invited": [],
+        "messages": [],
+        "presence": {},
+        "created_at": datetime.datetime.utcnow().isoformat(),
+        "updated_at": datetime.datetime.utcnow().isoformat()
+    }
+    try:
+        shared_projects_container.create_item(body=doc)
+        return project_id
+    except Exception as e:
+        print(f"[COSMOS ERROR] create_shared_project: {e}")
+        return None
+
+def invite_collaborator(project_id, inviter_email, invitee_email):
+    """
+    Adds a user to the 'invited' list and saves an in-app notification.
+    """
+    if not shared_projects_container: return False
+    try:
+        project = shared_projects_container.read_item(item=project_id, partition_key=project_id)
+        if invitee_email in project.get("collaborators", []) or invitee_email in project.get("invited", []):
+            return True # Already there
+            
+        project.setdefault("invited", []).append(invitee_email.lower())
+        shared_projects_container.upsert_item(body=project)
+        
+        # Save notification
+        save_user_notification(
+            invitee_email.lower(), 
+            f"{inviter_email} invited you to collaborate on: {project['task_details'].get('Title', 'Untitled Task')}",
+            "collaboration_invite",
+            project_id,
+            {"inviter": inviter_email, "task_title": project['task_details'].get('Title')}
+        )
+        return True
+    except Exception as e:
+        print(f"[COSMOS ERROR] invite_collaborator: {e}")
+        return False
+
+def accept_collaboration_invite(notification_id, user_email):
+    """
+    Accepts an invite, moves user to collaborators, and marks notification read.
+    """
+    if not shared_projects_container or not notifications_container: return False
+    try:
+        # 1. Get notification to find project_id
+        notif = notifications_container.read_item(item=notification_id, partition_key=notification_id)
+        project_id = notif.get("project_id")
+        
+        # 2. Update project
+        project = shared_projects_container.read_item(item=project_id, partition_key=project_id)
+        u_email = user_email.lower()
+        if u_email in project.get("invited", []):
+            project["invited"].remove(u_email)
+            if u_email not in project.get("collaborators", []):
+                project["collaborators"].append(u_email)
+            shared_projects_container.upsert_item(body=project)
+            
+        # 3. Mark notification read
+        mark_notification_read(notification_id)
+        return True
+    except Exception as e:
+        print(f"[COSMOS ERROR] accept_collaboration_invite: {e}")
+        return False
+
+def get_shared_projects_for_user(user_email):
+    """Fetches all projects where user is creator or collaborator."""
+    if not shared_projects_container: return []
+    query = {
+        "query": "SELECT * FROM c WHERE ARRAY_CONTAINS(c.collaborators, @email) OR ARRAY_CONTAINS(c.collaborators, @email_orig)",
+        "parameters": [
+            {"name": "@email", "value": user_email.lower()},
+            {"name": "@email_orig", "value": user_email}
+        ]
+    }
+    try:
+        return list(shared_projects_container.query_items(query=query, enable_cross_partition_query=True))
+    except Exception as e:
+        print(f"[COSMOS ERROR] get_shared_projects_for_user: {e}")
+        return []
+
+def get_shared_project_details(project_id):
+    if not shared_projects_container: return None
+    try:
+        return shared_projects_container.read_item(item=project_id, partition_key=project_id)
+    except Exception:
+        return None
+
+def save_shared_session_message(project_id, role, content, user_email):
+    """Saves a message to the shared project chat history."""
+    if not shared_projects_container: return False
+    try:
+        project = shared_projects_container.read_item(item=project_id, partition_key=project_id)
+        project.setdefault("messages", []).append({
+            "role": role,
+            "content": content,
+            "user": user_email,
+            "timestamp": datetime.datetime.utcnow().isoformat()
+        })
+        project["updated_at"] = datetime.datetime.utcnow().isoformat()
+        shared_projects_container.upsert_item(body=project)
+        return True
+    except Exception as e:
+        print(f"[COSMOS ERROR] save_shared_session_message: {e}")
+        return False
+
+def get_shared_project_activity(project_id):
+    """Returns the most recent AI messages and user queries in the project."""
+    project = get_shared_project_details(project_id)
+    if not project: return []
+    msgs = project.get("messages", [])
+    # Return last 10 messages for context
+    return msgs[-10:]
+
+# =======================
+# IN-APP NOTIFICATIONS
+# =======================
+
+def save_user_notification(user_email, message, type="info", project_id=None, metadata=None):
+    if not notifications_container: return False
+    doc = {
+        "id": str(uuid.uuid4()),
+        "user_email": user_email,
+        "message": message,
+        "type": type,
+        "project_id": project_id,
+        "metadata": metadata or {},
+        "read": False,
+        "created_at": datetime.datetime.utcnow().isoformat()
+    }
+    try:
+        notifications_container.create_item(body=doc)
+        return True
+    except Exception as e:
+        print(f"[COSMOS ERROR] save_user_notification: {e}")
+        return False
+
+def get_user_notifications(user_email, unread_only=True):
+    if not notifications_container: return []
+    q_str = "SELECT * FROM c WHERE c.user_email = @email"
+    if unread_only: q_str += " AND c.read = false"
+    q_str += " ORDER BY c.created_at DESC"
+    
+    query = {
+        "query": q_str,
+        "parameters": [{"name": "@email", "value": user_email}]
+    }
+    try:
+        return list(notifications_container.query_items(query=query, enable_cross_partition_query=True))
+    except Exception as e:
+        print(f"[COSMOS ERROR] get_user_notifications: {e}")
+        return []
+
+def mark_notification_read(notification_id):
+    if not notifications_container: return False
+    try:
+        notif = notifications_container.read_item(item=notification_id, partition_key=notification_id)
+        notif["read"] = True
+        notifications_container.upsert_item(body=notif)
+        return True
+    except Exception as e:
+        print(f"[COSMOS ERROR] mark_notification_read: {e}")
+        return False
+
+# =======================
 # MAIN EXECUTION
 #     print("📊 Loading Dashboard Data...")
     
@@ -523,3 +727,33 @@ def search_procurement_knowledge(query):
     #     print("\n--- Sample Full Quote JSON ---")
     #     print(full_quote_results[0])
         
+
+def update_project_heartbeat(project_id, user_email):
+    """Updates the last active timestamp for a user in a project."""
+    if not shared_projects_container: return False
+    try:
+        project = shared_projects_container.read_item(item=project_id, partition_key=project_id)
+        presence = project.setdefault("presence", {})
+        presence[user_email] = datetime.datetime.utcnow().isoformat()
+        project["updated_at"] = datetime.datetime.utcnow().isoformat()
+        shared_projects_container.upsert_item(body=project)
+        return True
+    except Exception as e:
+        print(f"[COSMOS ERROR] update_project_heartbeat: {e}")
+        return False
+
+def get_project_presence(project_id):
+    """Returns a list of users who have been active in the last 60 seconds."""
+    if not shared_projects_container: return []
+    try:
+        project = shared_projects_container.read_item(item=project_id, partition_key=project_id)
+        presence = project.get("presence", {})
+        now = datetime.datetime.utcnow()
+        active_users = []
+        for email, ts_str in presence.items():
+            ts = datetime.datetime.fromisoformat(ts_str)
+            if (now - ts).total_seconds() < 60:
+                active_users.append(email)
+        return active_users
+    except Exception:
+        return []

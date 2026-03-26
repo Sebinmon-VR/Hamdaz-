@@ -12,11 +12,39 @@
                     style="width: 50%; height: 30px; border-radius: 5px; border: none; padding: 5px; background: #acacac23;">
             </div>
             <!-- Latest Updates Megaphone -->
-            <div class="updates-link" style="display: flex; align-items: center; justify-content: center; margin-right: 15px;">
-                <a href="/updates" title="Latest Updates" style="text-decoration: none; position: relative; color: #6366f1; transition: transform 0.3s ease;">
+            <div class="updates-link"
+                style="display: flex; align-items: center; justify-content: center; margin-right: 15px;">
+                <a href="/updates" title="Latest Updates"
+                    style="text-decoration: none; position: relative; color: #6366f1; transition: transform 0.3s ease;">
                     <i class="fa-solid fa-bullhorn" style="font-size: 18px;"></i>
-                    <span style="position: absolute; top: -3px; right: -3px; width: 8px; height: 8px; background: #ef4444; border-radius: 50%; border: 2px solid white; animation: ripple 2s infinite;"></span>
+                    <span
+                        style="position: absolute; top: -3px; right: -3px; width: 8px; height: 8px; background: #ef4444; border-radius: 50%; border: 2px solid white; animation: ripple 2s infinite;"></span>
                 </a>
+            </div>
+
+            <!-- Notifications Bell -->
+            <div class="notifications-link" style="display: flex; align-items: center; justify-content: center; margin-right: 20px; position: relative;">
+                <button id="notiBtn" title="In-App Notifications" style="background: none; border: none; cursor: pointer; color: #6366f1; position: relative; padding: 0;">
+                    <i class="fa-solid fa-bell" style="font-size: 19px;"></i>
+                    <span id="notiCount" class="hidden" style="position: absolute; top: -6px; right: -8px; background: #ef4444; color: white; border-radius: 50%; width: 16px; height: 16px; font-size: 10px; display: flex; align-items: center; justify-content: center; font-weight: bold; border: 2px solid white;">0</span>
+                </button>
+                
+                <!-- Notifications Dropdown -->
+                <div id="notiDropdown" class="hidden" style="position: absolute; top: 100%; right: 0; width: 320px; background: white; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); border: 1px solid #e2e8f0; z-index: 1000; overflow: hidden; margin-top: 10px;">
+                    <div style="padding: 12px 16px; border-bottom: 1px solid #f1f5f9; background: #f8fafc; display: flex; justify-content: space-between; align-items: center;">
+                        <h4 style="margin: 0; font-size: 13px; font-weight: 800; color: #1e293b; text-transform: uppercase; tracking: 0.05em;">Notifications</h4>
+                        <span id="notiMarkAll" style="font-size: 10px; color: #6366f1; cursor: pointer; font-weight: bold;">Mark all read</span>
+                    </div>
+                    <div id="notiList" style="max-h: 350px; overflow-y: auto; background: white;">
+                        <div style="padding: 30px 20px; text-align: center; color: #94a3b8;">
+                            <i class="fa-regular fa-bell-slash" style="font-size: 24px; margin-bottom: 10px; display: block; opacity: 0.3;"></i>
+                            <p style="font-size: 12px; margin: 0;">No new notifications</p>
+                        </div>
+                    </div>
+                    <div style="padding: 10px; text-align: center; border-top: 1px solid #f1f5f9; background: #f8fafc;">
+                        <a href="/personal_assistant" style="font-size: 11px; font-weight: bold; color: #6366f1; text-decoration: none;">Open Personal Assistant</a>
+                    </div>
+                </div>
             </div>
 
             <!-- Profile Box -->
@@ -29,7 +57,7 @@
             <!-- Profile Picture -->
             <div class="profile-container" style="position: relative;">
                 <!-- <img src="{{ photo }}" alt="Profile Picture" class="profile-pic" width="50" height="50" style="border-radius:50%; cursor: pointer; margin-right: 10px; background:#fa8383;"> -->
-                 <!-- <div class="status">{{status}}</div> -->
+                <!-- <div class="status">{{status}}</div> -->
                 <img id="profile-photo" src="/static/default-avatar.png"
                     style="width:45px; height:45px; border-radius:50%;">
 
@@ -55,6 +83,105 @@
 
                     // Call on page load
                     loadProfilePhoto();
+
+                    // --- Notification System ---
+                    const notiBtn = document.getElementById('notiBtn');
+                    const notiDropdown = document.getElementById('notiDropdown');
+                    const notiCount = document.getElementById('notiCount');
+                    const notiList = document.getElementById('notiList');
+
+                    if (notiBtn) {
+                        notiBtn.onclick = (e) => {
+                            e.stopPropagation();
+                            notiDropdown.classList.toggle('hidden');
+                            if (!notiDropdown.classList.contains('hidden')) {
+                                fetchNotifications();
+                            }
+                        };
+                    }
+
+                    document.addEventListener('click', () => {
+                        if (notiDropdown) notiDropdown.classList.add('hidden');
+                    });
+
+                    async function fetchNotifications() {
+                        try {
+                            const res = await fetch('/api/notifications');
+                            const data = await res.json();
+                            if (data.notifications) {
+                                renderNotifications(data.notifications);
+                            }
+                        } catch (e) {
+                            console.error("Failed to fetch notifications", e);
+                        }
+                    }
+
+                    function renderNotifications(notifs) {
+                        const unread = notifs.filter(n => !n.is_read);
+                        if (unread.length > 0) {
+                            notiCount.textContent = unread.length;
+                            notiCount.classList.remove('hidden');
+                        } else {
+                            notiCount.classList.add('hidden');
+                        }
+
+                        if (notifs.length === 0) {
+                            notiList.innerHTML = `<div style="padding: 30px 20px; text-align: center; color: #94a3b8;"><i class="fa-regular fa-bell-slash" style="font-size: 24px; mb-10: display: block; opacity: 0.3;"></i><p style="font-size: 12px; margin: 0;">No notifications</p></div>`;
+                            return;
+                        }
+
+                        notiList.innerHTML = "";
+                        notifs.forEach(n => {
+                            const div = document.createElement('div');
+                            div.style.padding = "12px 16px";
+                            div.style.borderBottom = "1px solid #f8fafc";
+                            div.style.background = n.is_read ? 'white' : '#f0f4ff';
+                            div.style.cursor = "pointer";
+                            div.style.transition = "background 0.2s";
+                            
+                            div.innerHTML = `
+                                <div style="font-size: 12px; font-weight: bold; color: #1e293b; margin-bottom: 2px;">${n.title}</div>
+                                <div style="font-size: 11px; color: #64748b; line-height: 1.4;">${n.message}</div>
+                                <div style="font-size: 9px; color: #94a3b8; margin-top: 6px;">${new Date(n.timestamp).toLocaleString()}</div>
+                                ${n.type === 'collaboration_invite' && !n.is_read ? `
+                                    <div style="margin-top: 10px; display: flex; gap: 8px;">
+                                        <button onclick="acceptInvite(event, '${n.project_id}', '${n.id}')" style="background: #6366f1; color: white; border: none; padding: 4px 10px; border-radius: 6px; font-size: 10px; font-weight: bold; cursor: pointer;">Accept</button>
+                                        <button onclick="markRead(event, '${n.id}')" style="background: white; border: 1px solid #e2e8f0; color: #64748b; padding: 4px 10px; border-radius: 6px; font-size: 10px; font-weight: bold; cursor: pointer;">Dismiss</button>
+                                    </div>
+                                ` : ''}
+                            `;
+                            div.onclick = (e) => n.is_read ? null : markRead(e, n.id);
+                            notiList.appendChild(div);
+                        });
+                    }
+
+                    window.acceptInvite = async (e, projectId, notiId) => {
+                        e.stopPropagation();
+                        try {
+                            const res = await fetch(`/api/shared_projects/${projectId}/accept`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ notification_id: notiId })
+                            });
+                            if (res.ok) {
+                                window.location.href = `/personal_assistant?session=${projectId}`;
+                            }
+                        } catch (err) {
+                            console.error(err);
+                        }
+                    };
+
+                    window.markRead = async (e, notiId) => {
+                        if (e) e.stopPropagation();
+                        try {
+                            await fetch(`/api/notifications/${notiId}/read`, { method: 'POST' });
+                            fetchNotifications();
+                        } catch (err) {}
+                    };
+
+                    // Initial fetch and poll
+                    fetchNotifications();
+                    setInterval(fetchNotifications, 60000); // Poll every minute
                 </script>
 
                 <!-- Dropdown Card -->
@@ -108,14 +235,16 @@
             <li><a href="/quote"><img src="/static/icons/quote.png" alt="">New Quote</a></li>
             <li><a href="/quote_decision"><img src="/static/icons/quotes.png" alt="">View Quotes</a></li>
             {% endif %}
-            
+
             <!-- {% if excel_role == "ai" %}
             <div class="line"><span>AI</span></div>
             {% endif %}
             <li><a href="/ai_tasks"><img src="/static/icons/quote.png" alt="">My tasks</a></li> -->
 
             <div class="line"><span>Communications</span></div>
-            <li><a href="/mails"><i class="fa-solid fa-envelope" style="margin-right: 12px; color: #6366f1; width: 20px; text-align: center; font-size: 16px;"></i> Mails</a></li>
+            <li><a href="/mails"><i class="fa-solid fa-envelope"
+                        style="margin-right: 12px; color: #6366f1; width: 20px; text-align: center; font-size: 16px;"></i>
+                    Mails</a></li>
 
             <div class="line"><span>Partnership</span></div>
             <li><a href="/vendors"><img src="/static/icons/partnership.png" alt="">Vendors</a></li>
@@ -136,13 +265,24 @@
 
 <style>
     @keyframes ripple {
-        0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
-        70% { box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); }
-        100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        0% {
+            box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4);
+        }
+
+        70% {
+            box-shadow: 0 0 0 6px rgba(239, 68, 68, 0);
+        }
+
+        100% {
+            box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
+        }
     }
-    .updates-link a:hover, .chatbot-link a:hover {
+
+    .updates-link a:hover,
+    .chatbot-link a:hover {
         transform: scale(1.15) rotate(-5deg);
     }
+
     .profile-card {
         position: absolute;
         top: 60px;

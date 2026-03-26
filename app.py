@@ -24,7 +24,13 @@ import docx
 import pypdf
 import io
 
-from cosmos import get_user_sessions, get_session_messages, save_session_message, delete_session, search_item_distributors
+from cosmos import (
+    get_user_sessions, get_session_messages, save_session_message, delete_session, 
+    search_item_distributors, create_shared_project, invite_collaborator, 
+    accept_collaboration_invite, get_shared_projects_for_user, get_shared_project_details,
+    save_shared_session_message, get_shared_project_activity, update_project_heartbeat,
+    get_project_presence, save_user_notification, get_user_notifications, mark_notification_read
+)
 # ================== LOAD ENVIRONMENT ==================
 load_dotenv(override=True)
 
@@ -982,6 +988,7 @@ def pa_chat():
     message = request.form.get("message", "")
     session_id = request.form.get("session_id", "")
     files = request.files.getlist("files")
+    is_analysis = request.form.get("is_analysis", "false").lower() == "true"
     
     files_text = ""
     if files:
@@ -1044,7 +1051,14 @@ def pa_chat():
     print(f"[PA_CHAT] Generated/Updated session_id: {generated_session_id}", flush=True)
     
     try:
-        reply = run_personal_assistant(username, message, files_text, chat_history, is_admin_user)
+        system_instr = ""
+        if is_analysis:
+            system_instr = "User has likely uploaded a procurement document. ANALYZE it and return the required items STRICTLY as a JSON list of objects with 'name' and 'type' properties. DO NOT add any conversational text before or after the JSON array."
+            
+        # If we have system instructions, inject them into the run_personal_assistant call if possible
+        # or just prepend to the message if run_personal_assistant doesn't support them.
+        # Looking at run_personal_assistant signature in assistant.py...
+        reply = run_personal_assistant(username, message, files_text, chat_history, is_admin_user, system_instr=system_instr)
         
         # Save assistant reply to Cosmos
         save_session_message(generated_session_id, email, "assistant", reply)
@@ -1717,78 +1731,134 @@ def analyze_procurement_requirements(task_id):
         return jsonify({"error": "Unauthorized"}), 401
     
     try:
-        attachments = get_item_attachments(SITE_DOMAIN, SITE_PATH, LIST_NAME, task_id)
-        if not attachments:
-            return jsonify({"success": False, "error": "No attachments found to analyze."}), 400
-        
+        # Determine if we have a file in the request (manual upload)
+        file_to_analyze = request.files.get('file')
         content_to_analyze = ""
-        access_token = get_access_token()
-        headers = {"Authorization": f"Bearer {access_token}"}
         
-        for att in attachments:
-            name = att['name'].lower()
-            if any(name.endswith(ext) for ext in ['.pdf', '.xlsx', '.xls', '.docx', '.txt', '.csv']):
-                download_url = att['url']
-                resp = requests.get(download_url, headers=headers)
-                if resp.status_code == 200:
-                    ext = name.split('.')[-1]
-                    file_bytes = resp.content
-                    
-                    try:
-                        if ext == 'pdf':
-                            from pypdf import PdfReader
-                            reader = PdfReader(io.BytesIO(file_bytes))
-                            for page in reader.pages:
-                                content_to_analyze += (page.extract_text() or "") + "\n"
-                        elif ext in ['xlsx', 'xls']:
-                            df_dict = pd.read_excel(io.BytesIO(file_bytes), sheet_name=None)
-                            for sheet_name, df_sheet in df_dict.items():
-                                content_to_analyze += f"\n--- Sheet: {sheet_name} ---\n"
-                                content_to_analyze += df_sheet.to_csv(index=False) + "\n"
-                        elif ext == 'csv':
-                            df_att = pd.read_csv(io.BytesIO(file_bytes))
-                            content_to_analyze += df_att.to_csv(index=False) + "\n"
-                        elif ext == 'docx':
-                            import docx
-                            doc = docx.Document(io.BytesIO(file_bytes))
-                            content_to_analyze += "\n".join([p.text for p in doc.paragraphs]) + "\n"
-                        elif ext == 'doc':
-                            content_to_analyze += "[Error reading file: Legacy .doc format is not supported. Please save as .docx and re-upload.]\n"
-                        elif ext == 'txt':
-                            content_to_analyze += file_bytes.decode('utf-8') + "\n"
-                    except Exception as parse_error:
-                        print(f"Error parsing attachment {name}: {parse_error}")
-        
+        if file_to_analyze:
+            print(f"[ANALYZE] Analyzing manually uploaded file: {file_to_analyze.filename}")
+            ext = file_to_analyze.filename.split('.')[-1].lower()
+            file_bytes = file_to_analyze.read()
+            # Reuse parsing logic...
+            content_to_analyze = _parse_file_content(ext, file_bytes, file_to_analyze.filename)
+        else:
+            # Traditional SharePoint path
+            attachments = get_item_attachments(SITE_DOMAIN, SITE_PATH, LIST_NAME, task_id)
+            if not attachments:
+                return jsonify({"success": False, "error": "No attachments found to analyze."}), 400
+            
+            access_token = get_access_token()
+            headers = {"Authorization": f"Bearer {access_token}"}
+            for att in attachments:
+                name = att['name'].lower()
+                if any(name.endswith(ext) for ext in ['.pdf', '.xlsx', '.xls', '.docx', '.txt', '.csv']):
+                    resp = requests.get(att['url'], headers=headers)
+                    if resp.status_code == 200:
+                        content_to_analyze += _parse_file_content(name.split('.')[-1], resp.content, name)
+
         if not content_to_analyze.strip():
-            return jsonify({"success": False, "error": "Could not extract text from attachments."}), 400
-            
-        short_content = content_to_analyze[:10000]
-        prompt = f"Analyze the following requirement document and list the items/products that need to be procured. Return the result as a JSON list of objects, each having 'name', 'type', 'quantity', and 'unit'. Group similar items by assigning them the exact same 'category' string (e.g. 'IT Equipment', 'Office Supplies').\n\nContent:\n{short_content}"
-        
-        from openai import OpenAI
-        client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-        openai_res = client.chat.completions.create(
-            model="gpt-4o",
-            messages=[
-                {"role": "system", "content": "You are a procurement expert who extracts required items from documents. Return valid JSON only."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0
-        )
-        
-        res_text = openai_res.choices[0].message.content
-        try:
-            import json as py_json
-            match = re.search(r'\[.*\]', res_text, re.DOTALL)
-            items = py_json.loads(match.group(0)) if match else py_json.loads(res_text)
-            if isinstance(items, dict) and 'items' in items:
-                items = items['items']
-        except:
-            items = []
-            
+            return jsonify({"success": False, "error": "Could not extract text from files."}), 400
+
+        items = _run_requirement_analyzer(content_to_analyze)
         return jsonify({"success": True, "items": items})
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify({"success": False, "error": str(e)}), 500
+
+def _parse_file_content(ext, file_bytes, filename):
+    text = ""
+    try:
+        if ext == 'pdf':
+            from pypdf import PdfReader
+            reader = PdfReader(io.BytesIO(file_bytes))
+            for page in reader.pages:
+                text += (page.extract_text() or "") + "\n"
+        elif ext in ['xlsx', 'xls']:
+            df_dict = pd.read_excel(io.BytesIO(file_bytes), sheet_name=None)
+            for sheet_name, df_sheet in df_dict.items():
+                text += f"\n--- Sheet: {sheet_name} ---\n"
+                text += df_sheet.to_csv(index=False) + "\n"
+        elif ext == 'csv':
+            df_att = pd.read_csv(io.BytesIO(file_bytes))
+            text += df_att.to_csv(index=False) + "\n"
+        elif ext == 'docx':
+            import docx
+            doc = docx.Document(io.BytesIO(file_bytes))
+            text += "\n".join([p.text for p in doc.paragraphs]) + "\n"
+        elif ext == 'txt':
+            text += file_bytes.decode('utf-8', errors='ignore') + "\n"
+    except Exception as e:
+        print(f"Error parsing {filename}: {e}")
+    return text
+
+def _run_requirement_analyzer(content):
+    try:
+        from openai import OpenAI
+        client = OpenAI(api_key=openai.api_key or os.getenv("OPENAI_API_KEY"))
+        prompt = f"""Extract all items, products, or services needed for procurement from the following requirements description. 
+Return them STRICTLY as a JSON list of objects, each with 'name' and 'type' (e.g., hardware, software, services).
+Requirements:
+{content[:15000]}
+"""
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[{"role": "system", "content": "You are a procurement expert. Return strictly a JSON list."},
+                      {"role": "user", "content": prompt}]
+        )
+        res_text = response.choices[0].message.content
+        match = re.search(r'\[.*\]', res_text, re.DOTALL)
+        if match:
+            return json.loads(match.group(0))
+        return []
+    except Exception as e:
+        print(f"AI Analysis Error: {e}")
+        return []
+
+@app.route('/api/shared_projects/analyze/<project_id>', methods=['POST'])
+def analyze_shared_project(project_id):
+    if "user" not in session: return jsonify({"error": "Unauthorized"}), 401
+    user_email = (session["user"].get("mail") or session["user"].get("userPrincipalName", "")).lower()
+    
+    try:
+        project = get_shared_project_details(project_id)
+        if not project: return jsonify({"error": "Project not found"}), 404
+        
+        content = ""
+        # 1. From original task details
+        if project.get('task_details'):
+            task_id = project['task_details'].get('id')
+            if task_id:
+                try:
+                    attachments = get_item_attachments(SITE_DOMAIN, SITE_PATH, LIST_NAME, task_id)
+                    access_token = get_access_token()
+                    headers = {"Authorization": f"Bearer {access_token}"}
+                    for att in attachments:
+                        name = att['name'].lower()
+                        if any(name.endswith(ext) for ext in ['.pdf', '.xlsx', '.xls', '.docx', '.txt', '.csv']):
+                            resp = requests.get(att['url'], headers=headers)
+                            if resp.status_code == 200:
+                                content += _parse_file_content(name.split('.')[-1], resp.content, name)
+                except: pass
+        
+        # 2. From manually uploaded file in request
+        file_to_analyze = request.files.get('file')
+        if file_to_analyze:
+            ext = file_to_analyze.filename.split('.')[-1].lower()
+            content += _parse_file_content(ext, file_to_analyze.read(), file_to_analyze.filename)
+            
+        if not content.strip():
+            return jsonify({"success": False, "error": "No content found to analyze for this shared project. Please upload a file."}), 400
+            
+        items = _run_requirement_analyzer(content)
+        
+        # Log this action in the project
+        save_shared_session_message(project_id, "assistant", f"I've analyzed the project requirements and identified {len(items)} items for procurement.", "AI System")
+        update_project_heartbeat(project_id, user_email) 
+        
+        return jsonify({"success": True, "items": items})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/api/procurement/find_distributors', methods=['POST'])
 def procurement_find_distributors():
@@ -2259,6 +2329,221 @@ def save_mail_draft():
             
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+# ==============================================================
+# COLLABORATION & SHARED PROJECTS API
+# ==============================================================
+
+@app.route('/api/users/search', methods=['GET'])
+def search_users():
+    if "user" not in session: return jsonify({"error": "Unauthorized"}), 401
+    query = request.args.get('q', '').lower()
+    if len(query) < 2: return jsonify({"users": []})
+    
+    try:
+        # Search via Microsoft Graph for team members
+        from sharepoint_items import get_access_token
+        token = get_access_token()
+        headers = {"Authorization": f"Bearer {token}"}
+        url = f"{GRAPH_API_ENDPOINT}/users?$filter=startswith(displayName,'{query}') or startswith(mail,'{query}') or startswith(userPrincipalName,'{query}')&$select=displayName,mail,userPrincipalName&$top=10"
+        resp = requests.get(url, headers=headers)
+        if resp.status_code == 200:
+            users_data = resp.json().get('value', [])
+            return jsonify({"users": users_data})
+        return jsonify({"users": []})
+    except Exception as e:
+        print(f"[API ERROR] search_users: {e}")
+        return jsonify({"users": []})
+
+@app.route('/api/shared_projects', methods=['GET', 'POST'])
+def handle_shared_projects():
+    if "user" not in session: return jsonify({"error": "Unauthorized"}), 401
+    user_email = (session["user"].get("mail") or session["user"].get("userPrincipalName", "")).lower()
+    
+    if request.method == 'GET':
+        projects = get_shared_projects_for_user(user_email)
+        return jsonify({"projects": projects})
+    
+    elif request.method == 'POST':
+        data = request.get_json()
+        task_data = data.get('task')
+        if not task_data: return jsonify({"error": "Missing task data"}), 400
+        
+        project_id = create_shared_project(task_data, user_email)
+        if project_id:
+            return jsonify({"success": True, "project_id": project_id})
+        return jsonify({"error": "Failed to create project"}), 500
+
+@app.route('/api/shared_projects/<project_id>', methods=['GET'])
+def get_project(project_id):
+    if "user" not in session: return jsonify({"error": "Unauthorized"}), 401
+    project = get_shared_project_details(project_id)
+    if not project: return jsonify({"error": "Project not found"}), 404
+    
+    # Check if user is a collaborator
+    user_email = (session["user"].get("mail") or session["user"].get("userPrincipalName", "")).lower()
+    if user_email not in project.get("collaborators", []):
+        return jsonify({"error": "Access denied"}), 403
+        
+    activity = get_shared_project_activity(project_id)
+    return jsonify({"project": project, "activity": activity})
+
+@app.route('/api/shared_projects/<project_id>/invite', methods=['POST'])
+def invite_to_project(project_id):
+    if "user" not in session: return jsonify({"error": "Unauthorized"}), 401
+    user_email = (session["user"].get("mail") or session["user"].get("userPrincipalName", "")).lower()
+    data = request.get_json()
+    invitee_emails = data.get('emails', [])
+    
+    project = get_shared_project_details(project_id)
+    if not project: return jsonify({"error": "Project not found"}), 404
+    
+    success_count = 0
+    for email in invitee_emails:
+        if invite_collaborator(project_id, user_email, email):
+            # Send invitation email using Graph API
+            try:
+                from sharepoint_items import get_access_token
+                token = get_access_token()
+                headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+                mail_payload = {
+                    "message": {
+                        "subject": f"Collaboration Invite: {project['task_details'].get('Title')}",
+                        "body": {
+                            "contentType": "HTML",
+                            "content": f"""
+                                <h2>Collaboration Invite</h2>
+                                <p><strong>{user_email}</strong> has invited you to collaborate on the task: 
+                                <strong>{project['task_details'].get('Title')}</strong>.</p>
+                                <p>Please open the Hamdaz Chatbot to accept the invitation.</p>
+                                <hr/>
+                                <p><a href="{request.host_url}personal_assistant">Open Dashboard</a></p>
+                            """
+                        },
+                        "toRecipients": [{"emailAddress": {"address": email}}]
+                    }
+                }
+                requests.post(f"{GRAPH_API_ENDPOINT}/users/{user_email}/sendMail", headers=headers, json=mail_payload)
+            except Exception as e:
+                print(f"[MAIL ERROR] Failed to send invite email to {email}: {e}")
+            success_count += 1
+            
+    return jsonify({"success": True, "invited": success_count})
+
+@app.route('/api/shared_projects/<project_id>/accept', methods=['POST'])
+def accept_invite(project_id):
+    if "user" not in session: return jsonify({"error": "Unauthorized"}), 401
+    user_email = (session["user"].get("mail") or session["user"].get("userPrincipalName", "")).lower()
+    data = request.get_json()
+    notification_id = data.get('notification_id')
+    
+    if accept_collaboration_invite(notification_id, user_email):
+        return jsonify({"success": True})
+    return jsonify({"error": "Failed to accept invite"}), 500
+
+@app.route('/api/shared_projects/<project_id>/chat', methods=['POST'])
+def shared_chat(project_id):
+    if "user" not in session: return jsonify({"error": "Unauthorized"}), 401
+    user_email = (session["user"].get("mail") or session["user"].get("userPrincipalName", "")).lower()
+    
+    # Support both JSON and Multipart Form Data
+    if request.is_json:
+        data = request.get_json()
+        user_prompt = data.get('message')
+        files = []
+        is_analysis = str(data.get('is_analysis', 'false')).lower() == 'true'
+    else:
+        user_prompt = request.form.get('message')
+        files = request.files.getlist('files')
+        is_analysis = request.form.get('is_analysis', 'false').lower() == 'true'
+    
+    files_text = ""
+    if files:
+        for file in files:
+            if file.filename == "": continue
+            try:
+                ext = file.filename.split('.')[-1].lower()
+                file_bytes = file.read()
+                
+                if ext == 'pdf':
+                    from pypdf import PdfReader
+                    reader = PdfReader(io.BytesIO(file_bytes))
+                    for page in reader.pages:
+                        files_text += (page.extract_text() or "") + "\n"
+                elif ext in ['xlsx', 'xls']:
+                    df_dict = pd.read_excel(io.BytesIO(file_bytes), sheet_name=None)
+                    for sheet_name, df_sheet in df_dict.items():
+                        files_text += f"\n--- Sheet: {sheet_name} ---\n"
+                        files_text += df_sheet.to_csv(index=False) + "\n"
+                elif ext == 'csv':
+                    df_att = pd.read_csv(io.BytesIO(file_bytes))
+                    files_text += df_att.to_csv(index=False) + "\n"
+                elif ext == 'docx':
+                    import docx
+                    doc = docx.Document(io.BytesIO(file_bytes))
+                    files_text += "\n".join([p.text for p in doc.paragraphs]) + "\n"
+                elif ext == 'txt':
+                    files_text += file_bytes.decode('utf-8', errors='ignore') + "\n"
+            except Exception as e:
+                print(f"[SHARED CHAT] Error parsing file {file.filename}: {e}")
+                files_text += f"\n[Error parsing file {file.filename}: {str(e)}]\n"
+
+    project = get_shared_project_details(project_id)
+    if not project: return jsonify({"error": "Project not found"}), 404
+    
+    # Save user message (Prompt only)
+    save_shared_session_message(project_id, "user", user_prompt, user_email)
+    
+    # Inject collaboration context into the AI
+    other_collaborators = [c for c in project.get("collaborators", []) if c != user_email]
+    context = f"\n\nYou are in a COLLABORATIVE SESSION for the project: '{project['task_details'].get('Title')}'.\n"
+    context += f"Collaborators: {', '.join(project.get('collaborators', []))}.\n"
+    if other_collaborators:
+        context += f"Inform the user about what others might be doing if relevant. Active users: {', '.join(get_project_presence(project_id))}.\n"
+    
+    # Run assistant
+    history = project.get("messages", [])
+    clean_history = [{"role": m["role"], "content": m["content"]} for m in history]
+    
+    # Combined prompt with context
+    full_prompt = context + (user_prompt or "")
+    
+    system_instr = ""
+    if is_analysis:
+        system_instr = "User has uploaded a procurement document. ANALYZE it and return the required items STRICTLY as a JSON list of objects with 'name' and 'type' properties. DO NOT add any conversational text."
+
+    ai_response = run_personal_assistant(user_email, full_prompt, files_text=files_text, chat_history=clean_history, system_instr=system_instr)
+    
+    # Save AI response
+    save_shared_session_message(project_id, "assistant", ai_response, "AI")
+    
+    return jsonify({"response": ai_response})
+
+@app.route('/api/shared_projects/<project_id>/heartbeat', methods=['POST'])
+def project_heartbeat(project_id):
+    if "user" not in session: return jsonify({"error": "Unauthorized"}), 401
+    user_email = (session["user"].get("mail") or session["user"].get("userPrincipalName", "")).lower()
+    update_project_heartbeat(project_id, user_email)
+    return jsonify({"success": True})
+
+@app.route('/api/shared_projects/<project_id>/presence', methods=['GET'])
+def project_presence(project_id):
+    if "user" not in session: return jsonify({"error": "Unauthorized"}), 401
+    active_users = get_project_presence(project_id)
+    return jsonify({"active_users": active_users})
+
+@app.route('/api/notifications', methods=['GET'])
+def get_notifications():
+    if "user" not in session: return jsonify({"error": "Unauthorized"}), 401
+    user_email = (session["user"].get("mail") or session["user"].get("userPrincipalName", "")).lower()
+    notifs = get_user_notifications(user_email)
+    return jsonify({"notifications": notifs})
+
+@app.route('/api/notifications/<notification_id>/read', methods=['POST'])
+def read_notification(notification_id):
+    if "user" not in session: return jsonify({"error": "Unauthorized"}), 401
+    mark_notification_read(notification_id)
+    return jsonify({"success": True})
 
 # ==============================================================
 # START FLASK + BACKGROUND UPDATER

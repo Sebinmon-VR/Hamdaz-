@@ -130,7 +130,7 @@ def search_web(query):
     except Exception as e:
         return f"Error using AI search: {str(e)}"
 
-def run_personal_assistant(username, user_prompt, files_text="", chat_history=None, is_admin_user=False):
+def run_personal_assistant(username, user_prompt, files_text="", chat_history=None, is_admin_user=False, system_instr=""):
     if chat_history is None:
         chat_history = []
     
@@ -172,6 +172,9 @@ Return markdown formatting.
 {time_context}
 """
 
+    if system_instr:
+        system_prompt += f"\n{system_instr}\n"
+    
     if files_text:
         print(f"[PA] File context added ({len(files_text)} chars)", flush=True)
         system_prompt += f"\nFile Contents Context (user uploaded these for you to analyze):\n{files_text}\n"
