@@ -517,6 +517,23 @@
     let emailReplyInterval = null; // NEW: monitor background email loop
 
     // Start background email monitor
+    // Notification and Sound helper
+    function notifyUser(title, body) {
+        // 1. Play sound
+        try {
+            const audio = new Audio("https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3"); // Standard notification ping
+            audio.play().catch(e => console.log("Audio play blocked by browser policy until user interaction."));
+        } catch(e) { console.error("Sound error", e); }
+
+        // 2. Desktop Notification
+        if ("Notification" in window && Notification.permission === "granted") {
+            new Notification(title, {
+                body: body,
+                icon: "/static/images/bot_avatar.png"
+            });
+        }
+    }
+
     function startEmailMonitor() {
         if(emailReplyInterval) clearInterval(emailReplyInterval);
         emailReplyInterval = setInterval(() => {
@@ -526,7 +543,10 @@
                     if(d.success && d.matched > 0 && currentTaskId) {
                         fetchTrackedEmails(currentTaskId);
                         if (currentSessionId) loadSession(currentSessionId, currentChatTitle.textContent);
-                        showToast(`Received ${d.matched} new supplier reply!`);
+                        
+                        const msg = `Received ${d.matched} new supplier reply!`;
+                        showToast(msg);
+                        notifyUser("Procurement Update", msg);
                     }
                 }).catch(e => console.error("Email polling error", e));
         }, 5000); // Check every 5 seconds
@@ -539,6 +559,11 @@
             showGreeting();
         }
         startEmailMonitor();
+        
+        // Request notification permission
+        if ("Notification" in window && Notification.permission === "default") {
+            Notification.requestPermission();
+        }
     };
 
     async function fetchSessions() {
@@ -775,6 +800,10 @@
                     renderEmailSafely(message, div, avatar, wrapper);
                     return;
                 }
+                if (message.includes("QUOTE_DATA_START")) {
+                    renderQuoteSafely(message, div, avatar, wrapper);
+                    return;
+                }
 
                 // Prevent pointer events on the entire chatBox while typing to stop cursor shaking
                 chatBox.style.pointerEvents = 'none';
@@ -793,6 +822,10 @@
                     renderEmailSafely(message, div, avatar, wrapper);
                     return;
                 }
+                if (message.includes("QUOTE_DATA_START")) {
+                    renderQuoteSafely(message, div, avatar, wrapper);
+                    return;
+                }
                 div.innerHTML = marked.parse(message);
             }
             wrapper.appendChild(div);
@@ -807,7 +840,7 @@
         if (match && match[1]) {
             try {
                 const emailData = JSON.parse(match[1]);
-                div.className = "bubble-anim  rounded-2xl border border-gray-100 overflow-hidden bg-white max-w-[90%]";
+                div.className = "bubble-anim rounded-2xl border border-gray-100 overflow-hidden bg-white max-w-[90%] shadow-sm";
                 div.innerHTML = renderEmailUI(emailData);
                 avatar.classList.remove("bot-floating");
                 wrapper.appendChild(div);
@@ -820,6 +853,63 @@
                 chatBox.appendChild(wrapper);
             }
         }
+    }
+
+    function renderQuoteSafely(message, div, avatar, wrapper) {
+        const match = message.match(/QUOTE_DATA_START\n([\s\S]*?)\nQUOTE_DATA_END/);
+        if (match && match[1]) {
+            try {
+                const quoteData = JSON.parse(match[1]);
+                div.className = "bubble-anim rounded-2xl border border-emerald-100 overflow-hidden bg-white max-w-[90%] shadow-md ring-1 ring-emerald-50";
+                div.innerHTML = renderQuoteUI(quoteData);
+                avatar.classList.remove("bot-floating");
+                wrapper.appendChild(div);
+                chatBox.appendChild(wrapper);
+                scrollToBottom();
+            } catch (e) {
+                console.error("Failed to parse quote JSON", e);
+                div.innerHTML = "Error parsing quote data.";
+                wrapper.appendChild(div);
+                chatBox.appendChild(wrapper);
+            }
+        }
+    }
+
+    function renderQuoteUI(q) {
+        const isCollected = q.collection_status === 'collected';
+        const isDiscarded = q.collection_status === 'discarded';
+        
+        return `
+            <div class="p-4">
+                <div class="flex items-center gap-3 mb-3 pb-3 border-b border-emerald-50">
+                    <div class="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center text-emerald-600 border border-emerald-100">
+                        <i class="fa-solid fa-file-invoice-dollar text-lg"></i>
+                    </div>
+                    <div class="min-w-0">
+                        <p class="text-[10px] text-emerald-600 font-black uppercase tracking-widest leading-none mb-1">Supplier Quote</p>
+                        <h4 class="font-bold text-slate-800 text-sm truncate">${q.from_email || 'Verified Supplier'}</h4>
+                    </div>
+                </div>
+                
+                <p class="text-slate-600 text-[13px] leading-relaxed mb-4">${q.summary || 'Quote summary unavailable.'}</p>
+                
+                <div class="grid grid-cols-2 gap-2 mb-3">
+                    <button onclick="updateQuoteStatus('${q.id}', '${currentTaskId}', 'collected')" 
+                        class="flex items-center justify-center gap-2 py-2 rounded-xl text-[11px] font-bold transition-all ${isCollected ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-100' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-100'}">
+                        <i class="fa-solid ${isCollected ? 'fa-check' : 'fa-plus'}"></i> ${isCollected ? 'Collected' : 'Collect'}
+                    </button>
+                    <button onclick="updateQuoteStatus('${q.id}', '${currentTaskId}', 'discarded')" 
+                        class="flex items-center justify-center gap-2 py-2 rounded-xl text-[11px] font-bold bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-100 transition-all">
+                        <i class="fa-solid fa-trash-can"></i> Discard
+                    </button>
+                </div>
+                
+                <button onclick="window.location.href='/quote?task_id=${currentTaskId}'" 
+                    class="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-[12px] font-black bg-indigo-600 text-white hover:bg-indigo-700 shadow-lg shadow-indigo-100 transition-all group">
+                    Go to Quote Form <i class="fa-solid fa-arrow-right text-[10px] group-hover:translate-x-1 transition-transform"></i>
+                </button>
+            </div>
+        `;
     }
 
     // ============================================================
@@ -1467,10 +1557,9 @@
                         hasAnalyzed = true;
                         const isDiscarded = mail.collection_status === 'discarded';
                         const isCollected = mail.collection_status === 'collected';
-                        
-                        analyzedList.innerHTML += `
+                         analyzedList.innerHTML += `
                         <div class="bg-white border ${isCollected ? 'border-emerald-400 ring-1 ring-emerald-100' : 'border-emerald-100'} p-2 rounded text-[11px] shadow-sm cursor-pointer hover:border-emerald-300 transition-all ${isDiscarded ? 'opacity-40 grayscale pointer-events-none' : ''}" 
-                             onclick="injectQuoteIntoChat('${mail.summary.replace(/'/g, "\\'")}', '${mail.quote_doc_path ? mail.quote_doc_path : ''}')">
+                             onclick="injectQuoteIntoChat('${mail.summary.replace(/'/g, "\\'")}', '${mail.quote_doc_path ? mail.quote_doc_path : ''}', '${mail.id}', '${mail.collection_status}', '${mail.to_email}')">
                             
                             <div class="flex justify-between items-start mb-1">
                                 <div class="font-bold text-emerald-700 truncate mr-2">From: ${mail.to_email}</div>
@@ -1505,24 +1594,30 @@
     }
 
     // Explicitly inject tracking docs into the main active chat
-    window.injectQuoteIntoChat = function(summary, docPath) {
-        if(!currentSessionId) return showToast("Start a task session first!");
-        let msg = `**Supplier Reply Summary:**\n\n${summary}`;
-        if (docPath) {
-            msg += `\n\n[📥 Download Commercial Proposal](${docPath})`;
-        }
-        appendMessage(msg, "assistant", false);
+    window.injectQuoteIntoChat = function(summary, docPath, mailId = null, collectionStatus = null, fromEmail = null) {
+        if (!currentSessionId) return showToast("Start a task session first!");
         
-        // Save quietly so it persists next time they load
-        fetch('/api/chat', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({
-                session_id: currentSessionId,
-                message: msg,
-                is_manual_insert: true
-            })
-        }).catch(e => console.log(e));
+        let content = summary;
+        if (docPath) {
+            content += `\n\n[System] Found attachment: ${docPath}`;
+        }
+
+        // If we have mailId, we wrap it in our special UI block
+        if (mailId) {
+            const quoteData = {
+                id: mailId,
+                summary: summary,
+                doc_path: docPath,
+                collection_status: collectionStatus,
+                from_email: fromEmail
+            };
+            const trigger = `QUOTE_DATA_START\n${JSON.stringify(quoteData)}\nQUOTE_DATA_END`;
+            appendMessage(trigger, "assistant");
+            save_session_message(currentSessionId, null, "assistant", trigger, null, 'procurement');
+        } else {
+            appendMessage(content, "assistant");
+            save_session_message(currentSessionId, null, "assistant", content, null, 'procurement');
+        }
     };
 
     // Update quote status explicitly (shortlisting flow)
