@@ -80,12 +80,36 @@ try:
             print(f"[COSMOS ERROR] Could not create/get procurement_knowledge container: {e_pk}", flush=True)
             procurement_knowledge_container = None
             
+        # --- Dedicated container for Tracked Emails ---
+        try:
+            tracked_emails_container = database.create_container_if_not_exists(
+                id="tracked_emails",
+                partition_key=PartitionKey(path="/task_id")
+            )
+            print("[COSMOS INFO] tracked_emails container ready.", flush=True)
+        except Exception as e_te:
+            print(f"[COSMOS ERROR] Could not create/get tracked_emails container: {e_te}", flush=True)
+            tracked_emails_container = None
+
+        # --- Dedicated container for Task Supplier Quotes ---
+        try:
+            task_supplier_quotes_container = database.create_container_if_not_exists(
+                id="task_supplier_quotes",
+                partition_key=PartitionKey(path="/task_id")
+            )
+            print("[COSMOS INFO] task_supplier_quotes container ready.", flush=True)
+        except Exception as e_tsq:
+            print(f"[COSMOS ERROR] Could not create/get task_supplier_quotes container: {e_tsq}", flush=True)
+            task_supplier_quotes_container = None
+
     else:
         print("Warning: COSMOS_ENDPOINT or COSMOS_KEY is missing. Cosmos DB features will be disabled.")
         client = None
         database = None
         container = None
         sessions_container = None
+        tracked_emails_container = None
+        task_supplier_quotes_container = None
 except Exception as e:
     print(f"Error initializing CosmosClient: {e}")
     client = None
@@ -293,13 +317,13 @@ def get_session_messages(session_id):
         msg_count = len(messages)
         print(f"[COSMOS INFO] Loaded session {session_id} with {msg_count} messages.", flush=True)
         # Strip timestamp so OpenAI only gets role/content
-        clean_messages = [{"role": m["role"], "content": m["content"]} for m in messages]
-        return clean_messages
+        # Keep full message for UI but clean version for AI (done at the call site if needed)
+        return messages
     except Exception as e:
         print(f"[COSMOS ERROR] Error retrieving session {session_id}: {e}", flush=True)
         return None
 
-def save_session_message(session_id, user_email, role, content, title=None):
+def save_session_message(session_id, user_email, role, content, title=None, agent_type="personal", task_id=None):
     """
     Appends a message to a session or creates a new one in chat_sessions container.
     Sets TTL of 5 days (432000 seconds) for automatic deletion.
@@ -324,10 +348,17 @@ def save_session_message(session_id, user_email, role, content, title=None):
                 "id": session_id,
                 "user_email": user_email,
                 "session_title": title or "New Chat",
+                "agent_type": agent_type,
+                "task_id": task_id,
                 "messages": [],
                 "created_at": datetime.datetime.utcnow().isoformat(),
                 "ttl": 432000  # 5 days in seconds
             }
+
+        # Ensure agent_type and task_id are updated if switched
+        session["agent_type"] = agent_type
+        if task_id:
+            session["task_id"] = task_id
 
         session["messages"].append({
             "role": role,
@@ -681,6 +712,130 @@ def mark_notification_read(notification_id):
     except Exception as e:
         print(f"[COSMOS ERROR] mark_notification_read: {e}")
         return False
+
+# =======================
+# TRACKED EMAILS MANAGEMENT
+# =======================
+
+def save_tracked_email(task_id, session_id, to_email, subject, tracking_id, user_email, email_body=""):
+    if not tracked_emails_container: return False
+    doc = {
+        "id": tracking_id,
+        "task_id": task_id,
+        "session_id": session_id,
+        "user_email": user_email.lower(),
+        "to_email": to_email,
+        "subject": subject,
+        "email_body": email_body,
+        "status": "Waiting for Reply",
+        "reply_content": None,
+        "summary": None,
+        "quote_doc_path": None,
+        "created_at": datetime.datetime.utcnow().isoformat()
+    }
+    try:
+        tracked_emails_container.upsert_item(body=doc)
+        return True
+    except Exception as e:
+        print(f"[COSMOS ERROR] save_tracked_email: {e}")
+        return False
+
+def get_tracked_emails_for_task(task_id):
+    if not tracked_emails_container: return []
+    query = {
+        "query": "SELECT * FROM c WHERE c.task_id = @task_id ORDER BY c.created_at DESC",
+        "parameters": [
+            {"name": "@task_id", "value": task_id}
+        ]
+    }
+    try:
+        return list(tracked_emails_container.query_items(query=query, enable_cross_partition_query=True))
+    except Exception as e:
+        print(f"[COSMOS ERROR] get_tracked_emails_for_task: {e}")
+        return []
+
+def update_tracked_email_reply(tracking_id, task_id, reply_content, summary, quote_doc_path=None, ai_parsed_data=None):
+    if not tracked_emails_container: return False
+    try:
+        doc = tracked_emails_container.read_item(item=tracking_id, partition_key=task_id)
+        doc["status"] = "Reply Received"
+        doc["reply_content"] = reply_content
+        doc["summary"] = summary
+        if quote_doc_path:
+            doc["quote_doc_path"] = quote_doc_path
+        if ai_parsed_data:
+            doc["ai_parsed_data"] = ai_parsed_data
+        doc["updated_at"] = datetime.datetime.utcnow().isoformat()
+        tracked_emails_container.upsert_item(body=doc)
+        return True
+    except Exception as e:
+        print(f"[COSMOS ERROR] update_tracked_email_reply: {e}")
+        return False
+
+def save_task_supplier_quote(task_id, tracking_id, supplier_email, summary, parsed_json):
+    if not task_supplier_quotes_container: return False
+    try:
+        quote_id = str(uuid.uuid4())
+        doc = {
+            "id": quote_id,
+            "task_id": task_id,
+            "tracking_id": tracking_id,
+            "supplier_email": supplier_email,
+            "summary": summary,
+            "items": parsed_json.get("items", []),
+            "parsed_json": parsed_json,
+            "collection_status": "pending", # States: pending, collected, discarded
+            "created_at": datetime.datetime.utcnow().isoformat()
+        }
+        task_supplier_quotes_container.upsert_item(body=doc)
+        return quote_id
+    except Exception as e:
+        print(f"[COSMOS ERROR] save_task_supplier_quote: {e}")
+        return False
+
+def update_task_supplier_quote_status(quote_id, task_id, status):
+    if not task_supplier_quotes_container: return False
+    try:
+        doc = task_supplier_quotes_container.read_item(item=quote_id, partition_key=task_id)
+        doc["collection_status"] = status
+        task_supplier_quotes_container.upsert_item(body=doc)
+        return True
+    except Exception as e:
+        print(f"[COSMOS ERROR] update_task_supplier_quote_status: {e}")
+        return False
+
+def get_task_supplier_quotes(task_id, status_filter=None):
+    if not task_supplier_quotes_container: return []
+    try:
+        if status_filter:
+            query = "SELECT * FROM c WHERE c.task_id = @taskId AND c.collection_status = @status ORDER BY c.created_at DESC"
+            parameters = [{"name": "@taskId", "value": task_id}, {"name": "@status", "value": status_filter}]
+        else:
+            query = "SELECT * FROM c WHERE c.task_id = @taskId ORDER BY c.created_at DESC"
+            parameters = [{"name": "@taskId", "value": task_id}]
+        return list(task_supplier_quotes_container.query_items(query=query, parameters=parameters, enable_cross_partition_query=True))
+    except Exception as e:
+        print(f"[COSMOS ERROR] get_task_supplier_quotes: {e}")
+        return []
+
+def get_pending_tracked_emails(user_email=None):
+    if not tracked_emails_container: return []
+    q_str = "SELECT * FROM c WHERE c.status = 'Waiting for Reply'"
+    parameters = []
+    if user_email:
+        q_str += " AND c.user_email = @email"
+        parameters.append({"name": "@email", "value": user_email.lower()})
+    
+    query = {
+        "query": q_str,
+        "parameters": parameters
+    }
+    try:
+        return list(tracked_emails_container.query_items(query=query, enable_cross_partition_query=True))
+    except Exception as e:
+        print(f"[COSMOS ERROR] get_pending_tracked_emails: {e}")
+        return []
+
 
 # =======================
 # MAIN EXECUTION

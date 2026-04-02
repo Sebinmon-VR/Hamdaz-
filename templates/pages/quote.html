@@ -73,6 +73,26 @@
             </div>
         </div>
 
+        <!-- Load from Task (AI) -->
+        <div class="card mb-4 p-3 border-info" style="background-color: #f0f8ff;">
+            <h5 class="text-info mb-3">Auto-fill from AI Procurement Agent</h5>
+            <div class="row g-3">
+                <div class="col-md-5">
+                    <select class="form-select" id="aiTaskSelect">
+                        <option value="">Select a tracked SharePoint Task...</option>
+                    </select>
+                </div>
+                <div class="col-md-5">
+                    <select class="form-select" id="aiSupplierQuoteSelect" disabled>
+                        <option value="">-- Waiting for task selection --</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <button type="button" class="btn btn-info text-white w-100" id="loadAiQuoteBtn">Load AI Data</button>
+                </div>
+            </div>
+        </div>
+
         <!-- Supplier Quote Upload -->
         <div class="card mb-4 p-3">
             <h5>Upload Supplier Quote</h5>
@@ -186,6 +206,21 @@ document.addEventListener("DOMContentLoaded", function() {
     customerSelect.addEventListener('change', updateCustomerFields);
     updateCustomerFields();
 
+    const quoteDateInput = document.querySelector('input[name="quote_date"]');
+    const expiryDateInput = document.querySelector('input[name="expiry_date"]');
+
+    function updateExpiryDate() {
+        if (quoteDateInput.value) {
+            const quoteDate = new Date(quoteDateInput.value);
+            const expiryDate = new Date(quoteDate);
+            expiryDate.setDate(quoteDate.getDate() + 30);
+            expiryDateInput.value = expiryDate.toISOString().split('T')[0];
+        }
+    }
+
+    quoteDateInput.addEventListener('change', updateExpiryDate);
+    if (!expiryDateInput.value) updateExpiryDate();
+
     const addItemBtn = document.getElementById('addItemBtn');
     const itemsTableBody = document.getElementById('itemsTable').getElementsByTagName('tbody')[0];
 
@@ -253,10 +288,151 @@ document.addEventListener("DOMContentLoaded", function() {
     });
 
     document.getElementById('quoteForm').addEventListener('submit', function() {
-        updateCalculations(); // ensure totals updated before submission
+        updateCalculations();
     });
 
     updateCalculations(); // initial
+    
+    // ==========================================
+    // AI AUTO-FILL LOGIC
+    // ==========================================
+    const aiTaskSelect = document.getElementById('aiTaskSelect');
+    const aiSupplierQuoteSelect = document.getElementById('aiSupplierQuoteSelect');
+    const loadAiQuoteBtn = document.getElementById('loadAiQuoteBtn');
+
+    let currentQuotesData = [];
+
+    let allTasksData = [];
+    // Fetch tasks eagerly
+    fetch('/api/procurement/tasks')
+        .then(r => r.json())
+        .then(d => {
+            if (d.tasks) {
+                allTasksData = d.tasks;
+                d.tasks.forEach(t => {
+                    const opt = document.createElement('option');
+                    opt.value = t.id;
+                    opt.innerText = t.Title;
+                    aiTaskSelect.appendChild(opt);
+                });
+            }
+        }).catch(e => console.error("Could not load tasks", e));
+
+    aiTaskSelect.addEventListener('change', async function() {
+        const taskId = this.value;
+        aiSupplierQuoteSelect.disabled = true;
+        aiSupplierQuoteSelect.innerHTML = '<option value="">-- Loading Collected Quotes... --</option>';
+        if(!taskId) {
+            aiSupplierQuoteSelect.innerHTML = '<option value="">-- Waiting for task selection --</option>';
+            return;
+        }
+
+        // Auto-fill task metadata
+        const task = allTasksData.find(t => t.id === taskId);
+        if (task) {
+            // 1. Reference #
+            document.querySelector('input[name="reference"]').value = task.Title || "";
+            // 2. BCD Date
+            if (task.BCD && task.BCD !== 'N/A') {
+                try {
+                    const bcdDate = new Date(task.BCD).toISOString().split('T')[0];
+                    document.querySelector('input[name="bcd"]').value = bcdDate;
+                } catch(e) {
+                    document.querySelector('input[name="bcd"]').value = task.BCD;
+                }
+            }
+            // 3. Customer Mapping
+            if (task.Customer || task.Client) {
+                const targetCustomer = (task.Customer || task.Client).toLowerCase();
+                for (let i = 0; i < customerSelect.options.length; i++) {
+                    if (customerSelect.options[i].text.toLowerCase().includes(targetCustomer)) {
+                        customerSelect.selectedIndex = i;
+                        updateCustomerFields();
+                        break;
+                    }
+                }
+            }
+        }
+        
+        try {
+            const res = await fetch('/api/extracted_quotes/' + taskId);
+            const data = await res.json();
+            if (data.success && data.data && data.data.length > 0) {
+                currentQuotesData = data.data;
+                aiSupplierQuoteSelect.innerHTML = '<option value="">Select a specific supplier quote...</option>';
+                data.data.forEach(q => {
+                    const opt = document.createElement('option');
+                    opt.value = q.quote_id;
+                    opt.innerText = `[${q.items ? q.items.length : 0} items] ${q.from_email || 'Supplier'}`;
+                    aiSupplierQuoteSelect.appendChild(opt);
+                });
+                aiSupplierQuoteSelect.disabled = false;
+            } else {
+                aiSupplierQuoteSelect.innerHTML = '<option value="">No collected quotes found for this task.</option>';
+            }
+        } catch(e) {
+            console.error(e);
+            aiSupplierQuoteSelect.innerHTML = '<option value="">Error fetching quotes</option>';
+        }
+    });
+
+    loadAiQuoteBtn.addEventListener('click', async function() {
+        const quoteId = aiSupplierQuoteSelect.value;
+        if (!quoteId) return alert('Please explicitly select a supplier quote from the dropdown.');
+
+        const latestQuote = currentQuotesData.find(q => q.quote_id === quoteId);
+        if(!latestQuote) return alert('Quote object not found.');
+
+        const itemsList = latestQuote.items;
+                
+                if (itemsList && itemsList.length > 0) {
+                    // Empty existing rows except we need at least one to clone, or we just manually build it
+                    // Actually, let's keep the first row (clear its values) and remove the rest
+                    while(itemsTableBody.rows.length > 1) {
+                        itemsTableBody.deleteRow(1);
+                    }
+                    
+                    itemsList.forEach((item, idx) => {
+                        let row;
+                        if (idx === 0) {
+                            row = itemsTableBody.rows[0];
+                        } else {
+                            row = itemsTableBody.rows[0].cloneNode(true);
+                            itemsTableBody.appendChild(row);
+                        }
+                        
+                        // Populate values matching JSON
+                        // JSON keys: description, qty, rate, tax_rate
+                        
+                        // Helper to safely parse any float that comes back from AI (eg "1,500.00")
+                        function parseAI(val, def=0) {
+                            if(typeof val === 'number') return val;
+                            if(!val) return def;
+                            const stripped = String(val).replace(/[^\d.-]/g, '');
+                            const num = parseFloat(stripped);
+                            return isNaN(num) ? def : num;
+                        }
+                        
+                        row.querySelector('input[name="item_details[]"]').value = item.description || "Vendor Item";
+                        row.querySelector('input[name="brand[]"]').value = "N/A";
+                        row.querySelector('.quantity').value = parseAI(item.qty, 1);
+                        row.querySelector('.rate').value = parseAI(item.rate, 0);
+                        
+                        // Handle Tax mapping
+                        const taxSelect = row.querySelector('.tax');
+                        const tax_rate = parseAI(item.tax_rate, 0.05);
+                        if (tax_rate === 0) taxSelect.value = "0";
+                        else taxSelect.value = "0.05";
+                    });
+                    
+                    updateCalculations();
+                    // Alert success
+                    alert(`Successfully imported ${itemsList.length} items from supplier: ${latestQuote.from_email}`);
+                } else {
+                    alert('Attached AI Extracted quote had no valid items.');
+                }
+        this.innerText = ogText;
+    });
 });
 </script>
 {% endblock %}

@@ -189,12 +189,8 @@ def background_updater():
             # Perform smart rotation
             swp()
             
-            # Sync supplier emails in background
-            try:
-                sync_all_pending_supplier_emails()
-            except Exception as se:
-                print(f"[BG-SYNC ERROR] {se}")
-
+            # print("Indexing tasks to PineCone")
+            # index_tasks()    # Update indexing for Pinecone  
             print(f"[BG] Data updated successfully at {datetime.now()}", flush=True)
             
         except Exception as e:
@@ -559,26 +555,8 @@ def get_tracked_emails(task_id):
     if "user" not in session:
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     
-    from cosmos import get_tracked_emails_for_task, task_supplier_quotes_container
     emails = get_tracked_emails_for_task(task_id)
-    
-    # Enrich with collection status from task_supplier_quotes
-    enriched_emails = []
-    for mail in emails:
-        status_in_db = None
-        if task_supplier_quotes_container:
-            query = "SELECT c.status FROM c WHERE c.tracking_id = @tid AND c.task_id = @task_id"
-            res = list(task_supplier_quotes_container.query_items(query=query, parameters=[
-                {'name':'@tid', 'value': mail['id']},
-                {'name':'@task_id', 'value': task_id}
-            ], enable_cross_partition_query=True))
-            if res:
-                status_in_db = res[0].get('status')
-        
-        mail['collection_status'] = status_in_db
-        enriched_emails.append(mail)
-
-    return jsonify({"success": True, "data": enriched_emails})
+    return jsonify({"success": True, "data": emails})
 
 def generate_temp_quote_docx(summary, reply_content, tracking_id):
     """Generates a temporary docx based on AI extraction from supplier reply"""
@@ -605,70 +583,54 @@ def generate_temp_quote_docx(summary, reply_content, tracking_id):
         print("Failed to generate DOCX:", e)
         return None
 
-def sync_supplier_emails_for_user(user_email):
-    """Refactored to perform targeted searches for each pending email in Cosmos DB."""
-    from sharepoint_items import get_access_token
-    from cosmos import get_pending_tracked_emails, update_tracked_email_reply, save_session_message, save_task_supplier_quote
-    import requests, re, json
-    from bs4 import BeautifulSoup
+@app.route("/api/check_email_replies", methods=["POST"])
+def check_email_replies():
+    """Polls Graph API for recent unread emails, checks tracking IDs, updates cosmos"""
+    if "user" not in session or "access_token" not in session:
+        return jsonify({"success": False, "error": "Unauthorized"}), 401
+
+    user_email = session["user"].get("mail") or session["user"].get("userPrincipalName", "")
     
+    # Use app-level access token instead of user session token, bypassing user consent hurdles
+    from sharepoint_items import get_access_token
     try:
         app_access_token = get_access_token()
-        pending_emails = get_pending_tracked_emails(user_email=user_email)
-        if not pending_emails:
-            return 0
+    except Exception as e:
+        return jsonify({"success": False, "error": "Failed to get app token"}), 500
+    
+    # We retrieve pending emails to check if we even need to poll
+    pending_emails = get_pending_tracked_emails(user_email=user_email)
+    if not pending_emails:
+        return jsonify({"success": True, "message": "No pending emails."})
 
-        headers = {"Authorization": f"Bearer {app_access_token}"}
+    headers = {
+        "Authorization": f"Bearer {app_access_token}"
+    }
+    
+    # Fetch top 20 unread emails using the /users endpoint instead of /me
+    url = f"{GRAPH_API_ENDPOINT}/users/{user_email}/messages?$filter=isRead eq false&$select=id,subject,bodyPreview,body&$top=20"
+    try:
+        resp = requests.get(url, headers=headers)
+        if resp.status_code != 200:
+            return jsonify({"success": False, "error": "Failed to fetch mails"}), resp.status_code
+            
+        messages = resp.json().get("value", [])
         matched = 0
+        from bs4 import BeautifulSoup
 
-        for pe in pending_emails:
-            tracking_id = pe['id']
-            subject = pe.get('subject', '')
-            supplier_email = pe.get('to_email', '')
-            task_id = pe['task_id']
-            session_id = pe.get('session_id')
+        for msg in messages:
+            html_body = msg.get("body", {}).get("content", "")
+            plainTextPreview = msg.get("bodyPreview", "")
             
-            # 1. Perform resilient keyword extraction for search
-            # Remove common prefixes/noise to get core keywords
-            clean_subject = subject.replace("Re:", "").replace("RE:", "").replace("Fwd:", "").replace("Procurement Inquiry for", "").strip()
-            # Split into keywords and take first 3-4 to avoid overly specific queries
-            keywords = [k for k in clean_subject.split() if len(k) > 2][:4]
-            keyword_search = " ".join(keywords)
-            
-            # 2. Perform targeted search in Graph API
-            # IMPORTANT: The entire query must be wrapped in double quotes for KQL prefixes like 'from:' to work properly
-            search_query = f'from:{supplier_email}'
-            if keyword_search:
-                search_query += f' {keyword_search}'
-            
-            # Wrap the whole thing in double-quotes and then URL encode
-            quoted_search = f'"{search_query}"'
-            print(f"[SYNC] Searching for {tracking_id} using KQL: {quoted_search}")
-            
-            url = f"{GRAPH_API_ENDPOINT}/users/{user_email}/messages?$search={requests.utils.quote(quoted_search)}&$top=10&$select=id,subject,bodyPreview,body,from"
-            
-            resp = requests.get(url, headers=headers)
-            if resp.status_code != 200:
-                print(f"[SYNC] Search failed for {tracking_id}: {resp.text}")
-                continue
+            # Simple REF matching
+            match = re.search(r'REF:([a-f0-9\-]{36})', html_body)
+            if match:
+                tracking_id = match.group(1)
                 
-            messages = resp.json().get("value", [])
-            for msg in messages:
-                html_body = msg.get("body", {}).get("content", "")
-                plainTextPreview = msg.get("bodyPreview", "")
-                
-                # Verify match: Either REF ID is present OR Subject/Sender match is strong
-                found_ref = re.search(r'REF:([a-f0-9\-]{36})', html_body)
-                is_direct_match = (found_ref and found_ref.group(1) == tracking_id)
-                
-                # Fallback: if no REF found, check if sender matches (search already filtered subject)
-                is_fallback_match = False
-                if not found_ref:
-                    msg_sender = msg.get('from', {}).get('emailAddress', {}).get('address', '').lower()
-                    if msg_sender == supplier_email.lower():
-                        is_fallback_match = True
-                
-                if is_direct_match or is_fallback_match:
+                # Check if this tracking_id belongs to a pending email
+                pending_match = next((pe for pe in pending_emails if pe['id'] == tracking_id), None)
+                if pending_match:
+                    # Found a reply!
                     try:
                         soup = BeautifulSoup(html_body, "html.parser")
                         clean_text = soup.get_text(separator=' ').strip()
@@ -678,80 +640,74 @@ def sync_supplier_emails_for_user(user_email):
                     # Mark read
                     requests.post(f"{GRAPH_API_ENDPOINT}/users/{user_email}/messages/{msg['id']}", headers=headers, json={"isRead": True})
                     
-                    # AI Extraction
+                    # Ask OpenAI to extract quote data to JSON
                     ai_prompt = f"""
-                    Analyze this supplier reply for procurement context. Extract pricing/quote details into JSON.
+                    You are a procurement parsing AI. Analyze the following supplier reply. 
+                    If it contains any pricing, quote, or amounts, extract it into this EXACT JSON format:
                     {{
                         "is_quote": true,
-                        "bill_to": "Recipient name",
-                        "items": [{{"description": "...", "qty": 1, "rate": 0}}],
-                        "summary": "1-sentence summary of the reply",
-                        "notes": "..."
+                        "bill_to": "Extracted recipient name or company, or blank",
+                        "items": [
+                            {{"description": "Item 1", "qty": 10, "rate": 1500.0, "tax_rate": 0.05}}
+                        ],
+                        "notes": "Any other context, supplier terms, or lead time",
+                        "summary": "A very brief 1-sentence summary of the reply"
                     }}
-                    Reply content: {clean_text[:5000]}
+                    If no quote is found, return:
+                    {{
+                        "is_quote": false,
+                        "summary": "..."
+                    }}
+                    Use default 5% (0.05) tax_rate if not specified. Do not include markdown formatting or backticks around the JSON.
+                    Reply: {clean_text}
                     """
                     try:
                         from openai import OpenAI
+                        import json
                         client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-                        ai_res = client.chat.completions.create(
+                        ai_response = client.chat.completions.create(
                             model="gpt-4o",
-                            messages=[{"role": "system", "content": "Return raw JSON only."}, {"role": "user", "content": ai_prompt}],
+                            messages=[{"role": "system", "content": "You are a JSON REST API. Return only raw JSON string."}, {"role": "user", "content": ai_prompt}],
+                            max_tokens=600,
                             temperature=0.1
                         )
-                        raw_ai = ai_res.choices[0].message.content.strip().replace("```json","").replace("```","")
-                        parsed = json.loads(raw_ai)
-                        summary = parsed.get("summary", "New reply received.")
                         
-                        quote_doc_path = f'/api/quotes/download/{tracking_id}' if parsed.get("is_quote") else None
+                        raw_reply = ai_response.choices[0].message.content.strip()
+                        if raw_reply.startswith("```json"):
+                            raw_reply = raw_reply[7:-3]
+                        elif raw_reply.startswith("```"):
+                            raw_reply = raw_reply[3:-3]
+                            
+                        parsed = json.loads(raw_reply)
+                        summary = parsed.get("summary", "No summary.")
+                        
+                        quote_doc_path = None
                         if parsed.get("is_quote"):
-                            save_task_supplier_quote(task_id, tracking_id, supplier_email, summary, parsed)
+                            quote_doc_path = f'/api/quotes/download/{tracking_id}'
+                            from cosmos import save_task_supplier_quote
+                            save_task_supplier_quote(pending_match['task_id'], tracking_id, msg['from']['emailAddress']['address'], summary, parsed)
 
-                        update_tracked_email_reply(tracking_id, task_id, clean_text, summary, quote_doc_path, ai_parsed_data=parsed)
+                        update_tracked_email_reply(tracking_id, pending_match['task_id'], clean_text, summary, quote_doc_path, ai_parsed_data=parsed)
                         
+                        # Add system message to the chat session dynamically!
+                        session_id = pending_match.get('session_id')
                         if session_id:
-                            msg_content = f"**Supplier Reply Received ({supplier_email})!**\n\n{summary}"
-                            if quote_doc_path: msg_content += f"\n\n[📥 Download Commercial Proposal]({quote_doc_path})"
-                            save_session_message(session_id, user_email, "assistant", msg_content, agent_type="procurement", task_id=task_id)
-                        
+                            msg_content = f"**Supplier Reply Received!**\n\n{summary}"
+                            if quote_doc_path:
+                                msg_content += f"\n\n[📥 Download Commercial Proposal]({quote_doc_path})"
+                            save_session_message(session_id, user_email, "assistant", msg_content)
+                            
                         matched += 1
-                        break # Found the reply for this specific tracked item
+
                     except Exception as e:
-                        print(f"[SYNC] AI Error for {tracking_id}: {e}")
-            
-        return matched
-    except Exception as e:
-        print(f"[SYNC ERROR] {user_email}: {e}")
-        return 0
+                        print("AI Search/JSON Parse Error:", e)
 
-@app.route("/api/check_email_replies", methods=["POST"])
-def check_email_replies():
-    if "user" not in session:
-        return jsonify({"success": False, "error": "Unauthorized"}), 401
-    user_email = session["user"].get("mail") or session["user"].get("userPrincipalName", "")
-    matched = sync_supplier_emails_for_user(user_email)
-    return jsonify({"success": True, "matched": matched})
-
-def sync_all_pending_supplier_emails():
-    """Global background function to sync emails for all users with pending tracked emails."""
-    from cosmos import get_pending_tracked_emails
-    try:
-        pending = get_pending_tracked_emails(user_email=None) # Get all pending
-        if not pending:
-            return
-            
-        unique_users = {pe['user_email'] for pe in pending if 'user_email' in pe}
-        print(f"[BG-SYNC] Checking replies for {len(unique_users)} users: {unique_users}")
+        return jsonify({"success": True, "matched": matched})
         
-        for user_email in unique_users:
-            try:
-                count = sync_supplier_emails_for_user(user_email)
-                if count > 0:
-                    print(f"[BG-SYNC] Found {count} new replies for {user_email}")
-            except Exception as e:
-                print(f"[BG-SYNC ERROR] User {user_email}: {e}")
     except Exception as e:
-        print(f"[BG-SYNC ERROR] Global loop: {e}")
-
+        import traceback
+        print(traceback.format_exc())
+        return jsonify({"success": False, "error": str(e)}), 500
 # ==============================================================
 def get_first(quote_data, key, index=0, default=""):
     """
@@ -1163,36 +1119,10 @@ def pa_get_sessions():
 def pa_get_session(session_id):
     if "user" not in session:
         return jsonify({"error": "Unauthorized"}), 401
-    from cosmos import sessions_container
-    try:
-        session_doc = sessions_container.read_item(item=session_id, partition_key=session_id)
-        return jsonify({
-            "messages": session_doc.get("messages", []),
-            "agent_type": session_doc.get("agent_type", "personal"),
-            "session_title": session_doc.get("session_title", "Chat")
-        })
-    except Exception as e:
-        print(f"Error fetching session: {e}")
+    messages = get_session_messages(session_id)
+    if messages is None:
         return jsonify({"error": "Session not found"}), 404
-
-@app.route("/api/personal_assistant/log", methods=["POST"])
-def pa_save_log():
-    if "user" not in session:
-        return jsonify({"error": "Unauthorized"}), 401
-    user_email = (session["user"].get("mail") or session["user"].get("userPrincipalName", "")).lower()
-    data = request.json
-    session_id = data.get("session_id")
-    message = data.get("message")
-    status = data.get("status", "info") # success, error, info
-    task_id = data.get("task_id")
-    
-    if not session_id or not message:
-        return jsonify({"error": "Missing session_id or message"}), 400
-        
-    from cosmos import save_session_message
-    content = f"[LOG][{status.upper()}] {message}"
-    save_session_message(session_id, user_email, "system_log", content, agent_type="procurement", task_id=task_id)
-    return jsonify({"success": True})
+    return jsonify({"messages": messages})
 
 @app.route("/api/personal_assistant/sessions/<session_id>", methods=["DELETE"])
 def pa_delete_session(session_id):
@@ -1216,7 +1146,6 @@ def pa_chat():
     
     message = request.form.get("message", "")
     session_id = request.form.get("session_id", "")
-    agent_type = request.form.get("agent_type", "personal")
     files = request.files.getlist("files")
     is_analysis = request.form.get("is_analysis", "false").lower() == "true"
     
@@ -1262,11 +1191,10 @@ def pa_chat():
     if session_id and session_id not in ("", "null", "undefined"):
         msgs = get_session_messages(session_id)
         if msgs:
-            # Clean history for OpenAI: filter out system logs and strip timestamps
-            chat_history = [{"role": m["role"], "content": m["content"]} for m in msgs if m.get("role") != "system_log"]
-            print(f"[PA_CHAT] Prepared {len(chat_history)} messages for AI (filtered logs)", flush=True)
+            chat_history = msgs
+            print(f"[PA_CHAT] Loaded {len(chat_history)} messages from session {session_id}", flush=True)
         else:
-            print(f"[PA_CHAT] No messages found for session {session_id}", flush=True)
+            print(f"[PA_CHAT] No messages found for session {session_id} (new or empty session)", flush=True)
     else:
         print("[PA_CHAT] No session_id — starting fresh conversation", flush=True)
             
@@ -1277,8 +1205,8 @@ def pa_chat():
     if not first_message:
         title = None  # Don't override existing session title
         
-    print(f"[PA_CHAT] Saving user message. title={title}, first_message={first_message}, agent={agent_type}", flush=True)
-    generated_session_id = save_session_message(session_id, email, "user", message, title=title, agent_type=agent_type)
+    print(f"[PA_CHAT] Saving user message. title={title}, first_message={first_message}", flush=True)
+    generated_session_id = save_session_message(session_id, email, "user", message, title=title)
     print(f"[PA_CHAT] Generated/Updated session_id: {generated_session_id}", flush=True)
     
     try:
@@ -1291,10 +1219,10 @@ def pa_chat():
         # Looking at run_personal_assistant signature in assistant.py...
         reply = run_personal_assistant(username, message, files_text, chat_history, is_admin_user, system_instr=system_instr)
         
-        # Save assistant reply to Cosmos (ensure agent_type is passed)
-        save_session_message(generated_session_id, email, "assistant", reply, agent_type=agent_type)
+        # Save assistant reply to Cosmos
+        save_session_message(generated_session_id, email, "assistant", reply)
         
-        return jsonify({"reply": reply, "session_id": generated_session_id, "agent_type": agent_type})
+        return jsonify({"reply": reply, "session_id": generated_session_id})
     except Exception as e:
         import traceback
         return jsonify({"error": str(e) + "\n" + traceback.format_exc()}), 500
@@ -2807,30 +2735,12 @@ def api_quote_status():
     task_id = data.get('task_id')
     status = data.get('status')
     
-    from cosmos import task_supplier_quotes_container, update_task_supplier_quote_status, save_task_supplier_quote, tracked_emails_container
+    from cosmos import task_supplier_quotes_container, update_task_supplier_quote_status
     if not task_supplier_quotes_container: return jsonify({'success': False}), 500
     
     query = "SELECT * FROM c WHERE c.tracking_id = @trackId AND c.task_id = @taskId"
     res = list(task_supplier_quotes_container.query_items(query=query, parameters=[{'name':'@trackId','value':tracking_id},{'name':'@taskId','value':task_id}], enable_cross_partition_query=True))
-    
-    if not res:
-        # Fallback: Check if it exists in tracked_emails and has AI data
-        print(f"[STATUS] Quote {tracking_id} not in dedicated container. Checking tracked_emails fallback...")
-        tracked_res = list(tracked_emails_container.query_items(query="SELECT * FROM c WHERE c.id = @id", parameters=[{'name':'@id','value':tracking_id}], enable_cross_partition_query=True))
-        if tracked_res:
-            t_doc = tracked_res[0]
-            ai_data = t_doc.get('ai_parsed_data')
-            if ai_data:
-                # Synthesize the record in task_supplier_quotes
-                save_task_supplier_quote(task_id, tracking_id, t_doc.get('to_email'), t_doc.get('summary'), ai_data)
-                # Re-query
-                res = list(task_supplier_quotes_container.query_items(query=query, parameters=[{'name':'@trackId','value':tracking_id},{'name':'@taskId','value':task_id}], enable_cross_partition_query=True))
-            else:
-                return jsonify({'success': False, 'message': 'No AI data found for this email to shortlist.'}), 400
-        else:
-            return jsonify({'success': False, 'message': 'Quote not found'}), 404
-    
-    if not res: return jsonify({'success': False, 'message': 'Failed to synthesize quote record'}), 500
+    if not res: return jsonify({'success': False, 'message': 'Quote not found'}), 404
     
     quote_id = res[0]['id']
     success = update_task_supplier_quote_status(quote_id, task_id, status)
@@ -2877,14 +2787,13 @@ def api_init_chat():
     if 'user' not in session: return jsonify({'error': 'Unauthorized'}), 401
     data = request.json or {}
     session_id = data.get('session_id')
-    task_id = data.get('task_id')
     task_title = data.get('title', 'Procurement Context')
     if not session_id: return jsonify({'error': 'Missing session_id'}), 400
     user_email = session['user'].get('mail') or session['user'].get('userPrincipalName')
     # Use internal cosmos func to init session without real user message
     from cosmos import save_session_message
     # We save a hidden system initialized flag
-    save_session_message(session_id, user_email, 'system', f'Session initialized for {task_title}', title=task_title, agent_type='procurement', task_id=task_id)
+    save_session_message(session_id, user_email, 'system', f'Session initialized for {task_title}', title=task_title)
     return jsonify({'success': True})
 
 # ==============================================================

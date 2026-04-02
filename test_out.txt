@@ -340,7 +340,7 @@
             <div id="trackedEmailsArea" class="hidden mt-6 bg-slate-50 p-3 rounded-xl border border-slate-200 shadow-inner">
                 <div class="flex items-center justify-between mb-3 border-b-2 border-slate-200 pb-1">
                     <h4 class="text-xs font-bold text-indigo-500 uppercase tracking-wider flex items-center gap-1"><i class="fa-solid fa-briefcase"></i> Task Workspace</h4>
-                    <button onclick="fetchTrackedEmails(currentTaskId); showToast('Refreshing workspace...');" class="text-indigo-400 hover:text-indigo-600"><i class="fa-solid fa-arrows-rotate text-[10px]"></i></button>
+                    <button onclick="fetchTrackedEmails(currentTaskId)" class="text-indigo-400 hover:text-indigo-600"><i class="fa-solid fa-arrows-rotate text-[10px]"></i></button>
                 </div>
                 
                 <div class="space-y-4">
@@ -504,9 +504,8 @@
     const currentChatTitle = document.getElementById("currentChatTitle");
 
     let currentSessionId = sessionStorage.getItem('pa_session_id') || null;
-    let cachedSessions = []; // Global session store
     let selectedAgent = 'general';
-    let currentTaskId = sessionStorage.getItem('pa_task_id') || null;
+    let currentTaskId = null;
     let isLogExpanded = true;
     let currentChatLogContainer = null;
     let activeLoadingWrapper = null;
@@ -525,7 +524,7 @@
                 .then(d => {
                     if(d.success && d.matched > 0 && currentTaskId) {
                         fetchTrackedEmails(currentTaskId);
-                        if (currentSessionId) loadSession(currentSessionId, currentChatTitle.textContent);
+                        if (currentSessionId) fetchSessionMessages(currentSessionId);
                         showToast(`Received ${d.matched} new supplier reply!`);
                     }
                 }).catch(e => console.error("Email polling error", e));
@@ -546,7 +545,6 @@
             const res = await fetch("/api/personal_assistant/sessions");
             const data = await res.json();
             if (data.sessions) {
-                cachedSessions = data.sessions;
                 renderSessionList(data.sessions);
             }
         } catch (e) {
@@ -585,75 +583,33 @@
         currentSharedProjectId = null;
         stopSharedProjectPolling();
         
-        // update sidebar to highlight active session
-        currentSessionId = sessionId;
-        sessionStorage.setItem('pa_session_id', sessionId);
-        renderSessionList(cachedSessions || []);
+        // refresh sidebar to highlight active session
+        fetchSessions();
+        
+        // Reset Tabs to General if it's a personal session
+        selectAgent('general', true);
 
         // update URL
         const newUrl = window.location.protocol + "//" + window.location.host + window.location.pathname + '?session=' + sessionId;
         window.history.pushState({ path: newUrl }, '', newUrl);
 
         const loading = appendLoadingBubble();
-        loading.querySelector('.thinking-status').textContent = 'Restoring Session...';
+        loading.querySelector('.thinking-status').textContent = 'Loading...';
 
         try {
             const res = await fetch(`/api/personal_assistant/sessions/${sessionId}`);
             const data = await res.json();
-            
-            if (loading) loading.remove();
 
-            // Clear chat and logs for fresh load
-            chatBox.innerHTML = "";
-            const logs = document.getElementById('agentLogs');
-            const inlineLogs = document.getElementById('inlineLogsContainer');
-            if (logs) logs.innerHTML = "";
-            if (inlineLogs) inlineLogs.innerHTML = "";
-
-            if (data.agent_type) {
-                console.log("[PA] Session has agent_type:", data.agent_type);
-                selectAgent(data.agent_type, true);
-            } else {
-                selectAgent('general', true);
-            }
-            
-            if (data.task_id) {
-                currentTaskId = data.task_id;
-                sessionStorage.setItem('pa_task_id', data.task_id);
-                fetchTrackedEmails(data.task_id);
-                // Highlight the task in overlay or update header title
-                currentChatTitle.textContent = title || "Procurement Task";
-                // Show the tracked emails area if in procurement mode
-                if (data.agent_type === 'procurement') {
-                    document.getElementById("trackedEmailsArea").classList.remove("hidden");
-                }
-            } else {
-                currentTaskId = null;
-                sessionStorage.removeItem('pa_task_id');
-                document.getElementById("trackedEmailsArea").classList.add("hidden");
-            }
+            loading.remove();
 
             if (data.messages) {
-                if (data.messages.length === 0) {
-                    showGreeting();
-                } else {
-                    data.messages.forEach(m => {
-                        if (m.role === "system_log") {
-                            // Format: [LOG][STATUS] Message
-                            const match = m.content.match(/\[LOG\]\[(.*?)\] (.*)/);
-                            if (match) {
-                                renderLogLocally(match[2], match[1].toLowerCase(), m.timestamp);
-                            }
-                        } else {
-                            appendMessage(m.content, m.role, false, m.user);
-                        }
-                    });
-                }
+                if (data.messages.length === 0) showGreeting();
+                data.messages.forEach(m => appendMessage(m.content, m.role, false, m.user));
             } else {
                 showGreeting();
             }
         } catch (e) {
-            if (loading) loading.remove();
+            loading.remove();
             console.error(e);
             appendMessage("Failed to load session history.", "assistant");
         }
@@ -980,11 +936,10 @@
             const formData = new FormData();
             formData.append("message", actualMessage);
             const sid = currentSessionId || sessionStorage.getItem('pa_session_id') || '';
-            console.log('[PA] Sending message. session_id:', sid || '(none — new session)', 'agent:', selectedAgent);
+            console.log('[PA] Sending message. session_id:', sid || '(none — new session)');
             if (sid) {
                 formData.append("session_id", sid);
             }
-            formData.append("agent_type", selectedAgent);
 
             // Send context data
             formData.append("agent_mode", selectedAgent);
@@ -1376,12 +1331,7 @@
         fetch('/api/chat/init', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({
-                session_id: currentSessionId, 
-                title: title, 
-                task_id: taskId,
-                agent_type: 'procurement'
-            })
+            body: JSON.stringify({session_id: currentSessionId, title: title})
         }).then(r => r.json()).then(d => {
             if(d.success) fetchSessions(); // Refresh Sidebar
         });
@@ -1465,32 +1415,16 @@
                         </div>`;
                     } else if(mail.status === "Reply Received") {
                         hasAnalyzed = true;
-                        const isDiscarded = mail.collection_status === 'discarded';
-                        const isCollected = mail.collection_status === 'collected';
-                        
                         analyzedList.innerHTML += `
-                        <div class="bg-white border ${isCollected ? 'border-emerald-400 ring-1 ring-emerald-100' : 'border-emerald-100'} p-2 rounded text-[11px] shadow-sm cursor-pointer hover:border-emerald-300 transition-all ${isDiscarded ? 'opacity-40 grayscale pointer-events-none' : ''}" 
-                             onclick="injectQuoteIntoChat('${mail.summary.replace(/'/g, "\\'")}', '${mail.quote_doc_path ? mail.quote_doc_path : ''}')">
-                            
-                            <div class="flex justify-between items-start mb-1">
-                                <div class="font-bold text-emerald-700 truncate mr-2">From: ${mail.to_email}</div>
-                                ${isCollected ? '<span class="text-[8px] bg-emerald-500 text-white px-1 rounded font-black uppercase">Collected</span>' : ''}
-                                ${isDiscarded ? '<span class="text-[8px] bg-gray-500 text-white px-1 rounded font-black uppercase">Discarded</span>' : ''}
-                            </div>
-                            
+                        <div class="bg-white border border-emerald-100 p-2 rounded text-[11px] shadow-sm cursor-pointer hover:border-emerald-300 transition-colors" onclick="injectQuoteIntoChat('${mail.summary.replace(/'/g, "\\'")}', '${mail.quote_doc_path ? mail.quote_doc_path : ''}')">
+                            <div class="font-bold text-emerald-700 truncate">From: ${mail.to_email} <i class="fa-solid fa-check text-[10px]"></i></div>
                             <p class="text-slate-600 mt-1 line-clamp-2">${mail.summary}</p>
                             ${mail.quote_doc_path ? `<span class="mt-2 text-indigo-600 hover:text-indigo-800 font-bold bg-indigo-50 px-2 py-1 rounded inline-block"><i class="fa-regular fa-file-word"></i> Insert into Chat</span>` : ''}
                             
                             <!-- Collection Workflow Buttons -->
-                            <div class="mt-2 flex gap-2 border-t pt-2" onclick="event.stopPropagation()">
-                                <button onclick="updateQuoteStatus('${mail.id}', '${currentTaskId}', 'collected')" 
-                                        class="flex-1 ${isCollected ? 'bg-emerald-500 text-white' : 'bg-emerald-100 hover:bg-emerald-200 text-emerald-800'} py-1 rounded font-semibold text-[10px] transition-colors">
-                                    <i class="fa-solid ${isCollected ? 'fa-check' : 'fa-plus'}"></i> ${isCollected ? 'Collected' : 'Collect'}
-                                </button>
-                                <button onclick="updateQuoteStatus('${mail.id}', '${currentTaskId}', 'discarded')" 
-                                        class="flex-1 bg-rose-100 hover:bg-rose-200 text-rose-800 py-1 rounded font-semibold text-[10px] transition-colors">
-                                    <i class="fa-solid fa-trash-can"></i> Discard
-                                </button>
+                            <div class="mt-2 flex gap-2 border-t pt-2">
+                                <button onclick="event.stopPropagation(); updateQuoteStatus('${mail.id}', '${currentTaskId}', 'collected')" class="flex-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-800 py-1 rounded font-semibold text-[10px]"><i class="fa-solid fa-plus"></i> Collect</button>
+                                <button onclick="event.stopPropagation(); updateQuoteStatus('${mail.id}', '${currentTaskId}', 'discarded')" class="flex-1 bg-rose-100 hover:bg-rose-200 text-rose-800 py-1 rounded font-semibold text-[10px]"><i class="fa-solid fa-xmark"></i> Discard</button>
                             </div>
                         </div>`;
                     }
@@ -1534,35 +1468,17 @@
         }).then(r=>r.json()).then(d=>{
             if(d.success) {
                 showToast(`Quote marked as ${status}!`);
-                fetchTrackedEmails(taskId); // Refresh the tracked emails list to show updated status
+                if(status === 'discarded') {
+                    // Refresh sidebar to visualize discard (optional: or just dynamically hide)
+                    fetchTrackedEmails();
+                }
             } else {
-                showToast("Failed to update status: " + (d.message || "Unknown error"));
+                showToast("Failed to update status");
             }
-        }).catch(e => {
-            console.error("Status update error:", e);
-            showToast("Network error updating status");
         });
     };
 
     function addAgentLog(message, type = 'info') {
-        renderLogLocally(message, type);
-
-        // Persist to DB if session active
-        if (currentSessionId && selectedAgent === 'procurement') {
-            fetch("/api/personal_assistant/log", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    session_id: currentSessionId,
-                    message: message,
-                    status: type,
-                    task_id: currentTaskId
-                })
-            }).catch(e => console.error("Log persistence failed", e));
-        }
-    }
-
-    function renderLogLocally(message, type = 'info', timestamp = null) {
         const logs = document.getElementById('agentLogs');
         const colors = {
             'info': 'text-gray-500',
@@ -1576,8 +1492,9 @@
             'error': 'fa-circle-xmark',
             'warning': 'fa-triangle-exclamation'
         };
-        const time = timestamp ? new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
+        // Sidebar Log
         if (logs) {
             const log = document.createElement('div');
             log.className = `flex gap-2 text-[11px] leading-relaxed py-1 fade-in ${colors[type] || colors.info}`;
