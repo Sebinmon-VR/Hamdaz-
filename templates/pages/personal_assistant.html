@@ -878,6 +878,7 @@
     function renderQuoteUI(q) {
         const isCollected = q.collection_status === 'collected';
         const isDiscarded = q.collection_status === 'discarded';
+        const hasDoc = !!q.doc_path;
         
         return `
             <div class="p-4">
@@ -885,7 +886,7 @@
                     <div class="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center text-emerald-600 border border-emerald-100">
                         <i class="fa-solid fa-file-invoice-dollar text-lg"></i>
                     </div>
-                    <div class="min-w-0">
+                    <div class="min-w-0 flex-1">
                         <p class="text-[10px] text-emerald-600 font-black uppercase tracking-widest leading-none mb-1">Supplier Quote</p>
                         <h4 class="font-bold text-slate-800 text-sm truncate">${q.from_email || 'Verified Supplier'}</h4>
                     </div>
@@ -893,19 +894,25 @@
                 
                 <p class="text-slate-600 text-[13px] leading-relaxed mb-4">${q.summary || 'Quote summary unavailable.'}</p>
                 
-                <div class="grid grid-cols-2 gap-2 mb-3">
+                <div class="grid grid-cols-2 gap-2 mb-2">
                     <button onclick="updateQuoteStatus('${q.id}', '${currentTaskId}', 'collected')" 
-                        class="flex items-center justify-center gap-2 py-2 rounded-xl text-[11px] font-bold transition-all ${isCollected ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-100' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-100'}">
+                        class="flex items-center justify-center gap-1.5 py-2 rounded-lg text-[10px] font-bold transition-all ${isCollected ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-100' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-100'}">
                         <i class="fa-solid ${isCollected ? 'fa-check' : 'fa-plus'}"></i> ${isCollected ? 'Collected' : 'Collect'}
                     </button>
                     <button onclick="updateQuoteStatus('${q.id}', '${currentTaskId}', 'discarded')" 
-                        class="flex items-center justify-center gap-2 py-2 rounded-xl text-[11px] font-bold bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-100 transition-all">
+                        class="flex items-center justify-center gap-1.5 py-2 rounded-lg text-[10px] font-bold bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-100 transition-all">
                         <i class="fa-solid fa-trash-can"></i> Discard
                     </button>
                 </div>
+
+                ${hasDoc ? `
+                <button onclick="window.open('${q.doc_path}', '_blank')" 
+                    class="w-full flex items-center justify-center gap-2 py-2 rounded-lg text-[11px] font-bold bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-100 transition-all mb-2">
+                    <i class="fa-solid fa-download"></i> Download Commercial Proposal
+                </button>` : ''}
                 
                 <button onclick="window.location.href='/quote?task_id=${currentTaskId}'" 
-                    class="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-[12px] font-black bg-indigo-600 text-white hover:bg-indigo-700 shadow-lg shadow-indigo-100 transition-all group">
+                    class="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-[12px] font-black bg-indigo-600 text-white hover:bg-indigo-700 shadow-xl shadow-indigo-100 transition-all group">
                     Go to Quote Form <i class="fa-solid fa-arrow-right text-[10px] group-hover:translate-x-1 transition-transform"></i>
                 </button>
             </div>
