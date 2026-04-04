@@ -253,6 +253,11 @@
             <div class="line"><span>Reports</span></div>
             <li aria-disabled="false"><a href="reports"><img src="/static/icons/reports.png" alt=""> Reports</a></li>
 
+            <div class="line"><span>Leave</span></div>
+            <li><a href="/leave"><i class="fa-solid fa-calendar-check" style="margin-right: 12px; color: #a78bfa; width: 20px; text-align: center; font-size: 16px;"></i>My Leave</a></li>
+            {% if is_admin(session.get('user', {}).get('mail') or session.get('user', {}).get('userPrincipalName')) %}
+            <li><i class="fa-solid fa-calendar-check" style="margin-right: 12px; color: #a78bfa; width: 20px; text-align: center; font-size: 16px;"></i><a href="/admin/leaves">Leave Overview</a></li>
+            {% endif %}
 
             <div class="line"><span>Version</span></div>
             <p style="color: #9e9e9e70;">bfa3656</p>

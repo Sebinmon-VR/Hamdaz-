@@ -1963,3 +1963,175 @@ def get_teams_stauts(user_id):
 
     
 
+
+
+# -----------------------------------------------------------------------------------------------------------
+# LEAVE MANAGEMENT — SharePoint Helpers
+# -----------------------------------------------------------------------------------------------------------
+
+def add_user_to_excludelist(username: str) -> bool:
+    """
+    Adds a username to the SharePoint excludeusers list (/sites/Test).
+    Safe to call multiple times - checks for duplicates first.
+    """
+    try:
+        access_token = get_access_token()
+        site_id = get_site_id(access_token, "hamdaz1.sharepoint.com", "/sites/Test")
+        list_id = get_list_id(access_token, site_id, "excludeusers")
+        auth_headers = {"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"}
+
+        check_url = f"{GRAPH_API_ENDPOINT}/sites/{site_id}/lists/{list_id}/items?expand=fields"
+        check_resp = requests.get(check_url, headers={"Authorization": f"Bearer {access_token}"})
+        if check_resp.ok:
+            for item in check_resp.json().get("value", []):
+                if item.get("fields", {}).get("Usernames", "").strip().lower() == username.strip().lower():
+                    print(f"[SP] {username} already in excludeusers - skipping add.")
+                    return True
+
+        url = f"{GRAPH_API_ENDPOINT}/sites/{site_id}/lists/{list_id}/items"
+        payload = {"fields": {"Usernames": username}}
+        resp = requests.post(url, headers=auth_headers, json=payload)
+        resp.raise_for_status()
+        print(f"[SP] Added {username} to excludeusers list.")
+        return True
+    except Exception as e:
+        print(f"[SP ERROR] add_user_to_excludelist({username}): {e}")
+        return False
+
+
+def remove_user_from_excludelist(username: str) -> bool:
+    """
+    Removes a username from the SharePoint excludeusers list.
+    Returns True on success or not-found, False on error.
+    """
+    try:
+        access_token = get_access_token()
+        site_id = get_site_id(access_token, "hamdaz1.sharepoint.com", "/sites/Test")
+        list_id = get_list_id(access_token, site_id, "excludeusers")
+        headers = {"Authorization": f"Bearer {access_token}"}
+
+        search_url = f"{GRAPH_API_ENDPOINT}/sites/{site_id}/lists/{list_id}/items?expand=fields"
+        resp = requests.get(search_url, headers=headers)
+        resp.raise_for_status()
+        items = resp.json().get("value", [])
+
+        item_id = None
+        for item in items:
+            if item.get("fields", {}).get("Usernames", "").strip().lower() == username.strip().lower():
+                item_id = item["id"]
+                break
+
+        if not item_id:
+            print(f"[SP] {username} not found in excludeusers - nothing to remove.")
+            return True
+
+        delete_url = f"{GRAPH_API_ENDPOINT}/sites/{site_id}/lists/{list_id}/items/{item_id}"
+        del_resp = requests.delete(delete_url, headers=headers)
+        del_resp.raise_for_status()
+        print(f"[SP] Removed {username} from excludeusers list.")
+        return True
+    except Exception as e:
+        print(f"[SP ERROR] remove_user_from_excludelist({username}): {e}")
+        return False
+
+
+def get_ongoing_proposals_for_user(username: str) -> list:
+    """
+    Fetches all proposals from Proposals list (ProposalTeam) where:
+      - AssignedTo == username
+      - SubmissionStatus is not Submitted
+    Returns list of dicts: {id, Title, BCD, Status, SubmissionStatus, AssignedTo}
+    """
+    try:
+        access_token = get_access_token()
+        site_id = get_site_id(access_token, "hamdaz1.sharepoint.com", "/sites/ProposalTeam")
+        list_id = get_list_id(access_token, site_id, "Proposals")
+        headers = {"Authorization": f"Bearer {access_token}"}
+
+        url = f"{GRAPH_API_ENDPOINT}/sites/{site_id}/lists/{list_id}/items?expand=fields"
+        all_items = []
+        while url:
+            resp = requests.get(url, headers=headers)
+            resp.raise_for_status()
+            data = resp.json()
+            all_items.extend(data.get("value", []))
+            url = data.get("@odata.nextLink")
+
+        results = []
+        for item in all_items:
+            fields = item.get("fields", {})
+            assigned = fields.get("AssignedTo", "")
+            if isinstance(assigned, dict):
+                assigned = assigned.get("displayName") or assigned.get("lookupValue", "")
+            submission = fields.get("SubmissionStatus", "")
+            if (str(assigned).strip().lower() == username.strip().lower()
+                    and str(submission).strip().lower() not in ("submitted", "completed")):
+                bcd_val = fields.get("BCD", "")
+                results.append({
+                    "id": item["id"],
+                    "Title": fields.get("Title", ""),
+                    "BCD": str(bcd_val)[:10] if bcd_val else "",
+                    "Status": fields.get("Status", ""),
+                    "SubmissionStatus": submission,
+                    "AssignedTo": assigned,
+                })
+        return results
+    except Exception as e:
+        print(f"[SP ERROR] get_ongoing_proposals_for_user({username}): {e}")
+        return []
+
+
+def handoff_proposals_to_user(from_username: str, to_username: str, proposal_ids: list) -> dict:
+    """
+    For each SP item ID in proposal_ids, patches:
+      - AssignedTo    -> to_username  (new owner)
+      - PreviousOwner -> from_username (original owner)
+    NOTE: Proposals SP list must have a PreviousOwner text column.
+    Returns: {"success": [ids], "failed": [ids]}
+    """
+    success_ids, failed_ids = [], []
+    try:
+        access_token = get_access_token()
+        site_id = get_site_id(access_token, "hamdaz1.sharepoint.com", "/sites/ProposalTeam")
+        list_id = get_list_id(access_token, site_id, "Proposals")
+        headers = {"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"}
+
+        for item_id in proposal_ids:
+            try:
+                patch_url = f"{GRAPH_API_ENDPOINT}/sites/{site_id}/lists/{list_id}/items/{item_id}/fields"
+                payload = {
+                    "AssignedTo": to_username,
+                    "PreviousOwner": from_username,
+                }
+                resp = requests.patch(patch_url, headers=headers, json=payload)
+                resp.raise_for_status()
+                print(f"[SP] Proposal {item_id}: {from_username} -> {to_username}")
+                success_ids.append(item_id)
+            except Exception as err:
+                print(f"[SP ERROR] Failed to handoff proposal {item_id}: {err}")
+                failed_ids.append(item_id)
+    except Exception as e:
+        print(f"[SP ERROR] handoff_proposals_to_user: {e}")
+
+    return {"success": success_ids, "failed": failed_ids}
+
+
+def get_priority_one_user(exclude_username: str = None):
+    """
+    Returns the username with the lowest Priority value from useranalytics SP list,
+    optionally excluding a specific user (the one going on leave).
+    Returns None if no suitable user found.
+    """
+    try:
+        priorities = get_users_with_priority()
+        if not priorities:
+            return None
+        sorted_users = sorted(priorities.items(), key=lambda x: int(x[1]))
+        for username, prio in sorted_users:
+            if exclude_username and username.strip().lower() == exclude_username.strip().lower():
+                continue
+            return username
+        return None
+    except Exception as e:
+        print(f"[SP ERROR] get_priority_one_user: {e}")
+        return None

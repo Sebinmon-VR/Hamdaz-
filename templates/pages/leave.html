@@ -1,0 +1,1298 @@
+{% extends "base.html" %}
+{% block title %}Leave Management — Hamdaz{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<style>
+  /* ---- Leave-specific styles (white theme matching the rest of the app) ---- */
+  .lm-wrapper {
+    max-width: 880px;
+    margin: 0 auto;
+    padding: 1.5rem 1rem 4rem;
+  }
+
+  .lm-page-title {
+    font-size: 20px;
+    font-weight: 600;
+    color: #1e293b;
+    margin-bottom: 6px;
+  }
+
+  .lm-page-desc {
+    font-size: 13px;
+    color: #64748b;
+    margin-bottom: 1.5rem;
+  }
+
+  /* Active leave banner */
+  .lm-active-banner {
+    background: linear-gradient(135deg, #eef2ff, #f0fdf4);
+    border: 1px solid #c7d2fe;
+    border-radius: 10px;
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1.25rem;
+    gap: 12px;
+  }
+
+  .lm-active-banner-info {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .lm-pulse {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: #22c55e;
+    box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.2);
+    animation: lmPulse 2s infinite;
+  }
+
+  @keyframes lmPulse {
+
+    0%,
+    100% {
+      box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.2);
+    }
+
+    50% {
+      box-shadow: 0 0 0 6px rgba(34, 197, 94, 0.05);
+    }
+  }
+
+  /* Cards */
+  .lm-card {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    margin-bottom: 1rem;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  }
+
+  .lm-card-header {
+    padding: 14px 18px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .lm-card-icon {
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    background: #eef2ff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 15px;
+    flex-shrink: 0;
+  }
+
+  .lm-card-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: #1e293b;
+  }
+
+  .lm-card-desc {
+    font-size: 12px;
+    color: #94a3b8;
+    margin-top: 1px;
+  }
+
+  .lm-card-body {
+    padding: 0 18px 18px;
+  }
+
+  /* Date row */
+  .lm-date-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+
+  .lm-field label {
+    display: block;
+    font-size: 11px;
+    font-weight: 600;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 6px;
+  }
+
+  .lm-field input,
+  .lm-field select {
+    width: 100%;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 8px 12px;
+    color: #1e293b;
+    font-size: 13px;
+    font-family: inherit;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  .lm-field input:focus,
+  .lm-field select:focus {
+    border-color: #6366f1;
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+  }
+
+  /* Leave type chips */
+  .lm-type-group {
+    display: flex;
+    gap: 8px;
+    margin-top: 14px;
+  }
+
+  .lm-type-chip {
+    flex: 1;
+    background: #f8fafc;
+    border: 2px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 8px 10px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-size: 12px;
+    font-weight: 500;
+    color: #475569;
+  }
+
+  .lm-type-chip input[type=radio] {
+    display: none;
+  }
+
+  .lm-type-chip.selected {
+    border-color: #6366f1;
+    background: #eef2ff;
+    color: #4338ca;
+  }
+
+  /* Info Banners */
+  .lm-info-row {
+    display: grid;
+    grid-template-columns: 1.5fr 1fr;
+    gap: 12px;
+    margin-bottom: 1.25rem;
+  }
+
+  .lm-info-card {
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 12px 14px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+  }
+
+  .lm-info-icon {
+    font-size: 20px;
+  }
+
+  .lm-info-label {
+    font-size: 11px;
+    font-weight: 700;
+    color: #94a3b8;
+    text-transform: uppercase;
+    margin-bottom: 2px;
+  }
+
+  .lm-info-val {
+    font-size: 13px;
+    font-weight: 600;
+    color: #1e293b;
+  }
+
+  /* Holidays Section */
+  .lm-holidays-banner {
+    background: #fffbeb;
+    border: 1px solid #fef3c7;
+    border-radius: 10px;
+    padding: 12px 16px;
+    margin-bottom: 1.25rem;
+    display: none;
+  }
+
+  .lm-holidays-title {
+    font-size: 12px;
+    font-weight: 700;
+    color: #92400e;
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .lm-holiday-items {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .lm-holiday-pill {
+    background: white;
+    border: 1px solid #fde68a;
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-size: 12px;
+    font-weight: 500;
+    color: #92400e;
+  }
+
+  /* Info Banners */
+  .lm-info-row {
+    display: grid;
+    grid-template-columns: 1.5fr 1fr;
+    gap: 12px;
+    margin-bottom: 1.25rem;
+  }
+
+  .lm-info-card {
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 12px 14px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+  }
+
+  .lm-info-icon {
+    font-size: 20px;
+  }
+
+  .lm-info-label {
+    font-size: 11px;
+    font-weight: 700;
+    color: #94a3b8;
+    text-transform: uppercase;
+    margin-bottom: 2px;
+  }
+
+  .lm-info-val {
+    font-size: 13px;
+    font-weight: 600;
+    color: #1e293b;
+  }
+
+  /* Holidays Section */
+  .lm-holidays-banner {
+    background: #fffbeb;
+    border: 1px solid #fef3c7;
+    border-radius: 10px;
+    padding: 12px 16px;
+    margin-bottom: 1.25rem;
+    display: none;
+  }
+
+  .lm-holidays-title {
+    font-size: 12px;
+    font-weight: 700;
+    color: #92400e;
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .lm-holiday-items {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .lm-holiday-pill {
+    background: white;
+    border: 1px solid #fde68a;
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-size: 12px;
+    font-weight: 500;
+    color: #92400e;
+  }
+
+  .lm-type-chip-icon {
+    font-size: 16px;
+    display: block;
+    margin-bottom: 2px;
+  }
+
+  .lm-type-hint {
+    font-size: 11px;
+    color: #94a3b8;
+    margin-top: 6px;
+  }
+
+  /* New Field Styles */
+  .lm-textarea {
+    width: 100%;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 10px 12px;
+    color: #1e293b;
+    font-size: 13px;
+    font-family: inherit;
+    outline: none;
+    transition: border-color 0.2s;
+    resize: vertical;
+    min-height: 80px;
+  }
+
+  .lm-textarea:focus {
+    border-color: #6366f1;
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+  }
+
+  /* BCD warning */
+  .lm-bcd-warn {
+    margin-top: 12px;
+    background: #fffbeb;
+    border: 1px solid #fde68a;
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 12px;
+    color: #92400e;
+    display: none;
+  }
+
+  .lm-bcd-warn.visible {
+    display: block;
+  }
+
+  /* Toggle row */
+  .lm-toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 18px;
+    border-top: 1px solid #f1f5f9;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+
+  .lm-toggle-row:hover {
+    background: #f8fafc;
+  }
+
+  .lm-toggle-label {
+    font-size: 13px;
+    font-weight: 500;
+    color: #1e293b;
+  }
+
+  .lm-toggle-desc {
+    font-size: 11px;
+    color: #94a3b8;
+    margin-top: 1px;
+  }
+
+  .lm-switch {
+    position: relative;
+    width: 42px;
+    height: 22px;
+    flex-shrink: 0;
+  }
+
+  .lm-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+  }
+
+  .lm-switch-slider {
+    position: absolute;
+    inset: 0;
+    background: #cbd5e1;
+    border-radius: 22px;
+    transition: 0.3s;
+    cursor: pointer;
+  }
+
+  .lm-switch-slider::before {
+    content: '';
+    position: absolute;
+    width: 16px;
+    height: 16px;
+    left: 3px;
+    top: 3px;
+    background: white;
+    border-radius: 50%;
+    transition: 0.3s;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+  }
+
+  .lm-switch input:checked+.lm-switch-slider {
+    background: #6366f1;
+  }
+
+  .lm-switch input:checked+.lm-switch-slider::before {
+    transform: translateX(20px);
+  }
+
+  /* Expanded panel */
+  .lm-expand {
+    display: none;
+    padding: 14px 18px;
+    border-top: 1px solid #f1f5f9;
+  }
+
+  .lm-expand.open {
+    display: block;
+  }
+
+  /* Radio cards */
+  .lm-radio-group {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+
+  .lm-radio-card {
+    flex: 1;
+    background: #f8fafc;
+    border: 2px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 10px 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .lm-radio-card input[type=radio] {
+    display: none;
+  }
+
+  .lm-radio-card.selected {
+    border-color: #6366f1;
+    background: #eef2ff;
+  }
+
+  .lm-radio-card-icon {
+    font-size: 20px;
+  }
+
+  .lm-radio-card-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: #1e293b;
+  }
+
+  .lm-radio-card-desc {
+    font-size: 11px;
+    color: #94a3b8;
+  }
+
+  /* Priority user preview */
+  .lm-priority-card {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 10px 12px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 6px;
+  }
+
+  .lm-avatar {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #6366f1, #a78bfa);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 12px;
+    color: white;
+    flex-shrink: 0;
+  }
+
+  .lm-priority-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: #1e293b;
+  }
+
+  .lm-priority-tag {
+    font-size: 11px;
+    color: #22c55e;
+  }
+
+  /* Manual select */
+  .lm-select {
+    width: 100%;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 8px 12px;
+    color: #1e293b;
+    font-size: 13px;
+    font-family: inherit;
+    outline: none;
+    margin-top: 6px;
+  }
+
+  .lm-select:focus {
+    border-color: #6366f1;
+  }
+
+  /* Proposals list */
+  .lm-proposals-title {
+    font-size: 11px;
+    font-weight: 600;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-top: 14px;
+    margin-bottom: 6px;
+  }
+
+  .lm-proposal-item {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    padding: 8px 10px;
+    margin-bottom: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 13px;
+  }
+
+  .lm-proposal-title {
+    font-weight: 500;
+    color: #1e293b;
+  }
+
+  .lm-proposal-bcd {
+    font-size: 11px;
+    color: #94a3b8;
+  }
+
+  .lm-proposal-bcd.near {
+    color: #f59e0b;
+  }
+
+  .lm-loading-msg {
+    text-align: center;
+    padding: 12px;
+    color: #94a3b8;
+    font-size: 13px;
+  }
+
+  .lm-no-items {
+    text-align: center;
+    padding: 10px;
+    color: #94a3b8;
+    font-size: 13px;
+    font-style: italic;
+  }
+
+  /* Submit */
+  .lm-submit-btn {
+    width: 100%;
+    background: #6366f1;
+    border: none;
+    border-radius: 10px;
+    padding: 12px;
+    color: white;
+    font-size: 14px;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    transition: all 0.2s;
+    margin-top: 8px;
+  }
+
+  .lm-submit-btn:hover {
+    background: #4f46e5;
+  }
+
+  .lm-submit-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .lm-submit-btn .btn-text {
+    transition: opacity 0.2s;
+  }
+
+  .lm-submit-btn .btn-spinner {
+    display: none;
+    width: 18px;
+    height: 18px;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-top-color: white;
+    border-radius: 50%;
+    animation: lmSpin 0.8s linear infinite;
+    margin: 0 auto;
+  }
+
+  @keyframes lmSpin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  .lm-submit-btn.loading .btn-text {
+    display: none;
+  }
+
+  .lm-submit-btn.loading .btn-spinner {
+    display: block;
+  }
+
+  /* Success */
+  .lm-success {
+    display: none;
+    text-align: center;
+    padding: 2rem 1rem;
+  }
+
+  .lm-success.show {
+    display: block;
+  }
+
+  .lm-success-icon {
+    font-size: 48px;
+    margin-bottom: 12px;
+  }
+
+  .lm-success-title {
+    font-size: 18px;
+    font-weight: 700;
+    color: #1e293b;
+    margin-bottom: 6px;
+  }
+
+  .lm-success-sub {
+    color: #64748b;
+    font-size: 13px;
+    line-height: 1.6;
+  }
+
+  /* History */
+  .lm-history {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    overflow: hidden;
+    margin-top: 1.25rem;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  }
+
+  .lm-history-header {
+    padding: 14px 18px;
+    border-bottom: 1px solid #f1f5f9;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .lm-history-table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  .lm-history-table th {
+    padding: 8px 14px;
+    font-size: 11px;
+    font-weight: 600;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    text-align: left;
+    border-bottom: 1px solid #f1f5f9;
+    background: #f8fafc;
+  }
+
+  .lm-history-table td {
+    padding: 10px 14px;
+    font-size: 13px;
+    border-bottom: 1px solid #f8fafc;
+    vertical-align: middle;
+  }
+
+  .lm-history-table tr:last-child td {
+    border-bottom: none;
+  }
+
+  .lm-history-table tr:hover td {
+    background: #f8fafc;
+  }
+
+  .lm-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  .lm-badge-active {
+    background: #dcfce7;
+    color: #16a34a;
+  }
+
+  .lm-badge-completed {
+    background: #f1f5f9;
+    color: #94a3b8;
+  }
+
+  .lm-badge-cancelled {
+    background: #fef2f2;
+    color: #ef4444;
+  }
+
+  .lm-type-tag {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 600;
+  }
+
+  .lm-type-tag.half {
+    background: #f3e8ff;
+    color: #7c3aed;
+  }
+
+  .lm-type-tag.full {
+    background: #eef2ff;
+    color: #6366f1;
+  }
+
+  .lm-cancel-btn {
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    border-radius: 6px;
+    padding: 3px 8px;
+    font-size: 11px;
+    color: #ef4444;
+    cursor: pointer;
+    font-family: inherit;
+    transition: background 0.2s;
+  }
+
+  .lm-cancel-btn:hover {
+    background: #fee2e2;
+  }
+
+  .lm-empty {
+    text-align: center;
+    padding: 2rem;
+    color: #94a3b8;
+    font-size: 13px;
+  }
+
+  /* Toast */
+  .lm-toast {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 12px 16px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+    z-index: 999;
+    transform: translateY(120%);
+    transition: transform 0.3s;
+    max-width: 320px;
+    color: #1e293b;
+  }
+
+  .lm-toast.show {
+    transform: translateY(0);
+  }
+
+  .lm-toast.error {
+    border-color: #fecaca;
+  }
+
+  @media (max-width: 600px) {
+    .lm-date-row {
+      grid-template-columns: 1fr;
+    }
+
+    .lm-radio-group {
+      flex-direction: column;
+    }
+
+    .lm-type-group {
+      flex-direction: column;
+    }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="lm-wrapper">
+
+  <div class="lm-page-title">Leave Management</div>
+  <div class="lm-page-desc">Schedule your leave, manage task assignment & handoff projects</div>
+
+  <!-- Info Row (HR Hint & Limits) -->
+  <div class="lm-info-row">
+    <div class="lm-info-card">
+      <div class="lm-info-icon">📊</div>
+      <div>
+        <div class="lm-info-label">Your Leave Capacity</div>
+        <div class="lm-info-val" id="leaveLimitInfo">Loading limits...</div>
+      </div>
+    </div>
+    <div class="lm-info-card">
+      <div class="lm-info-icon">📧</div>
+      <div>
+        <div class="lm-info-label">HR Support</div>
+        <div class="lm-info-val" id="hrSupportEmail"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Holidays Banner -->
+  <div class="lm-holidays-banner" id="holidaysBanner">
+    <div class="lm-holidays-title"><span>📅</span> Upcoming Holidays & Events</div>
+    <div class="lm-holiday-items" id="holidaysList"></div>
+  </div>
+
+  <!-- Active Leave Banner -->
+  <div class="lm-active-banner" id="activeLeaveBanner" style="display:none">
+    <div class="lm-active-banner-info">
+      <div class="lm-pulse"></div>
+      <div>
+        <div style="font-size:13px; font-weight:600; color:#1e293b;" id="activeLeaveBannerTitle">You have an active
+          leave</div>
+        <div style="font-size:12px; color:#64748b;" id="activeLeaveBannerDates"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Form -->
+  <div id="formSection">
+
+    <!-- Date + Leave Type -->
+    <div class="lm-card">
+      <div class="lm-card-header">
+        <div class="lm-card-icon">📅</div>
+        <div>
+          <div class="lm-card-title">Leave Period</div>
+          <div class="lm-card-desc">Select your leave duration and type</div>
+        </div>
+      </div>
+      <div class="lm-card-body">
+        <div class="lm-date-row">
+          <div class="lm-field">
+            <label>Start Date</label>
+            <input type="text" id="leaveStart" placeholder="Pick start date" readonly>
+          </div>
+          <div class="lm-field">
+            <label>End Date</label>
+            <input type="text" id="leaveEnd" placeholder="Pick end date" readonly>
+          </div>
+        </div>
+
+        <!-- Leave Type -->
+        <div style="margin-top:14px;">
+          <label
+            style="display:block; font-size:11px; font-weight:600; color:#64748b; text-transform:uppercase; letter-spacing:0.04em; margin-bottom:6px;">Leave
+            Type</label>
+          <div class="lm-type-group">
+            <label class="lm-type-chip selected" id="chipFullDay" onclick="selectLeaveType('full_day')">
+              <input type="radio" name="leaveType" value="full_day" checked>
+              <span class="lm-type-chip-icon">📅</span> Full Day
+            </label>
+            <label class="lm-type-chip" id="chipFirstHalf" onclick="selectLeaveType('first_half')">
+              <input type="radio" name="leaveType" value="first_half">
+              <span class="lm-type-chip-icon">🌅</span> First Half
+            </label>
+            <label class="lm-type-chip" id="chipSecondHalf" onclick="selectLeaveType('second_half')">
+              <input type="radio" name="leaveType" value="second_half">
+              <span class="lm-type-chip-icon">🌇</span> Second Half
+            </label>
+          </div>
+          <div class="lm-type-hint" id="leaveTypeHint">Excluded from task assignment for the entire day(s)</div>
+        </div>
+
+        <div class="lm-bcd-warn" id="bcdConflictBox">
+          ⚠️ <strong>Heads up!</strong> Some proposals have deadlines during your leave. Consider enabling handoff
+          below.
+        </div>
+
+        <div style="margin-top:20px; padding-top:20px; border-top: 1px dashed #e2e8f0;">
+          <div class="lm-field" style="margin-bottom:14px;">
+            <label>Leave Category</label>
+            <select class="lm-field" id="leaveCategory" style="background:#fff;">
+              <option value="Casual Leave">Casual Leave</option>
+              <option value="Emergency Leave">Emergency Leave</option>
+              <option value="Sick Leave">Sick Leave</option>
+              <option value="Annual Leave">Annual Leave</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+          <div class="lm-field">
+            <label>Reason for Leave</label>
+            <textarea class="lm-textarea" id="leaveReason"
+              placeholder="Briefly explain the reason for your leave..."></textarea>
+          </div>
+        </div>
+      </div>
+
+      <!-- Continue Assign -->
+      <label class="lm-toggle-row" for="continueAssignToggle">
+        <div>
+          <div class="lm-toggle-label">Continue Task Assignment</div>
+          <div class="lm-toggle-desc">Keep receiving new proposals during leave</div>
+        </div>
+        <label class="lm-switch">
+          <input type="checkbox" id="continueAssignToggle">
+          <span class="lm-switch-slider"></span>
+        </label>
+      </label>
+    </div>
+
+    <!-- Handoff -->
+    <div class="lm-card">
+      <label class="lm-toggle-row" for="handoffToggle" style="border-top:none">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <div class="lm-card-icon">🔄</div>
+          <div>
+            <div class="lm-card-title">Handoff Projects</div>
+            <div class="lm-card-desc">Transfer ongoing proposals to another team member</div>
+          </div>
+        </div>
+        <label class="lm-switch">
+          <input type="checkbox" id="handoffToggle">
+          <span class="lm-switch-slider"></span>
+        </label>
+      </label>
+
+      <div class="lm-expand" id="handoffPanel">
+        <div class="lm-radio-group">
+          <label class="lm-radio-card selected" id="autoCard" onclick="selectHandoffMode('auto')">
+            <input type="radio" name="handoffMode" value="auto" checked>
+            <div class="lm-radio-card-icon">🤖</div>
+            <div>
+              <div class="lm-radio-card-label">Auto-Assign</div>
+              <div class="lm-radio-card-desc">Highest-priority available member</div>
+            </div>
+          </label>
+          <label class="lm-radio-card" id="manualCard" onclick="selectHandoffMode('manual')">
+            <input type="radio" name="handoffMode" value="manual">
+            <div class="lm-radio-card-icon">👤</div>
+            <div>
+              <div class="lm-radio-card-label">Manual Select</div>
+              <div class="lm-radio-card-desc">Choose a specific team member</div>
+            </div>
+          </label>
+        </div>
+
+        <div id="autoPreview">
+          <div
+            style="font-size:11px; color:#64748b; text-transform:uppercase; font-weight:600; letter-spacing:.04em; margin-bottom:4px;">
+            Will be assigned to</div>
+          <div class="lm-priority-card" id="priorityUserCard">
+            <div style="color:#94a3b8; font-size:13px;">Loading priority user...</div>
+          </div>
+        </div>
+
+        <div id="manualSelect" style="display:none;">
+          <div
+            style="font-size:11px; color:#64748b; text-transform:uppercase; font-weight:600; letter-spacing:.04em; margin-bottom:4px;">
+            Select Team Member</div>
+          <select class="lm-select" id="manualUserSelect">
+            <option value="">Loading users...</option>
+          </select>
+        </div>
+
+        <div class="lm-proposals-title">📋 Proposals to be transferred</div>
+        <div id="proposalsList">
+          <div class="lm-loading-msg">Loading your proposals...</div>
+        </div>
+      </div>
+    </div>
+
+    <button class="lm-submit-btn" id="submitBtn" onclick="submitLeave()">
+      <span class="btn-text">Submit Leave Request</span>
+      <div class="btn-spinner"></div>
+    </button>
+  </div>
+
+  <!-- Success -->
+  <div class="lm-success" id="successOverlay">
+    <div class="lm-success-icon">🎉</div>
+    <div class="lm-success-title">Leave Request Submitted!</div>
+    <div class="lm-success-sub" id="successDetails">Your leave has been recorded.</div>
+    <button class="lm-submit-btn" style="margin-top:1.25rem; max-width:200px; margin-left:auto; margin-right:auto;"
+      onclick="location.reload()">Submit Another</button>
+  </div>
+
+  <!-- History -->
+  <div class="lm-history">
+    <div class="lm-history-header">
+      <div class="lm-card-icon">📜</div>
+      <div>
+        <div class="lm-card-title">Leave History</div>
+        <div class="lm-card-desc">Your past and upcoming leave records</div>
+      </div>
+    </div>
+    <div id="historyContent">
+      <div class="lm-empty">Loading history...</div>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="lm-toast" id="toast">
+  <span id="toastIcon">✅</span>
+  <span id="toastMsg">Done</span>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script>
+  let handoffMode = 'auto';
+  let leaveType = 'full_day';
+  let proposals = [];
+  let priorityUser = null;
+  let orgUsers = [];
+  let leaveStartDate = null;
+  let leaveEndDate = null;
+
+  function selectLeaveType(type) {
+    leaveType = type;
+    document.getElementById('chipFullDay').classList.toggle('selected', type === 'full_day');
+    document.getElementById('chipFirstHalf').classList.toggle('selected', type === 'first_half');
+    document.getElementById('chipSecondHalf').classList.toggle('selected', type === 'second_half');
+    const hint = document.getElementById('leaveTypeHint');
+    if (type === 'full_day') hint.textContent = 'Excluded from task assignment for the entire day(s)';
+    else if (type === 'first_half') hint.textContent = 'Morning half — excluded until 1:00 PM';
+    else hint.textContent = 'Afternoon half — excluded from 1:00 PM';
+  }
+
+  const startPicker = flatpickr('#leaveStart', {
+    minDate: 'today', dateFormat: 'Y-m-d',
+    onChange: (sel) => { leaveStartDate = sel[0]; endPicker.set('minDate', sel[0]); checkBCDConflict(); }
+  });
+  const endPicker = flatpickr('#leaveEnd', {
+    minDate: 'today', dateFormat: 'Y-m-d',
+    onChange: (sel) => { leaveEndDate = sel[0]; checkBCDConflict(); }
+  });
+
+  function checkBCDConflict() {
+    if (!leaveStartDate || !leaveEndDate || proposals.length === 0) return;
+    const conflicts = proposals.filter(p => {
+      if (!p.BCD) return false;
+      const bcd = new Date(p.BCD);
+      return bcd >= leaveStartDate && bcd <= leaveEndDate;
+    });
+    document.getElementById('bcdConflictBox').classList.toggle('visible', conflicts.length > 0);
+  }
+
+  document.getElementById('handoffToggle').addEventListener('change', (e) => {
+    const panel = document.getElementById('handoffPanel');
+    if (e.target.checked) { panel.classList.add('open'); fetchProposals(); fetchPriorityUser(); fetchOrgUsers(); }
+    else { panel.classList.remove('open'); }
+  });
+
+  function selectHandoffMode(mode) {
+    handoffMode = mode;
+    document.getElementById('autoCard').classList.toggle('selected', mode === 'auto');
+    document.getElementById('manualCard').classList.toggle('selected', mode === 'manual');
+    document.getElementById('autoPreview').style.display = mode === 'auto' ? 'block' : 'none';
+    document.getElementById('manualSelect').style.display = mode === 'manual' ? 'block' : 'none';
+  }
+
+  async function fetchProposals() {
+    const el = document.getElementById('proposalsList');
+    el.innerHTML = '<div class="lm-loading-msg">â³ Loading proposals...</div>';
+    try {
+      const res = await fetch('/api/leave/ongoing_proposals');
+      const data = await res.json();
+      proposals = data.success ? data.proposals : [];
+      if (proposals.length === 0) { el.innerHTML = '<div class="lm-no-items">✅ No active proposals to transfer</div>'; return; }
+      const today = new Date();
+      el.innerHTML = proposals.map(p => {
+        const bcd = p.BCD ? new Date(p.BCD) : null;
+        const isNear = bcd && (bcd - today) / 86400000 < 7;
+        const bcdText = bcd ? bcd.toISOString().slice(0, 10) : 'No deadline';
+        return `<div class="lm-proposal-item"><span class="lm-proposal-title">ðŸ“„ ${p.Title || 'Untitled'}</span><span class="lm-proposal-bcd ${isNear ? 'near' : ''}">📅“ ${bcdText}</span></div>`;
+      }).join('');
+      checkBCDConflict();
+    } catch (e) { el.innerHTML = '<div class="lm-loading-msg" style="color:#ef4444">Failed to load proposals</div>'; }
+  }
+
+  async function fetchPriorityUser() {
+    const card = document.getElementById('priorityUserCard');
+    try {
+      const res = await fetch('/api/leave/priority_user');
+      const data = await res.json();
+      priorityUser = data.priority_user || null;
+      if (priorityUser) {
+        const initials = priorityUser.slice(0, 2).toUpperCase();
+        card.innerHTML = `<div class="lm-avatar">${initials}</div><div><div class="lm-priority-name">${priorityUser}</div><div class="lm-priority-tag">⭐ Highest Priority</div></div>`;
+      } else { card.innerHTML = '<div style="color:#94a3b8; font-size:13px;">No available members</div>'; }
+    } catch (e) { card.innerHTML = '<div style="color:#ef4444; font-size:13px;">Failed to load</div>'; }
+  }
+
+  async function fetchOrgUsers() {
+    if (orgUsers.length > 0) return;
+    const sel = document.getElementById('manualUserSelect');
+    try {
+      const res = await fetch('/api/leave/users');
+      const data = await res.json();
+      orgUsers = data.success ? data.users : [];
+      sel.innerHTML = '<option value="">-- Select a team member --</option>' + orgUsers.map(u => `<option value="${u.displayName}">${u.displayName}</option>`).join('');
+    } catch (e) { sel.innerHTML = '<option value="">Failed to load</option>'; }
+  }
+
+  async function submitLeave() {
+    if (!leaveStartDate || !leaveEndDate) { showToast('Please select both dates', 'error'); return; }
+    if (leaveEndDate < leaveStartDate) { showToast('End date must be after start date', 'error'); return; }
+    const continueAssign = document.getElementById('continueAssignToggle').checked;
+    const handoffEnabled = document.getElementById('handoffToggle').checked;
+    let handoffToUser = null;
+    if (handoffEnabled) {
+      if (handoffMode === 'auto') handoffToUser = priorityUser;
+      else { handoffToUser = document.getElementById('manualUserSelect').value; if (!handoffToUser) { showToast('Select a team member', 'error'); return; } }
+    }
+    const btn = document.getElementById('submitBtn');
+    btn.classList.add('loading'); btn.disabled = true;
+    try {
+      const payload = { leave_start: leaveStartDate.toISOString().slice(0, 10), leave_end: leaveEndDate.toISOString().slice(0, 10), leave_type: leaveType, continue_assign: continueAssign, handoff_enabled: handoffEnabled, handoff_mode: handoffMode, handoff_to_user: handoffToUser };
+      const res = await fetch('/api/leave/submit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      const data = await res.json();
+      if (data.success) {
+        document.getElementById('formSection').style.display = 'none';
+        document.getElementById('successOverlay').classList.add('show');
+        const typeLabel = leaveType === 'full_day' ? 'Full Day' : leaveType === 'first_half' ? 'First Half' : 'Second Half';
+        let details = `📅 ${payload.leave_start} → ${payload.leave_end} <span class="lm-type-tag ${leaveType !== 'full_day' ? 'half' : 'full'}">${typeLabel}</span>`;
+        if (!continueAssign) details += '<br>🚫 Excluded from task assignment';
+        if (data.handoff_to) details += `<br>🔄 ${(data.proposals_transferred || []).length} proposal(s) → <strong>${data.handoff_to}</strong>`;
+        document.getElementById('successDetails').innerHTML = details;
+        loadHistory();
+      } else { showToast(data.error || 'Failed', 'error'); btn.classList.remove('loading'); btn.disabled = false; }
+    } catch (e) { showToast('Network error', 'error'); btn.classList.remove('loading'); btn.disabled = false; }
+  }
+
+  async function loadHistory() {
+    const el = document.getElementById('historyContent');
+    try {
+      const res = await fetch('/api/leave/history');
+      const data = await res.json();
+      const history = data.success ? data.history : [];
+      if (history.length === 0) { el.innerHTML = '<div class="lm-empty">🌴 No leave records yet</div>'; return; }
+      
+      const active = history.find(h => h.status === 'active');
+      if (active) {
+        document.getElementById('activeLeaveBanner').style.display = 'flex';
+        const ts = active.leave_type && active.leave_type !== 'full_day' ? ` (${active.leave_type.replace('_', ' ')})` : '';
+        document.getElementById('activeLeaveBannerDates').textContent = `${active.leave_start} → ${active.leave_end}${ts}`;
+      }
+
+      el.innerHTML = `<table class="lm-history-table">
+        <thead>
+          <tr><th>Period</th><th>Type</th><th>Assignment</th><th>Handoff</th><th>Status</th><th></th></tr>
+        </thead>
+        <tbody>
+          ${history.map(h => {
+            const lt = h.leave_type || 'full_day';
+            const tl = lt === 'full_day' ? 'Full Day' : lt === 'first_half' ? '1st Half' : '2nd Half';
+            let statusDisp = h.status;
+            if (h.status === 'active') statusDisp = 'Approved';
+            
+            return `
+              <tr>
+                <td><div style="font-weight:500">${h.leave_start} → ${h.leave_end}</div><div style="font-size:11px;color:#94a3b8">${fmtDate(h.submitted_at)}</div></td>
+                <td><span class="lm-type-tag ${lt !== 'full_day' ? 'half' : 'full'}">${tl}</span></td>
+                <td>${h.continue_assign ? '<span style="color:#22c55e;font-size:12px">✅ Continue</span>' : '<span style="color:#f59e0b;font-size:12px">🚫 Excluded</span>'}</td>
+                <td>${h.handoff_enabled ? `<span style="font-size:12px">🔄 → <strong>${h.handoff_to_user || 'Auto'}</strong><br><span style="color:#94a3b8;font-size:11px">${(h.proposals_transferred || []).length} proposal(s)</span></span>` : '<span style="color:#94a3b8">—</span>'}</td>
+                <td><span class="lm-badge lm-badge-${h.status}">${statusDisp}</span></td>
+                <td>${h.status === 'active' ? `<button class="lm-cancel-btn" onclick="cancelLeave('${h.id}')">Cancel</button>` : ''}</td>
+              </tr>
+            `;
+          }).join('')}
+        </tbody>
+      </table>`;
+    } catch (e) {
+      console.error(e);
+      el.innerHTML = '<div class="lm-empty" style="color:#ef4444">Failed to load history</div>';
+    }
+  }
+
+  async function cancelLeave(docId) {
+    if (!confirm('Cancel this leave? You will be removed from the excluded list.')) return;
+    try {
+      const res = await fetch(`/api/leave/cancel/${docId}`, { method: 'POST' });
+      const data = await res.json();
+      if (data.success) { showToast('Leave cancelled', 'success'); loadHistory(); document.getElementById('activeLeaveBanner').style.display = 'none'; }
+      else showToast(data.error || 'Failed', 'error');
+    } catch (e) { showToast('Network error', 'error'); }
+  }
+
+  function showToast(msg, type = 'success') {
+    const t = document.getElementById('toast');
+    document.getElementById('toastMsg').textContent = msg;
+    document.getElementById('toastIcon').textContent = type === 'success' ? '✅' : 'âŒ';
+    t.className = `lm-toast show ${type}`;
+    setTimeout(() => t.classList.remove('show'), 4000);
+  }
+
+  async function loadLeaveStats() {
+    try {
+      const res = await fetch('/api/leave/settings');
+      const data = await res.json();
+      if (data.success && data.settings) {
+        document.getElementById('hrSupportEmail').textContent = data.settings.hr_email || 'sebin@hamdaz.com';
+        const limit = data.settings.max_concurrent_limit || 3;
+        document.getElementById('leaveLimitInfo').textContent = `Max concurrent staff on leave: ${limit}`;
+      }
+    } catch (e) { }
+  }
+
+  async function loadHolidays() {
+    try {
+      const res = await fetch('/api/admin/leave/holidays');
+      const data = await res.json();
+      if (data.success && data.holidays && data.holidays.length > 0) {
+        document.getElementById('holidaysBanner').style.display = 'block';
+        document.getElementById('holidaysList').innerHTML = data.holidays.map(h => `
+          <div class="lm-holiday-pill"><b>${h.date}</b>: ${h.title}</div>
+        `).join('');
+      }
+    } catch (e) { }
+  }
+
+  function fmtDate(iso) { 
+    if(!iso) return ''; 
+    const d = new Date(iso); 
+    return d.toLocaleDateString('en-GB', {day:'2-digit', month:'short', year:'numeric'}); 
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    loadHistory();
+    loadLeaveStats();
+    loadHolidays();
+  });
+</script>
+{% endblock %}

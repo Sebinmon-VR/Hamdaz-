@@ -102,6 +102,28 @@ try:
             print(f"[COSMOS ERROR] Could not create/get task_supplier_quotes container: {e_tsq}", flush=True)
             task_supplier_quotes_container = None
 
+        # --- Dedicated container for Leave Requests ---
+        try:
+            leave_requests_container = database.create_container_if_not_exists(
+                id="leave_requests",
+                partition_key=PartitionKey(path="/user_email")
+            )
+            print("[COSMOS INFO] leave_requests container ready.", flush=True)
+        except Exception as e_lr:
+            print(f"[COSMOS ERROR] Could not create/get leave_requests container: {e_lr}", flush=True)
+            leave_requests_container = None
+
+        # --- Dedicated container for Leave Settings (limits, holidays, notices) ---
+        try:
+            leave_settings_container = database.create_container_if_not_exists(
+                id="leave_settings",
+                partition_key=PartitionKey(path="/setting_type")
+            )
+            print("[COSMOS INFO] leave_settings container ready.", flush=True)
+        except Exception as e_ls:
+            print(f"[COSMOS ERROR] Could not create/get leave_settings container: {e_ls}", flush=True)
+            leave_settings_container = None
+
     else:
         print("Warning: COSMOS_ENDPOINT or COSMOS_KEY is missing. Cosmos DB features will be disabled.")
         client = None
@@ -110,6 +132,8 @@ try:
         sessions_container = None
         tracked_emails_container = None
         task_supplier_quotes_container = None
+        leave_requests_container = None
+        leave_settings_container = None
 except Exception as e:
     print(f"Error initializing CosmosClient: {e}")
     client = None
@@ -912,3 +936,369 @@ def get_project_presence(project_id):
         return active_users
     except Exception:
         return []
+
+
+# =======================
+# LEAVE REQUESTS MANAGEMENT
+# =======================
+
+def save_leave_request(user_email, username, leave_start, leave_end,
+                       continue_assign=False, handoff_enabled=False,
+                       handoff_mode="auto", handoff_to_user=None,
+                       proposals_transferred=None, leave_type="full_day",
+                       status="active", leave_category="Casual", leave_reason=""):
+    """
+    Saves a new leave request to the leave_requests Cosmos DB container.
+    Returns the generated doc_id on success, None on failure.
+    
+    Schema:
+        user_email      - partition key
+        username        - display name (e.g. JohnDoe)
+        leave_start     - ISO date string "YYYY-MM-DD"
+        leave_end       - ISO date string "YYYY-MM-DD"
+        continue_assign - bool: if True user stays in task pool
+        handoff_enabled - bool: if True proposals were reassigned
+        handoff_mode    - "auto" | "manual"
+        handoff_to_user - username of recipient (if handoff_enabled)
+        proposals_transferred - list of proposal titles that were moved
+        leave_type      - "full_day" | "first_half" | "second_half"
+        status          - "active" | "completed" | "cancelled"
+    """
+    if not leave_requests_container:
+        print("[COSMOS WARN] leave_requests_container is None.", flush=True)
+        return None
+
+    doc_id = str(uuid.uuid4())
+    doc = {
+        "id": doc_id,
+        "user_email": user_email.lower(),
+        "username": username,
+        "leave_start": leave_start,
+        "leave_end": leave_end,
+        "continue_assign": continue_assign,
+        "handoff_enabled": handoff_enabled,
+        "handoff_mode": handoff_mode,
+        "handoff_to_user": handoff_to_user,
+        "proposals_transferred": proposals_transferred or [],
+        "leave_type": leave_type,
+        "leave_category": leave_category,
+        "leave_reason": leave_reason,
+        "status": status,
+        "reviewed_by": None,
+        "reviewed_at": None,
+        "admin_remarks": None,
+        "submitted_at": datetime.datetime.utcnow().isoformat(),
+    }
+    try:
+        leave_requests_container.create_item(body=doc)
+        print(f"[COSMOS INFO] Leave request saved for {user_email} ({leave_start} → {leave_end})", flush=True)
+        return doc_id
+    except Exception as e:
+        print(f"[COSMOS ERROR] save_leave_request: {e}", flush=True)
+        return None
+
+
+def get_active_leaves():
+    """
+    Returns all leave_requests where status='active'.
+    Used by the background updater to auto-remove expired excludeusers.
+    """
+    if not leave_requests_container:
+        return []
+    query = {
+        "query": "SELECT * FROM c WHERE c.status = 'active'",
+        "parameters": []
+    }
+    try:
+        return list(leave_requests_container.query_items(
+            query=query, enable_cross_partition_query=True
+        ))
+    except Exception as e:
+        print(f"[COSMOS ERROR] get_active_leaves: {e}", flush=True)
+        return []
+
+
+def get_leave_history_for_user(user_email):
+    """
+    Returns all leave records for a specific user, newest first.
+    """
+    if not leave_requests_container:
+        return []
+    query = {
+        "query": "SELECT * FROM c WHERE LOWER(c.user_email) = @email ORDER BY c.submitted_at DESC",
+        "parameters": [{"name": "@email", "value": user_email.lower()}]
+    }
+    try:
+        return list(leave_requests_container.query_items(
+            query=query, enable_cross_partition_query=True
+        ))
+    except Exception as e:
+        print(f"[COSMOS ERROR] get_leave_history_for_user: {e}", flush=True)
+        return []
+
+
+def update_leave_status(doc_id, user_email, new_status):
+    """
+    Updates the status of a leave request document.
+    new_status: "active" | "completed" | "cancelled"
+    """
+    if not leave_requests_container:
+        return False
+    try:
+        doc = leave_requests_container.read_item(item=doc_id, partition_key=user_email.lower())
+        doc["status"] = new_status
+        doc["updated_at"] = datetime.datetime.utcnow().isoformat()
+        leave_requests_container.upsert_item(body=doc)
+        print(f"[COSMOS INFO] Leave {doc_id} status → {new_status}", flush=True)
+        return True
+    except Exception as e:
+        print(f"[COSMOS ERROR] update_leave_status: {e}", flush=True)
+        return False
+
+
+def cancel_leave_request(doc_id, user_email):
+    """Convenience wrapper: marks a leave as cancelled."""
+    return update_leave_status(doc_id, user_email, "cancelled")
+
+
+def get_all_leaves():
+    """
+    Returns ALL leave records across all users. Admin-only function.
+    Sorted by submitted_at descending (newest first).
+    """
+    if not leave_requests_container:
+        return []
+    query = {
+        "query": "SELECT * FROM c ORDER BY c.submitted_at DESC",
+        "parameters": []
+    }
+    try:
+        return list(leave_requests_container.query_items(
+            query=query, enable_cross_partition_query=True
+        ))
+    except Exception as e:
+        print(f"[COSMOS ERROR] get_all_leaves: {e}", flush=True)
+        return []
+
+
+def get_max_concurrent_leave_count(start_date_str, end_date_str):
+    """
+    Calculates the maximum number of people on leave simultaneously at any point
+    within the requested date range [start_date_str, end_date_str].
+    Returns the peak count.
+    """
+    if not leave_requests_container:
+        return 0
+    
+    try:
+        # 1. Fetch all active/approved leaves that overlap with the ANY point in the range
+        query = {
+            "query": "SELECT c.leave_start, c.leave_end FROM c WHERE c.status IN ('active', 'approved') AND c.leave_start <= @end AND c.leave_end >= @start",
+            "parameters": [
+                {"name": "@start", "value": start_date_str},
+                {"name": "@end", "value": end_date_str}
+            ]
+        }
+        overlapping_leaves = list(leave_requests_container.query_items(
+            query=query, enable_cross_partition_query=True
+        ))
+        
+        if not overlapping_leaves:
+            return 0
+        
+        # 2. Count daily peak
+        import datetime
+        start_date = datetime.datetime.strptime(start_date_str, "%Y-%m-%d")
+        end_date = datetime.datetime.strptime(end_date_str, "%Y-%m-%d")
+        
+        peak_count = 0
+        current_date = start_date
+        while current_date <= end_date:
+            curr_str = current_date.strftime("%Y-%m-%d")
+            
+            # Count how many leaves cover THIS specific day
+            day_count = 0
+            for l in overlapping_leaves:
+                if l['leave_start'] <= curr_str and l['leave_end'] >= curr_str:
+                    day_count += 1
+            
+            if day_count > peak_count:
+                peak_count = day_count
+            
+            current_date += datetime.timedelta(days=1)
+            
+        return peak_count
+    except Exception as e:
+        print(f"[COSMOS ERROR] get_max_concurrent_leave_count: {e}", flush=True)
+        return 0
+
+
+# =======================
+# LEAVE SETTINGS (Admin)
+# =======================
+
+def save_leave_setting(setting_data):
+    """Upsert a leave setting document (limits config, etc.)."""
+    if not leave_settings_container:
+        return None
+    try:
+        leave_settings_container.upsert_item(body=setting_data)
+        print(f"[COSMOS INFO] Leave setting saved: {setting_data.get('id')}", flush=True)
+        return True
+    except Exception as e:
+        print(f"[COSMOS ERROR] save_leave_setting: {e}", flush=True)
+        return None
+
+
+def get_leave_settings():
+    """Returns the leave limit config doc (id='leave_limit')."""
+    if not leave_settings_container:
+        return None
+    try:
+        # The partition key for config is 'config' as per the setting_type path
+        return leave_settings_container.read_item(item="leave_limit", partition_key="config")
+    except Exception:
+        # Return defaults if not found
+        return {
+            "id": "leave_limit",
+            "setting_type": "config",
+            "max_concurrent_limit": 3,
+            "hr_email": "sebin@hamdaz.com"
+        }
+
+
+def save_holiday(title, date_str, end_date_str=None, holiday_type="holiday",
+                 description="", created_by=""):
+    """Create a holiday/event/notice entry."""
+    if not leave_settings_container:
+        return None
+    doc_id = str(uuid.uuid4())
+    doc = {
+        "id": doc_id,
+        "setting_type": "holiday",
+        "title": title,
+        "date": date_str,
+        "end_date": end_date_str or date_str,
+        "holiday_type": holiday_type,  # holiday | event | notice
+        "description": description,
+        "created_by": created_by,
+        "created_at": datetime.datetime.utcnow().isoformat(),
+    }
+    try:
+        leave_settings_container.create_item(body=doc)
+        print(f"[COSMOS INFO] Holiday saved: {title} ({date_str})", flush=True)
+        return doc_id
+    except Exception as e:
+        print(f"[COSMOS ERROR] save_holiday: {e}", flush=True)
+        return None
+
+
+def get_holidays():
+    """Returns all holiday/event/notice entries."""
+    if not leave_settings_container:
+        return []
+    try:
+        return list(leave_settings_container.query_items(
+            query={"query": "SELECT * FROM c WHERE c.setting_type = 'holiday' ORDER BY c.date ASC"},
+            partition_key="holiday"
+        ))
+    except Exception as e:
+        print(f"[COSMOS ERROR] get_holidays: {e}", flush=True)
+        return []
+
+
+def delete_holiday(doc_id):
+    """Delete a holiday entry."""
+    if not leave_settings_container:
+        return False
+    try:
+        leave_settings_container.delete_item(item=doc_id, partition_key="holiday")
+        print(f"[COSMOS INFO] Holiday deleted: {doc_id}", flush=True)
+        return True
+    except Exception as e:
+        print(f"[COSMOS ERROR] delete_holiday: {e}", flush=True)
+        return False
+
+
+def get_user_leave_count(user_email, year=None, month=None):
+    """
+    Count approved/active leaves for a user in a given year and optionally month.
+    Returns dict: {"yearly": int, "monthly": int}
+    """
+    if not leave_requests_container:
+        return {"yearly": 0, "monthly": 0}
+    import datetime as dt
+    now = dt.datetime.utcnow()
+    yr = year or now.year
+    mn = month or now.month
+    yr_start = f"{yr}-01-01"
+    yr_end = f"{yr}-12-31"
+    mn_start = f"{yr}-{mn:02d}-01"
+    if mn == 12:
+        mn_end = f"{yr + 1}-01-01"
+    else:
+        mn_end = f"{yr}-{mn + 1:02d}-01"
+    email_lower = user_email.lower()
+
+    try:
+        # Yearly count
+        yearly_q = {
+            "query": "SELECT VALUE COUNT(1) FROM c WHERE c.user_email = @email AND c.status IN ('active', 'approved', 'completed') AND c.leave_start >= @ys AND c.leave_start <= @ye",
+            "parameters": [{"name": "@email", "value": email_lower},
+                           {"name": "@ys", "value": yr_start},
+                           {"name": "@ye", "value": yr_end}]
+        }
+        yearly = list(leave_requests_container.query_items(query=yearly_q, partition_key=email_lower))
+        yearly_count = yearly[0] if yearly else 0
+
+        # Monthly count
+        monthly_q = {
+            "query": "SELECT VALUE COUNT(1) FROM c WHERE c.user_email = @email AND c.status IN ('active', 'approved', 'completed') AND c.leave_start >= @ms AND c.leave_start < @me",
+            "parameters": [{"name": "@email", "value": email_lower},
+                           {"name": "@ms", "value": mn_start},
+                           {"name": "@me", "value": mn_end}]
+        }
+        monthly = list(leave_requests_container.query_items(query=monthly_q, partition_key=email_lower))
+        monthly_count = monthly[0] if monthly else 0
+
+        return {"yearly": yearly_count, "monthly": monthly_count}
+    except Exception as e:
+        print(f"[COSMOS ERROR] get_user_leave_count: {e}", flush=True)
+        return {"yearly": 0, "monthly": 0}
+
+
+def approve_leave_request(doc_id, user_email, admin_email, remarks=""):
+    """Admin approves a leave — sets status to 'active'."""
+    if not leave_requests_container:
+        return False
+    try:
+        doc = leave_requests_container.read_item(item=doc_id, partition_key=user_email.lower())
+        doc["status"] = "active"
+        doc["reviewed_by"] = admin_email
+        doc["reviewed_at"] = datetime.datetime.utcnow().isoformat()
+        doc["admin_remarks"] = remarks
+        leave_requests_container.replace_item(item=doc_id, body=doc)
+        print(f"[COSMOS INFO] Leave {doc_id} approved by {admin_email}", flush=True)
+        return True
+    except Exception as e:
+        print(f"[COSMOS ERROR] approve_leave_request: {e}", flush=True)
+        return False
+
+
+def reject_leave_request(doc_id, user_email, admin_email, remarks=""):
+    """Admin rejects a leave — sets status to 'rejected'."""
+    if not leave_requests_container:
+        return False
+    try:
+        doc = leave_requests_container.read_item(item=doc_id, partition_key=user_email.lower())
+        doc["status"] = "rejected"
+        doc["reviewed_by"] = admin_email
+        doc["reviewed_at"] = datetime.datetime.utcnow().isoformat()
+        doc["admin_remarks"] = remarks
+        leave_requests_container.replace_item(item=doc_id, body=doc)
+        print(f"[COSMOS INFO] Leave {doc_id} rejected by {admin_email}", flush=True)
+        return True
+    except Exception as e:
+        print(f"[COSMOS ERROR] reject_leave_request: {e}", flush=True)
+        return False
+
