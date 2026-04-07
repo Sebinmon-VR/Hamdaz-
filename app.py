@@ -2594,7 +2594,9 @@ def api_leave_submit():
         )
         if doc_id:
             # SEND NOTIFICATION EMAILS
-            hr_email = "sebin@hamdaz.com" # Testing: put sebin, later ashna@hamdaz.com
+            from cosmos import get_leave_settings
+            settings = get_leave_settings() or {}
+            hr_email = settings.get("hr_email")
             # 1. Notify HR
             hr_subject = f"Leave Request - {username} - {auto_status.upper()}"
             hr_body = f"""
@@ -2655,7 +2657,7 @@ def api_leave_settings_public():
         "success": True,
         "settings": {
             "max_concurrent_limit": settings.get("max_concurrent_limit", 3),
-            "hr_email": settings.get("hr_email", "sebin@hamdaz.com")
+            "hr_email": settings.get("hr_email")
         }
     })
 @app.route("/api/leave/history", methods=["GET"])
@@ -2771,7 +2773,7 @@ def api_admin_leave_settings():
             "id": "leave_limit",
             "setting_type": "config",
             "max_concurrent_limit": int(data.get("max_concurrent_limit", 3)),
-            "hr_email": data.get("hr_email", "sebin@hamdaz.com"),
+            "hr_email": data.get("hr_email"),
             "updated_by": email,
             "updated_at": datetime.utcnow().isoformat()
         }
