@@ -946,7 +946,8 @@ def save_leave_request(user_email, username, leave_start, leave_end,
                        continue_assign=False, handoff_enabled=False,
                        handoff_mode="auto", handoff_to_user=None,
                        proposals_transferred=None, leave_type="full_day",
-                       status="active", leave_category="Casual", leave_reason=""):
+                       status="active", leave_category="Casual", leave_reason="",
+                       reviewed_by=None):
     """
     Saves a new leave request to the leave_requests Cosmos DB container.
     Returns the generated doc_id on success, None on failure.
@@ -984,8 +985,8 @@ def save_leave_request(user_email, username, leave_start, leave_end,
         "leave_category": leave_category,
         "leave_reason": leave_reason,
         "status": status,
-        "reviewed_by": None,
-        "reviewed_at": None,
+        "reviewed_by": reviewed_by,
+        "reviewed_at": datetime.datetime.utcnow().isoformat() if reviewed_by else None,
         "admin_remarks": None,
         "submitted_at": datetime.datetime.utcnow().isoformat(),
     }

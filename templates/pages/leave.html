@@ -1227,7 +1227,10 @@
                 <td><span class="lm-type-tag ${lt !== 'full_day' ? 'half' : 'full'}">${tl}</span></td>
                 <td>${h.continue_assign ? '<span style="color:#22c55e;font-size:12px">✅ Continue</span>' : '<span style="color:#f59e0b;font-size:12px">🚫 Excluded</span>'}</td>
                 <td>${h.handoff_enabled ? `<span style="font-size:12px">🔄 → <strong>${h.handoff_to_user || 'Auto'}</strong><br><span style="color:#94a3b8;font-size:11px">${(h.proposals_transferred || []).length} proposal(s)</span></span>` : '<span style="color:#94a3b8">—</span>'}</td>
-                <td><span class="lm-badge lm-badge-${h.status}">${statusDisp}</span></td>
+                <td>
+                  <span class="lm-badge lm-badge-${h.status}">${statusDisp}</span>
+                  ${h.reviewed_by ? `<div style="font-size:11px;color:#94a3b8;margin-top:4px;">by ${h.reviewed_by}</div>` : ''}
+                </td>
                 <td>${h.status === 'active' ? `<button class="lm-cancel-btn" onclick="cancelLeave('${h.id}')">Cancel</button>` : ''}</td>
               </tr>
             `;

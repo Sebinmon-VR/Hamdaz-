@@ -2590,7 +2590,8 @@ def api_leave_submit():
             leave_type=leave_type,
             status=auto_status,
             leave_category=leave_category,
-            leave_reason=leave_reason
+            leave_reason=leave_reason,
+            reviewed_by="System (Auto)" if auto_status in ["active", "rejected"] else None
         )
         if doc_id:
             # SEND NOTIFICATION EMAILS
