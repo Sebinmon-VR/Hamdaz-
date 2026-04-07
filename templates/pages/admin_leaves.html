@@ -112,7 +112,21 @@
   .cal-cell.weekend { background: #fafafa; }
   .cal-bar { height: 26px; border-radius: 6px; font-size: 10px; color: white; display: flex; align-items: center; justify-content: center; overflow: hidden; white-space: nowrap; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; box-shadow: 0 2px 5px rgba(99,102,241,0.25); }
   .cal-bar.pending { background: repeating-linear-gradient(45deg, #cbd5e1, #cbd5e1 6px, #94a3b8 6px, #94a3b8 12px); box-shadow: none; color: transparent; }
+  .cal-bar.WL { background: #f59e0b; }
   .cal-bar.active { background: #6366f1; }
+  
+  .s-badge-WL { background: #fef3c7; color: #d97706; }
+
+  /* Switch Toggle Styles */
+  .switch-box { display: flex; align-items: center; justify-content: space-between; padding: 12px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 10px; }
+  .switch-box-text { font-size: 13px; font-weight: 600; color: #1e293b; }
+  .switch-box-desc { font-size: 11px; color: #64748b; font-weight: 400; margin-top: 2px; }
+  .adm-switch { position: relative; display: inline-block; width: 44px; height: 24px; flex-shrink: 0; }
+  .adm-switch input { opacity: 0; width: 0; height: 0; }
+  .adm-slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #cbd5e1; transition: .3s; border-radius: 24px; }
+  .adm-slider:before { position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px; background-color: white; transition: .3s; border-radius: 50%; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+  input:checked + .adm-slider { background-color: #6366f1; }
+  input:checked + .adm-slider:before { transform: translateX(20px); }
 
 </style>
 {% endblock %}
@@ -158,6 +172,29 @@
           <label>HR Support Email</label>
           <input type="email" id="hrEmail" placeholder="e.g. hr@hamdaz.com">
         </div>
+        
+        <div class="switch-box">
+          <div>
+            <div class="switch-box-text">Auto Approval System</div>
+            <div class="switch-box-desc">Automatically acts on limits</div>
+          </div>
+          <label class="adm-switch">
+            <input type="checkbox" id="autoApprovalToggle" checked>
+            <span class="adm-slider"></span>
+          </label>
+        </div>
+
+        <div class="switch-box" style="margin-bottom: 20px;">
+          <div>
+            <div class="switch-box-text">Waitlist System (WL)</div>
+            <div class="switch-box-desc">Queue requests when limits reached</div>
+          </div>
+          <label class="adm-switch">
+            <input type="checkbox" id="waitlistToggle">
+            <span class="adm-slider"></span>
+          </label>
+        </div>
+
         <button class="btn-primary" id="saveBtn" onclick="saveSettings()">Update Configuration</button>
       </div>
 
@@ -302,7 +339,7 @@
 
   function updateGlobalStats() {
     const today = new Date().toISOString().slice(0,10);
-    const pending = allLeaves.filter(l => l.status === 'pending').length;
+    const pending = allLeaves.filter(l => l.status === 'pending' || l.status === 'WL').length;
     const ongoing = allLeaves.filter(l => l.status === 'active' && l.leave_start <= today && l.leave_end >= today).length;
     const upcoming = allLeaves.filter(l => l.status === 'active' && l.leave_start > today).length;
     
@@ -313,8 +350,8 @@
 
   function renderRequests() {
     // Show pending first, then active/recent
-    const activeRequests = allLeaves.filter(l => l.status === 'pending' || l.status === 'active');
-    activeRequests.sort((a,b) => (a.status === 'pending' ? -1 : 1) || (b.submitted_at || '').localeCompare(a.submitted_at || ''));
+    const activeRequests = allLeaves.filter(l => l.status === 'pending' || l.status === 'WL' || l.status === 'active');
+    activeRequests.sort((a,b) => ((a.status === 'pending' || a.status === 'WL') ? -1 : 1) || (b.submitted_at || '').localeCompare(a.submitted_at || ''));
 
     const container = document.getElementById('requestsTableContent');
     if(activeRequests.length === 0) {
@@ -339,7 +376,7 @@
             <div style="font-size:11px;color:#94a3b8;margin-top:4px;">${l.reviewed_by ? 'by ' + l.reviewed_by : ''}</div>
           </td>
           <td>
-            ${l.status === 'pending' ? `
+            ${(l.status === 'pending' || l.status === 'WL') ? `
               <div style="display:flex;gap:4px">
                 <button class="act-btn act-approve" onclick="approveLeave('${l.id}','${l.user_email}')">Approve</button>
                 <button class="act-btn act-reject" onclick="rejectLeave('${l.id}','${l.user_email}')">Reject</button>
@@ -460,7 +497,7 @@
     const sStr = `${y}-${String(m+1).padStart(2,'0')}-01`;
     const eStr = `${y}-${String(m+1).padStart(2,'0')}-${String(daysInMonth).padStart(2,'0')}`;
     
-    const relevantLeaves = allLeaves.filter(l => (l.status === 'active' || l.status === 'pending') && l.leave_end >= sStr && l.leave_start <= eStr);
+    const relevantLeaves = allLeaves.filter(l => (l.status === 'active' || l.status === 'pending' || l.status === 'WL') && l.leave_end >= sStr && l.leave_start <= eStr);
     const users = [...new Set(relevantLeaves.map(l => l.user_email))].sort();
 
     if(users.length === 0) {
@@ -489,12 +526,12 @@
             const span = (endDay - startDay) + 1;
             const colStart = startDay + 1; 
 
-            let txt = lv.status === 'pending' ? 'Pending' : 'Off';
+            let txt = lv.status === 'pending' ? 'Pending' : (lv.status === 'WL' ? 'WL' : 'Off');
             if (lv.leave_type === 'first_half') txt = '1st Half';
             if (lv.leave_type === 'second_half') txt = '2nd Half';
             
             html += `<div style="grid-row:${rowNum}; grid-column: ${colStart} / span ${span}; position: relative; z-index: 5; display:flex; align-items:center; padding: 0 4px;">
-                       <div class="cal-bar ${lv.status}" style="width:100%;" title="${lv.leave_start} to ${lv.leave_end} (${lv.status})">${lv.status === 'pending' ? 'Pending' : txt}</div>
+                       <div class="cal-bar ${lv.status}" style="width:100%;" title="${lv.leave_start} to ${lv.leave_end} (${lv.status})">${(lv.status === 'pending' || lv.status === 'WL') ? lv.status : txt}</div>
                      </div>`;
         });
     });
@@ -530,12 +567,19 @@
     const btn = document.getElementById('saveBtn');
     const limit = document.getElementById('limitConcurrent').value;
     const hr_email = document.getElementById('hrEmail').value;
+    const auto_enabled = document.getElementById('autoApprovalToggle').checked;
+    const wl_enabled = document.getElementById('waitlistToggle').checked;
     const oldTxt = btn.textContent;
     btn.disabled = true; btn.textContent = 'Saving...';
     try {
       await fetch('/api/admin/leave/settings', {
         method: 'POST', headers:{'Content-Type': 'application/json'},
-        body: JSON.stringify({ max_concurrent_limit: limit, hr_email: hr_email })
+        body: JSON.stringify({ 
+          max_concurrent_limit: limit, 
+          hr_email: hr_email, 
+          auto_approval_enabled: auto_enabled,
+          waitlist_enabled: wl_enabled 
+        })
       });
       alert('Settings updated');
     } catch(e) {} finally { btn.disabled = false; btn.textContent = oldTxt; }
@@ -581,7 +625,9 @@
     fetch('/api/admin/leave/settings').then(r=>r.json()).then(d=>{
       if(d.settings){
         document.getElementById('limitConcurrent').value = d.settings.max_concurrent_limit||3;
-        document.getElementById('hrEmail').value = d.settings.hr_email||'sebin@hamdaz.com';
+        document.getElementById('hrEmail').value = d.settings.hr_email||'hr@hamdaz.com';
+        document.getElementById('autoApprovalToggle').checked = d.settings.auto_approval_enabled !== false;
+        document.getElementById('waitlistToggle').checked = d.settings.waitlist_enabled === true;
       }
     });
   });

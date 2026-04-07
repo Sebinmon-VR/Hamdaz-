@@ -2542,12 +2542,19 @@ def api_leave_submit():
     auto_status = "active"
     reject_reason = ""
     current_peak = 0
-    if max_limit > 0:
-        current_peak = get_max_concurrent_leave_count(leave_start, leave_end)
-        if current_peak >= max_limit:
-            auto_status = "rejected"
-            reject_reason = f"Global leave capacity reached ({max_limit} active leaves) for the requested dates."
-    print(f"[LEAVE SUBMIT] Concurrency Check: Peak={current_peak if max_limit > 0 else 'N/A'}, Limit={max_limit}. Status: {auto_status}")
+    auto_approval_enabled = settings.get("auto_approval_enabled", True)
+    waitlist_enabled = settings.get("waitlist_enabled", False)
+    
+    if auto_approval_enabled:
+        if max_limit > 0:
+            current_peak = get_max_concurrent_leave_count(leave_start, leave_end)
+            if current_peak >= max_limit:
+                auto_status = "WL" if waitlist_enabled else "rejected"
+                reject_reason = f"Global leave capacity reached ({max_limit} active leaves) for the requested dates. Status changed to {auto_status}."
+        print(f"[LEAVE SUBMIT] Concurrency Check: Peak={current_peak if max_limit > 0 else 'N/A'}, Limit={max_limit}. Status: {auto_status}")
+    else:
+        auto_status = "pending"
+        print(f"[LEAVE SUBMIT] Auto-approval disabled. Status: {auto_status}")
     handoff_to_user = None
     proposals_transferred = []
     handoff_results = {}
@@ -2575,7 +2582,7 @@ def api_leave_submit():
                 else:
                     print("[LEAVE] Could not determine handoff user.")
         else:
-            print("[LEAVE] Leave auto-rejected. Skipping exclude and handoff.")
+            print(f"[LEAVE] Leave handled manually or waitlisted ({auto_status}). Skipping exclude and handoff.")
         # ---- Step 3: Save to Cosmos DB ----
         doc_id = save_leave_request(
             user_email=email,
@@ -2600,19 +2607,24 @@ def api_leave_submit():
             hr_email = settings.get("hr_email")
             # 1. Notify HR
             hr_subject = f"Leave Request - {username} - {auto_status.upper()}"
+            _status_str = "Waitlisted (WL)" if auto_status == "WL" else auto_status.upper()
             hr_body = f"""
                 <p>User <b>{username}</b> ({email}) submitted a leave request.</p>
                 <p><b>Dates:</b> {leave_start} to {leave_end}<br>
                 <b>Type:</b> {leave_type.replace('_',' ')}<br>
                 <b>Category:</b> {leave_category}<br>
                 <b>Reason:</b> {leave_reason or 'No reason provided'}</p>
-                <p><b>System Status:</b> <b>{auto_status.upper()}</b> {reject_reason}</p>
+                <p><b>System Status:</b> <b>{_status_str}</b><br>{reject_reason}</p>
             """
             send_graph_email(hr_email, hr_subject, hr_body)
-            # 2. Notify User if rejected
+            # 2. Notify User if rejected or waitlisted
             if auto_status == "rejected":
                 user_subject = "Leave Request Auto-Rejected"
-                user_body = f"Hello {username},<br><br>Your leave request from {leave_start} to {leave_end} was automatically rejected by the system.<br>Reason: {reject_reason}<br><br>Please contact HR if you have questions."
+                user_body = f"Hello {username},<br><br>Your leave request from {leave_start} to {leave_end} was automatically rejected by the system because the concurrent limit has been reached.<br><br>Please contact HR if you have questions."
+                send_graph_email(email, user_subject, user_body)
+            elif auto_status == "WL":
+                user_subject = "Leave Request Waitlisted"
+                user_body = f"Hello {username},<br><br>Your leave request from {leave_start} to {leave_end} has been placed on the <b>Waitlist</b> because the concurrent leave limit is currently full. Admin/HR will review your request manually.<br><br>Please contact HR if you have urgent questions."
                 send_graph_email(email, user_subject, user_body)
             return jsonify({
                 "success": True, 
@@ -2658,7 +2670,9 @@ def api_leave_settings_public():
         "success": True,
         "settings": {
             "max_concurrent_limit": settings.get("max_concurrent_limit", 3),
-            "hr_email": settings.get("hr_email")
+            "hr_email": settings.get("hr_email"),
+            "auto_approval_enabled": settings.get("auto_approval_enabled", True),
+            "waitlist_enabled": settings.get("waitlist_enabled", False)
         }
     })
 @app.route("/api/leave/history", methods=["GET"])
@@ -2737,7 +2751,9 @@ def send_graph_email(to_email, subject, html_body):
             "Content-Type": "application/json"
         }
         # We send from a system-designated admin/HR account for now.
-        from_email = "sebin@hamdaz.com" 
+        from cosmos import get_leave_settings
+        _s = get_leave_settings() or {}
+        from_email = _s.get("hr_email", "hr@hamdaz.com")
         message = {
             "message": {
                 "subject": subject,
@@ -2775,6 +2791,8 @@ def api_admin_leave_settings():
             "setting_type": "config",
             "max_concurrent_limit": int(data.get("max_concurrent_limit", 3)),
             "hr_email": data.get("hr_email"),
+            "auto_approval_enabled": data.get("auto_approval_enabled", True),
+            "waitlist_enabled": data.get("waitlist_enabled", False),
             "updated_by": email,
             "updated_at": datetime.utcnow().isoformat()
         }

@@ -761,6 +761,11 @@
     color: #ef4444;
   }
 
+  .lm-badge-WL {
+    background: #fef3c7;
+    color: #d97706;
+  }
+
   .lm-type-tag {
     display: inline-block;
     padding: 1px 6px;
@@ -1230,6 +1235,7 @@
             const tl = lt === 'full_day' ? 'Full Day' : lt === 'first_half' ? '1st Half' : '2nd Half';
             let statusDisp = h.status;
             if (h.status === 'active') statusDisp = 'Approved';
+            if (h.status === 'WL') statusDisp = 'Waitlisted';
             
             return `
               <tr>
@@ -1276,7 +1282,7 @@
       const res = await fetch('/api/leave/settings');
       const data = await res.json();
       if (data.success && data.settings) {
-        document.getElementById('hrSupportEmail').textContent = data.settings.hr_email || 'sebin@hamdaz.com';
+        document.getElementById('hrSupportEmail').textContent = data.settings.hr_email || 'hr@hamdaz.com';
         const limit = data.settings.max_concurrent_limit || 3;
         document.getElementById('leaveLimitInfo').textContent = `Max concurrent staff on leave: ${limit}`;
       }

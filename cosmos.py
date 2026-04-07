@@ -1164,7 +1164,9 @@ def get_leave_settings():
             "id": "leave_limit",
             "setting_type": "config",
             "max_concurrent_limit": 3,
-            "hr_email": "sebin@hamdaz.com"
+            "hr_email": "sebin@hamdaz.com",
+            "auto_approval_enabled": True,
+            "waitlist_enabled": False
         }
 
 
@@ -1302,4 +1304,4 @@ def reject_leave_request(doc_id, user_email, admin_email, remarks=""):
     except Exception as e:
         print(f"[COSMOS ERROR] reject_leave_request: {e}", flush=True)
         return False
-
+
