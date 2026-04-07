@@ -1179,7 +1179,17 @@
     const btn = document.getElementById('submitBtn');
     btn.classList.add('loading'); btn.disabled = true;
     try {
-      const payload = { leave_start: leaveStartDate.toISOString().slice(0, 10), leave_end: leaveEndDate.toISOString().slice(0, 10), leave_type: leaveType, continue_assign: continueAssign, handoff_enabled: handoffEnabled, handoff_mode: handoffMode, handoff_to_user: handoffToUser };
+      const payload = { 
+        leave_start: document.getElementById('leaveStart').value, 
+        leave_end: document.getElementById('leaveEnd').value, 
+        leave_type: leaveType, 
+        leave_category: document.getElementById('leaveCategory').value,
+        leave_reason: document.getElementById('leaveReason').value,
+        continue_assign: continueAssign, 
+        handoff_enabled: handoffEnabled, 
+        handoff_mode: handoffMode, 
+        handoff_to_user: handoffToUser 
+      };
       const res = await fetch('/api/leave/submit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       const data = await res.json();
       if (data.success) {

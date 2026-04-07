@@ -98,6 +98,22 @@
   .act-reject { background: #ef4444; color: white; }
 
   .empty-msg { text-align: center; padding: 4rem 2rem; color: #94a3b8; }
+
+  /* Calendar Styles */
+  .cal-header-bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+  .cal-btn { background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 8px; padding: 8px 12px; cursor: pointer; font-size: 13px; font-weight: 600; color: #475569; transition: 0.2s; }
+  .cal-btn:hover { background: #e2e8f0; color: #1e293b; }
+  .cal-title { font-size: 16px; font-weight: 700; color: #1e293b; }
+  .cal-grid-container { overflow-x: auto; background: white; border: 1px solid #e2e8f0; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.03); }
+  .cal-grid { display: grid; gap: 0; min-width: 800px; padding: 10px; }
+  .cal-cell { padding: 4px; border-bottom: 1px dashed #f1f5f9; border-right: 1px solid #f8fafc; height: 44px; display: flex; align-items: center; justify-content: center; }
+  .cal-cell.user-label { justify-content: flex-start; font-weight: 600; font-size: 12px; color: #1e293b; position: sticky; left: 0; background: white; z-index: 10; padding-left: 10px; width: 140px; border-right: 1px solid #e2e8f0; border-bottom: 1px solid #f1f5f9; }
+  .cal-cell.day-header { font-size: 11px; font-weight: 700; color: #64748b; background: white; border-bottom: 2px solid #e2e8f0; padding: 10px 0; border-right: none; }
+  .cal-cell.weekend { background: #fafafa; }
+  .cal-bar { height: 26px; border-radius: 6px; font-size: 10px; color: white; display: flex; align-items: center; justify-content: center; overflow: hidden; white-space: nowrap; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; box-shadow: 0 2px 5px rgba(99,102,241,0.25); }
+  .cal-bar.pending { background: repeating-linear-gradient(45deg, #cbd5e1, #cbd5e1 6px, #94a3b8 6px, #94a3b8 12px); box-shadow: none; color: transparent; }
+  .cal-bar.active { background: #6366f1; }
+
 </style>
 {% endblock %}
 
@@ -116,6 +132,7 @@
 
   <div class="adm-tabs">
     <button class="adm-tab-btn active" onclick="showTab('requests')">Leave Requests</button>
+    <button class="adm-tab-btn" onclick="showTab('calendar')">Team Calendar</button>
     <button class="adm-tab-btn" onclick="showTab('analytics')">History & Analytics</button>
   </div>
 
@@ -163,7 +180,22 @@
     </div>
   </div>
 
-  <!-- Tab 2: User History & Analytics -->
+  <!-- Tab 2: Team Calendar -->
+  <div id="calendarTab" class="tab-content">
+    <div class="cal-header-bar">
+      <button class="cal-btn" onclick="changeCalMonth(-1)">&#9664; Prev Month</button>
+      <div class="cal-title" id="calMonthLabel">Loading...</div>
+      <button class="cal-btn" onclick="changeCalMonth(1)">Next Month &#9654;</button>
+    </div>
+    
+    <div class="cal-grid-container">
+      <div class="cal-grid" id="calendarGrid">
+        <div class="empty-msg" style="padding: 2rem;">Loading Calendar...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tab 3: User History & Analytics -->
   <div id="analyticsTab" class="tab-content">
     <div class="ana-grid">
       <!-- Sidebar Selector -->
@@ -264,6 +296,7 @@
       renderRequests();
       populateUserSelector();
       updateGlobalStats();
+      renderCalendar();
     } catch (e) {}
   }
 
@@ -398,6 +431,75 @@
           </td>
         </tr>
       `).join('')}</tbody></table>`;
+  }
+
+  // --- Calendar Logic ---
+  let currentCalDate = new Date();
+
+  function changeCalMonth(offset) {
+    currentCalDate.setMonth(currentCalDate.getMonth() + offset);
+    renderCalendar();
+  }
+
+  function renderCalendar() {
+    const grid = document.getElementById('calendarGrid');
+    const y = currentCalDate.getFullYear();
+    const m = currentCalDate.getMonth();
+    const daysInMonth = new Date(y, m + 1, 0).getDate();
+    
+    document.getElementById('calMonthLabel').textContent = currentCalDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+    grid.style.gridTemplateColumns = `140px repeat(${daysInMonth}, minmax(30px, 1fr))`;
+    
+    let html = '<div class="cal-cell user-label day-header" style="grid-row:1; grid-column:1; z-index:20;">Team Member</div>';
+    for(let d=1; d<=daysInMonth; d++) {
+        const dObj = new Date(y, m, d);
+        const isWeekend = dObj.getDay() === 0 || dObj.getDay() === 6;
+        html += `<div class="cal-cell day-header ${isWeekend?'weekend':''}" style="grid-row:1; grid-column:${d+1};">${d}</div>`;
+    }
+
+    const sStr = `${y}-${String(m+1).padStart(2,'0')}-01`;
+    const eStr = `${y}-${String(m+1).padStart(2,'0')}-${String(daysInMonth).padStart(2,'0')}`;
+    
+    const relevantLeaves = allLeaves.filter(l => (l.status === 'active' || l.status === 'pending') && l.leave_end >= sStr && l.leave_start <= eStr);
+    const users = [...new Set(relevantLeaves.map(l => l.user_email))].sort();
+
+    if(users.length === 0) {
+        html += `<div style="grid-column: 1 / -1; grid-row: 2; padding: 40px; text-align:center; color:#94a3b8; font-size:13px;">No leaves scheduled for this month.</div>`;
+    }
+
+    let rowNum = 1;
+    users.forEach(email => {
+        rowNum++;
+        const username = relevantLeaves.find(l => l.user_email === email).username || email.split('@')[0];
+        html += `<div class="cal-cell user-label" style="grid-row:${rowNum}; grid-column:1;">${username}</div>`;
+        
+        for(let d=1; d<=daysInMonth; d++) {
+           const isWeekend = new Date(y, m, d).getDay() === 0 || new Date(y, m, d).getDay() === 6;
+           html += `<div class="cal-cell ${isWeekend?'weekend':''}" style="grid-row:${rowNum}; grid-column:${d+1}; border-right:1px solid #f1f5f9;"></div>`; 
+        }
+        
+        const userLeaves = relevantLeaves.filter(l => l.user_email === email);
+        userLeaves.forEach(lv => {
+            const ls = new Date(lv.leave_start);
+            const le = new Date(lv.leave_end);
+            
+            const startDay = (ls.getFullYear() === y && ls.getMonth() === m) ? ls.getDate() : 1;
+            const endDay = (le.getFullYear() === y && le.getMonth() === m) ? le.getDate() : daysInMonth;
+            
+            const span = (endDay - startDay) + 1;
+            const colStart = startDay + 1; 
+
+            let txt = lv.status === 'pending' ? 'Pending' : 'Off';
+            if (lv.leave_type === 'first_half') txt = '1st Half';
+            if (lv.leave_type === 'second_half') txt = '2nd Half';
+            
+            html += `<div style="grid-row:${rowNum}; grid-column: ${colStart} / span ${span}; position: relative; z-index: 5; display:flex; align-items:center; padding: 0 4px;">
+                       <div class="cal-bar ${lv.status}" style="width:100%;" title="${lv.leave_start} to ${lv.leave_end} (${lv.status})">${lv.status === 'pending' ? 'Pending' : txt}</div>
+                     </div>`;
+        });
+    });
+
+    grid.innerHTML = html;
   }
 
   // --- Utility functions (same logic as before) ---
