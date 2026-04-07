@@ -156,12 +156,15 @@ def check_and_process_expired_leaves():
 # ==============================================================
 def background_updater():
     """Runs in background to refresh SharePoint data periodically."""
-    global tasks, df, user_analytics
+    global tasks, df, user_analytics, EXCLUDED_USERS
     while True:
         try:
             print("[BG] Updating SharePoint data...")
             # Fetch latest SharePoint list
             tasks = fetch_sharepoint_list(SITE_DOMAIN, SITE_PATH, LIST_NAME)
+            
+            EXCLUDED_USERS = excludeusers_from_sl()
+            
             # list_columns= get_list_columns(SITE_DOMAIN , SITE_PATH , LIST_NAME)
             df = items_to_dataframe(tasks)
             user_analytics = generate_user_analytics(df, exclude_users=EXCLUDED_USERS)
@@ -195,6 +198,13 @@ def background_updater():
                 sync_all_pending_supplier_emails()
             except Exception as se:
                 print(f"[BG-SYNC ERROR] {se}")
+                
+            # Process expired leaves
+            try:
+                check_and_process_expired_leaves()
+            except Exception as le:
+                print(f"[BG-LEAVE ERROR] {le}")
+                
             print(f"[BG] Data updated successfully at {datetime.now()}", flush=True)
         except Exception as e:
             print("[BG] Error during update:", e)
