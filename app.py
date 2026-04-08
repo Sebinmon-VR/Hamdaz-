@@ -2499,14 +2499,14 @@ def api_leave_priority_user():
         return jsonify({"success": False, "error": str(e)}), 500
 @app.route("/api/leave/users", methods=["GET"])
 def api_leave_users():
-    """Returns list of all org users for the manual handoff dropdown."""
+    """Returns list of valid team users for the manual handoff dropdown."""
     if "user" not in session:
         return jsonify({"success": False, "error": "Unauthorized"}), 401
     try:
-        token = get_access_token()
-        users_raw = get_all_users(token)
-        # users_raw is a dict {id: displayName}
-        users_list = [{"id": k, "displayName": v} for k, v in users_raw.items() if v]
+        priorities = get_users_with_priority()
+        if not priorities:
+            return jsonify({"success": True, "users": []})
+        users_list = [{"displayName": u} for u in priorities.keys()]
         return jsonify({"success": True, "users": users_list})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500

@@ -360,7 +360,7 @@
     }
 
     container.innerHTML = `<table class="adm-tbl">
-      <thead><tr><th>User</th><th>Dates</th><th>Type</th><th>Status</th><th>Actions</th></tr></thead>
+      <thead><tr><th>User</th><th>Dates</th><th>Type</th><th>Handoff / Details</th><th>Status</th><th>Actions</th></tr></thead>
       <tbody>${activeRequests.map(l => `
         <tr>
           <td>
@@ -370,7 +370,15 @@
             </div>
           </td>
           <td><div style="font-weight:600">${l.leave_start} → ${l.leave_end}</div></td>
-          <td><span style="font-size:12px;color:#64748b;text-transform:capitalize">${(l.leave_type||'full').replace('_',' ')}</span></td>
+          <td>
+            <div style="font-size:12px;color:#64748b;text-transform:capitalize">${(l.leave_type||'full').replace('_',' ')}</div>
+            <div style="font-size:11px;color:#94a3b8;margin-top:4px;">${l.leave_category || 'Casual'}</div>
+          </td>
+          <td>
+            ${l.handoff_enabled ? `<div style="font-size:12px;font-weight:600">Handoff: ${l.handoff_to_user || (l.handoff_mode==='auto' ? 'Auto' : 'Unknown')}</div>` : `<div style="font-size:12px;color:#94a3b8">No Handoff</div>`}
+            ${l.continue_assign ? '<div style="font-size:11px;color:#22c55e">✅ Cont. Assign</div>' : '<div style="font-size:11px;color:#f59e0b">🚫 Excluded</div>'}
+            ${l.leave_reason ? `<div style="font-size:10px;color:#64748b;margin-top:4px;font-style:italic">"${l.leave_reason}"</div>` : ''}
+          </td>
           <td>
             <span class="s-badge s-badge-${l.status}">${l.status}</span>
             <div style="font-size:11px;color:#94a3b8;margin-top:4px;">${l.reviewed_by ? 'by ' + l.reviewed_by : ''}</div>
@@ -455,13 +463,19 @@
     }
 
     container.innerHTML = `<table class="adm-tbl">
-      <thead><tr><th>User</th><th>Period</th><th>Category</th><th>Type</th><th>Status</th></tr></thead>
+      <thead><tr><th>User</th><th>Period</th><th>Category/Type</th><th>Details</th><th>Status</th></tr></thead>
       <tbody>${filtered.map(l => `
         <tr>
           <td><div style="font-weight:700; font-size:12px;">${l.username || l.user_email.split('@')[0]}</div></td>
           <td><div style="font-weight:600">${l.leave_start} → ${l.leave_end}</div></td>
-          <td>${l.leave_category || 'Casual'}</td>
-          <td style="text-transform:capitalize">${(l.leave_type||'full').replace('_',' ')}</td>
+          <td>
+            <div>${l.leave_category || 'Casual'}</div>
+            <div style="text-transform:capitalize;font-size:11px;color:#94a3b8">${(l.leave_type||'full').replace('_',' ')}</div>
+          </td>
+          <td>
+            ${l.handoff_enabled ? `<div style="font-size:12px;">Handoff: <strong>${l.handoff_to_user || 'Auto'}</strong></div>` : `<div style="font-size:12px;color:#94a3b8">No Handoff</div>`}
+            ${l.leave_reason ? `<div style="font-size:10px;color:#64748b;margin-top:4px;font-style:italic">"${l.leave_reason}"</div>` : ''}
+          </td>
           <td>
             <span class="s-badge s-badge-${l.status}">${l.status === 'active' ? 'Approved' : l.status}</span>
             <div style="font-size:11px;color:#94a3b8;margin-top:4px;">${l.reviewed_by ? 'by ' + l.reviewed_by : ''}</div>
