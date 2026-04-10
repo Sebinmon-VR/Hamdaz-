@@ -2551,7 +2551,7 @@ def api_leave_submit():
             if current_peak >= max_limit:
                 auto_status = "WL" if waitlist_enabled else "rejected"
                 reject_reason = f"Global leave capacity reached ({max_limit} active leaves) for the requested dates. Status changed to {auto_status}."
-        log.info(f"Leave concurrency check: Peak={current_peak if max_limit > 0 else "N/A"}, Limit={max_limit} → {auto_status}", tag="LEAVE")
+        log.info(f"Leave concurrency check: Peak={current_peak if max_limit > 0 else 'N/A'}, Limit={max_limit} → {auto_status}", tag="LEAVE")
     else:
         auto_status = "pending"
         log.debug(f"Auto-approval off. Status set to: {auto_status}", tag="LEAVE")
@@ -2576,7 +2576,7 @@ def api_leave_submit():
                     handoff_to_user = manual_user
                 if handoff_to_user and proposal_ids:
                     handoff_results = handoff_proposals_to_user(username, handoff_to_user, proposal_ids)
-                    log.info(f"Handoff: {len(handoff_results["success"])} proposal(s) reassigned to {handoff_to_user}", tag="LEAVE")
+                    log.info(f"Handoff: {len(handoff_results['success'])} proposal(s) reassigned to {handoff_to_user}", tag="LEAVE")
                 elif not proposal_ids:
                     log.debug("No proposals to handoff for this leave.", tag="LEAVE")
                 else:

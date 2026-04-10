@@ -1145,7 +1145,7 @@ def save_leave_setting(setting_data):
         return None
     try:
         leave_settings_container.upsert_item(body=setting_data)
-        log.debug(f"Leave setting saved: {setting_data.get("id")}", tag="COSMOS")
+        log.debug(f"Leave setting saved: {setting_data.get('id')}", tag="COSMOS")
         return True
     except Exception as e:
         log.error("Failed to save leave setting", tag="COSMOS", exc=e)
