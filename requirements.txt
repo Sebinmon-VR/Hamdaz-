@@ -48,3 +48,4 @@ duckduckgo-search==5.3.1b1
 azure-cosmos ==  4.15.0
 python-docx == 1.2.0
 xlrd==2.0.1
+beautifulsoup4>=4.12.0
