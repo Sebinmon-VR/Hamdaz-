@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 import os
 import requests
 import pandas as pd
+from logger import log
 from datetime import datetime
 import pytz
 from collections import defaultdict
@@ -193,7 +194,7 @@ def fetch_sharepoint_item_by_id(site_domain, site_path, list_name, item_id):
     
     resp = requests.get(url, headers=headers)
     if resp.status_code != 200:
-        print(f"[SHAREPOINT ERROR] Failed to fetch item {item_id}: {resp.text}")
+        log.error(f"Failed to fetch SP item {item_id}: HTTP {resp.status_code}", tag="SP")
         return None
         
     item = resp.json()
@@ -214,7 +215,7 @@ def get_item_attachments(site_domain, site_path, list_name, item_id):
     
     resp = requests.get(url, headers=headers)
     if resp.status_code != 200:
-        print(f"[SHAREPOINT ERROR] Failed to fetch attachments for item {item_id}: {resp.text}")
+        log.error(f"Failed to fetch attachments for SP item {item_id}: HTTP {resp.status_code}", tag="SP")
         return []
         
     attachments = resp.json().get("value", [])
@@ -254,20 +255,29 @@ def items_to_dataframe(items):
     return df
 
 
-def compute_overall_analytics(df, period=None):
+def compute_overall_analytics(df, period=None, excluded_users=None):
     """
     Compute overall analytics with optional period filtering.
-    
+
     Args:
         df (pd.DataFrame): DataFrame with SharePoint items
         period (dict, optional): Dictionary with filter parameters:
             - 'type': 'month', 'year', or 'all'
             - 'year': Year to filter for (int)
             - 'month': Month to filter for (int, 1-12)
+        excluded_users (list, optional): List of usernames to strictly exclude.
     """
     if df.empty:
         return {"total_users": 0, "total_tasks": 0, "tasks_completed": 0, "tasks_pending": 0, "tasks_missed": 0, "orders_received": 0, "changes": {}}
-    
+
+    # Strictly filter out excluded users BEFORE computing anything
+    if excluded_users:
+        _excl_norm = [str(u).strip().lower() for u in excluded_users]
+        df = df[~df["AssignedTo"].fillna("").astype(str).str.strip().str.lower().isin(_excl_norm)].copy()
+
+    if df.empty:
+        return {"total_users": 0, "total_tasks": 0, "tasks_completed": 0, "tasks_pending": 0, "tasks_missed": 0, "orders_received": 0, "changes": {}}
+
     uae_tz = pytz.timezone("Asia/Dubai")
     now_uae = datetime.now(uae_tz)
     
@@ -334,8 +344,15 @@ def compute_overall_analytics(df, period=None):
     }
     
         
-def compute_user_analytics(df):
+def compute_user_analytics(df, excluded_users=None):
     if df.empty or 'AssignedTo' not in df.columns:
+        return {}
+
+    # Strictly filter out excluded users
+    if excluded_users:
+        _excl_norm = [str(u).strip().lower() for u in excluded_users]
+        df = df[~df["AssignedTo"].fillna("").astype(str).str.strip().str.lower().isin(_excl_norm)].copy()
+    if df.empty:
         return {}
 
     uae_tz = pytz.timezone("Asia/Dubai")
@@ -468,7 +485,7 @@ def get_user_details(access_token, usernames):
         if resp.status_code == 200:
             user_details.append(resp.json())
         else:
-            print(f"Failed to fetch {username}: {resp.text}")
+            log.error(f"Failed to fetch user details for {username}", tag="SP")
 
     return user_details
 
@@ -645,7 +662,7 @@ def get_all_contacts_from_onedrive():
             contacts.append(contact_dict)
         return contacts
     except Exception as e:
-        print(f"Error fetching contacts from OneDrive: {e}")
+        log.error("Failed to fetch contacts from OneDrive", tag="ONEDRIVE", exc=e)
         return []
 
 def update_contact_in_onedrive_excel(row_id, updated_data_dict):
@@ -676,7 +693,7 @@ def update_contact_in_onedrive_excel(row_id, updated_data_dict):
         patch_res.raise_for_status()
         return True
     except Exception as e:
-        print(f"Error updating contact in OneDrive: {e}")
+        log.error("Failed to update contact in OneDrive", tag="ONEDRIVE", exc=e)
         return False
 
 
@@ -709,7 +726,7 @@ def get_all_customers_from_onedrive():
             customers.append(customer_dict)
         return customers
     except Exception as e:
-        print(f"Error fetching customers from OneDrive: {e}")
+        log.error("Failed to fetch data from OneDrive", tag="ONEDRIVE", exc=e)
         return []
     
     
@@ -738,7 +755,7 @@ def get_user_details_from_excell():
             customers.append(customer_dict)
         return customers
     except Exception as e:
-        print(f"Error fetching customers from OneDrive: {e}")
+        log.error("Failed to fetch data from OneDrive", tag="ONEDRIVE", exc=e)
         return []
     
 
@@ -768,7 +785,7 @@ def get_user_tasks_details_from_excell():
             customers.append(customer_dict)
         return customers
     except Exception as e:
-        print(f"Error fetching customers from OneDrive: {e}")
+        log.error("Failed to fetch data from OneDrive", tag="ONEDRIVE", exc=e)
         return []
     
     
@@ -812,7 +829,7 @@ def upload_photo_to_onedrive(photo_file, user_id, email):
         return share_link
 
     except Exception as e:
-        print(f"Error uploading photo to OneDrive: {e}")
+        log.error("Failed to upload photo to OneDrive", tag="ONEDRIVE", exc=e)
         return ""
 
     
@@ -850,7 +867,7 @@ def add_or_update_user_in_excel(email, user_id, name, role, photo_file=None):
         return True
 
     except Exception as e:
-        print(f"Error adding/updating user in Excel: {e}")
+        log.error("Failed to add/update user in Excel", tag="ONEDRIVE", exc=e)
         return False
 
         
@@ -949,7 +966,7 @@ def send_quote_approval_email(quote_data, submitter_email, admin_emails):
     response = requests.post(url, headers=headers, json=message)
     response.raise_for_status()
 
-    print("Approval email sent successfully")
+    log.info("Approval email sent successfully.", tag="MAIL")
     return True
 
 
@@ -965,10 +982,10 @@ def add_sharepoint_list_item(item_fields):
     try:
         resp = requests.post(url, headers=headers, json=payload)
         resp.raise_for_status()
-        print(f"✅ Item {item_fields.get('Reference')} added successfully")
+        log.debug(f"Quote item added: {item_fields.get('Reference')}", tag="SP")
         return resp.json()
     except requests.exceptions.RequestException as e:
-        print(f"❌ Error adding item {item_fields.get('Reference')} to SharePoint: {e}")
+        log.error(f"Failed to add quote item {item_fields.get('Reference')} to SharePoint", tag="SP", exc=e)
         return None
 
 
@@ -1197,16 +1214,16 @@ def get_excel_data_from_onedrive(file_name, sheet_name):
             f"{file_name}:/workbook/worksheets('{sheet_name}')/usedRange"
         )
 
-        print(f"Fetching from: {url}")  # 👈 check exact path
+        log.debug(f"Fetching from OneDrive: {url}", tag="ONEDRIVE")
         response = requests.get(url, headers=headers)
         response.raise_for_status()
         data = response.json()
 
-        print("Raw data from Graph API:\n", data)  # 👈 see what Excel actually returned
+        log.debug(f"Graph API returned {len(data.get('values', []))} row(s) from Excel", tag="ONEDRIVE")
 
         rows = data.get("values", [])
         if not rows:
-            print("⚠️ No rows returned. Possibly wrong file or sheet name.")
+            log.warn("No rows returned from OneDrive Excel — check file/sheet name.", tag="ONEDRIVE")
             return []
 
         header = rows[0]
@@ -1219,7 +1236,7 @@ def get_excel_data_from_onedrive(file_name, sheet_name):
         return data
 
     except Exception as e:
-        print(f"❌ Error fetching Excel data: {e}")
+        log.error("Failed to fetch data from OneDrive Excel", tag="ONEDRIVE", exc=e)
         return []
 
 
@@ -1310,10 +1327,10 @@ def add_item_to_sharepoint(item_fields):
     try:
         resp = requests.post(url, headers=headers, json=payload)
         resp.raise_for_status()
-        print(f"✅ Item {item_fields.get('Username')} added successfully")
+        log.debug(f"User analytics item added: {item_fields.get('Username')}", tag="SP")
         return resp.json()
     except requests.exceptions.RequestException as e:
-        print(f"❌ Error adding item {item_fields.get('Username')} to SharePoint: {e}")
+        log.error(f"Failed to add user analytics for {item_fields.get('Username')}", tag="SP", exc=e)
         return None
 
 
@@ -1459,7 +1476,7 @@ def get_partnership_data():
 
         rows = data.get('values')
         if not rows or len(rows) < 2:
-            print("[WARN] No valid rows found in Excel file.")
+            log.warn("No valid rows found in partnership Excel file.", tag="DATA")
             return []
 
         headers_row = rows[0]
@@ -1467,7 +1484,7 @@ def get_partnership_data():
 
         # Safeguard in case headers are missing or invalid
         if not isinstance(headers_row, list):
-            print("[ERROR] Invalid header format in Excel.")
+            log.error("Invalid header format in partnership Excel.", tag="DATA")
             return []
 
         df = pd.DataFrame(records, columns=headers_row)
@@ -1475,7 +1492,7 @@ def get_partnership_data():
         return df.to_dict(orient="records")
 
     except Exception as e:
-        print(f"[ERROR] Failed to fetch or parse OneDrive Excel: {e}")
+        log.error("Failed to fetch or parse partnership Excel from OneDrive", tag="DATA", exc=e)
         return []  # Return an empty list instead of None
     
 
@@ -1503,7 +1520,7 @@ def save_partnership_update(product_group, product_name, manufacturer, competito
         read_values = read_resp.json().get('values', [])
 
         if not read_values or len(read_values) < 2:
-            print("[ERROR] No data found in Excel file.")
+            log.error("No data found in partnership Excel.", tag="DATA")
             return False
 
         headers_row = read_values[0]
@@ -1511,7 +1528,7 @@ def save_partnership_update(product_group, product_name, manufacturer, competito
 
         # 2️⃣ Get the column index
         if field not in headers_row:
-            print(f"[ERROR] Column '{field}' not found in Excel.")
+            log.error(f"Column '{field}' not found in partnership Excel.", tag="DATA")
             return False
 
         col_idx = headers_row.index(field)
@@ -1532,7 +1549,7 @@ def save_partnership_update(product_group, product_name, manufacturer, competito
                 continue
 
         if not row_idx:
-            print("[WARN] No matching row found for update.")
+            log.warn("No matching row found for partnership update.", tag="DATA")
             return False
 
         # 4️⃣ Convert to Excel column letter (A, B, C…)
@@ -1557,11 +1574,11 @@ def save_partnership_update(product_group, product_name, manufacturer, competito
         patch_resp = requests.patch(update_url, headers=headers, json=payload)
         patch_resp.raise_for_status()
 
-        print(f"[INFO] Successfully updated {field} for {manufacturer} ({product_name}) → {new_value}")
+        log.debug(f"Partnership updated: {field} for {manufacturer} ({product_name}) → {new_value}", tag="DATA")
         return True
 
     except Exception as e:
-        print(f"[ERROR] Failed to update Excel cell: {e}")
+        log.error("Failed to update partnership Excel cell", tag="DATA", exc=e)
         return False
 
 import urllib.parse
@@ -1782,7 +1799,7 @@ def save_distributors_data_to_sharepoint(distributors_data):
         resp = requests.post(url, headers=headers, json=payload)
         resp.raise_for_status()
 
-    print(f"✅ Saved {len(distributors_data)} distributors to SharePoint.")
+    log.debug(f"Saved {len(distributors_data)} distributor(s) to SharePoint.", tag="SP")
 
 
 # -----------------------------------------------------------------------------------------------------------
@@ -1801,7 +1818,7 @@ def excludeusers_from_sl():
         all_items.extend(data.get("value", []))
         url = data.get("@odata.nextLink")  # Fetch next page if exists
     excluded_users = [item['fields']['Usernames'].strip() for item in all_items]
-    print(excluded_users)
+    log.debug(f"Excluded users loaded: {excluded_users}", tag="SP")
     return excluded_users
 
 def user_with_jobs_ls():
@@ -1819,7 +1836,7 @@ def user_with_jobs_ls():
         url = data.get("@odata.nextLink")  # Fetch next page if exists
     users_and_jobs = {item['fields']['Username'].strip(): item['fields']['Jobs'] for item in all_items}
     users_and_jobscount = {item['fields']['Username'].strip(): len([job for job in item['fields']['Jobs'].split(",") if job.strip()]) for item in all_items}
-    print(users_and_jobscount)
+    # removed: log.debug(str(users_and_jobscount), tag="SWP")  # too verbose
     return users_and_jobscount
 
 # def check_user_have_two_jobs(username):
@@ -1848,7 +1865,7 @@ def get_users_with_priority():
         all_items.extend(data.get("value", []))
         url = data.get("@odata.nextLink")  # Fetch next page if exists
         username_and_priority = {item['fields']['Username'].strip(): item['fields']['Priority'] for item in all_items}
-        print(username_and_priority)
+        # removed: log.debug(str(username_and_priority), tag="SWP")  # too verbose
     return username_and_priority
 
 
@@ -1866,7 +1883,7 @@ def get_users_sawpcount():
         all_items.extend(data.get("value", []))
         url = data.get("@odata.nextLink")  # Fetch next page if exists
     users_and_sawpcount = {item['fields']['Username'].strip(): item['fields']['swapcounter'] for item in all_items}
-    print(users_and_sawpcount)
+    # removed: log.debug(str(users_and_sawpcount), tag="SWP")  # too verbose
     return users_and_sawpcount
 
 
@@ -1892,7 +1909,7 @@ def swp():
                 busy_users.append(user)
         
         if not busy_users:
-            print("No busy high-priority users to swap.")
+            log.debug("No busy high-priority users to swap.", tag="SWP")
             return
 
         # Sort other users by priority to find a swap partner
@@ -1902,14 +1919,14 @@ def swp():
         )
         
         if not other_users:
-            print("No suitable swap partners found.")
+            log.debug("No suitable swap partners found.", tag="SWP")
             return
             
         # Perform swap for the first busy user found
         busy_user = busy_users[0]
         swap_partner = other_users[0]
 
-        print(f"Busy user: {busy_user}, Swap partner: {swap_partner}")
+        log.info(f"Swap: {busy_user} <-> {swap_partner}", tag="SWP")
 
         # Get existing SharePoint items to find the item IDs
         existing_items = get_existing_useranalytics_items()
@@ -1918,7 +1935,7 @@ def swp():
         swap_partner_item = find_existing_user_item(existing_items, swap_partner)
 
         if not busy_user_item or not swap_partner_item:
-            print("Could not find SharePoint items for one or both users.")
+            log.warn("Could not find SharePoint items for one or both swap candidates.", tag="SWP")
             return
 
         # Swap priorities
@@ -1941,10 +1958,10 @@ def swp():
             "Priority": priorities[swap_partner]
         })
 
-        print(f"Successfully swapped priorities between {busy_user} and {swap_partner}.")
+        log.info(f"Priority swap complete: {busy_user} <-> {swap_partner}", tag="SWP")
 
     except Exception as e:
-        print(f"An error occurred during the swap process: {e}")
+        log.error("Priority swap process failed", tag="SWP", exc=e)
     
 
 def get_teams_stauts(user_id):
@@ -1985,17 +2002,17 @@ def add_user_to_excludelist(username: str) -> bool:
         if check_resp.ok:
             for item in check_resp.json().get("value", []):
                 if item.get("fields", {}).get("Usernames", "").strip().lower() == username.strip().lower():
-                    print(f"[SP] {username} already in excludeusers - skipping add.")
+                    log.debug(f"{username} already in exclude list — skipping.", tag="SP")
                     return True
 
         url = f"{GRAPH_API_ENDPOINT}/sites/{site_id}/lists/{list_id}/items"
         payload = {"fields": {"Usernames": username}}
         resp = requests.post(url, headers=auth_headers, json=payload)
         resp.raise_for_status()
-        print(f"[SP] Added {username} to excludeusers list.")
+        log.info(f"Added {username} to exclude list.", tag="SP")
         return True
     except Exception as e:
-        print(f"[SP ERROR] add_user_to_excludelist({username}): {e}")
+        log.error(f"Failed to add {username} to exclude list", tag="SP", exc=e)
         return False
 
 
@@ -2022,16 +2039,16 @@ def remove_user_from_excludelist(username: str) -> bool:
                 break
 
         if not item_id:
-            print(f"[SP] {username} not found in excludeusers - nothing to remove.")
+            log.debug(f"{username} not in exclude list — nothing to remove.", tag="SP")
             return True
 
         delete_url = f"{GRAPH_API_ENDPOINT}/sites/{site_id}/lists/{list_id}/items/{item_id}"
         del_resp = requests.delete(delete_url, headers=headers)
         del_resp.raise_for_status()
-        print(f"[SP] Removed {username} from excludeusers list.")
+        log.info(f"Removed {username} from exclude list.", tag="SP")
         return True
     except Exception as e:
-        print(f"[SP ERROR] remove_user_from_excludelist({username}): {e}")
+        log.error(f"Failed to remove {username} from exclude list", tag="SP", exc=e)
         return False
 
 
@@ -2077,7 +2094,7 @@ def get_ongoing_proposals_for_user(username: str) -> list:
                 })
         return results
     except Exception as e:
-        print(f"[SP ERROR] get_ongoing_proposals_for_user({username}): {e}")
+        log.error(f"Failed to get ongoing proposals for {username}", tag="SP", exc=e)
         return []
 
 
@@ -2105,13 +2122,13 @@ def handoff_proposals_to_user(from_username: str, to_username: str, proposal_ids
                 }
                 resp = requests.patch(patch_url, headers=headers, json=payload)
                 resp.raise_for_status()
-                print(f"[SP] Proposal {item_id}: {from_username} -> {to_username}")
+                log.debug(f"Handing off proposal {item_id}: {from_username} → {to_username}", tag="SP")
                 success_ids.append(item_id)
             except Exception as err:
-                print(f"[SP ERROR] Failed to handoff proposal {item_id}: {err}")
+                log.error(f"Failed to handoff proposal {item_id}", tag="SP", exc=err)
                 failed_ids.append(item_id)
     except Exception as e:
-        print(f"[SP ERROR] handoff_proposals_to_user: {e}")
+        log.error("handoff_proposals_to_user failed", tag="SP", exc=e)
 
     return {"success": success_ids, "failed": failed_ids}
 
@@ -2133,5 +2150,5 @@ def get_priority_one_user(exclude_username: str = None):
             return username
         return None
     except Exception as e:
-        print(f"[SP ERROR] get_priority_one_user: {e}")
+        log.error("get_priority_one_user failed", tag="SP", exc=e)
         return None

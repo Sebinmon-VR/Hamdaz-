@@ -31,6 +31,7 @@ from cosmos import (
     get_project_presence, save_user_notification, get_user_notifications, mark_notification_read,
     save_tracked_email, get_tracked_emails_for_task, update_tracked_email_reply, get_pending_tracked_emails
 )
+from logger import log
 # ================== LOAD ENVIRONMENT ==================
 load_dotenv(override=True)
 app = Flask(__name__)
@@ -67,11 +68,11 @@ pc = Pinecone(api_key=PINECONE_API_KEY)
 index = pc.Index("hamdaz")
 # ==============================================================
 # Initialize global data (first load)
-print("[INIT] Fetching initial SharePoint data...")
+log.info("Fetching initial SharePoint data...", tag="INIT")
 tasks = fetch_sharepoint_list(SITE_DOMAIN, SITE_PATH, LIST_NAME)
 df = items_to_dataframe(tasks)
 user_analytics = generate_user_analytics(df, exclude_users=EXCLUDED_USERS)
-print("[INIT] Data loaded successfully.")
+log.info("Data loaded successfully.", tag="INIT")
 # ==============================================================
 # HELPER FUNCTIONS
 # ==============================================================
@@ -112,7 +113,7 @@ def get_analytics_data(df, period_type='month', year=None, month=None):
         'year': year,
         'month': month
     } if period_type != 'all' else None
-    analytics = compute_overall_analytics(df, period)
+    analytics = compute_overall_analytics(df, period, excluded_users=EXCLUDED_USERS)
     per_user = compute_user_analytics_with_last_date(df, EXCLUDED_USERS, period)
     return analytics, per_user
 # ==============================================================
@@ -142,7 +143,7 @@ def check_and_process_expired_leaves():
                 user_email = leave.get("user_email", "")
                 doc_id = leave.get("id", "")
                 continue_assign = leave.get("continue_assign", False)
-                print(f"[LEAVE-EXPIRY] Leave expired for {username} (end: {leave_end_str})")
+                log.info(f"Leave expired for {username} (end: {leave_end_str})", tag="LEAVE-EXPIRY")
                 # Remove from excludeusers only if they were added in the first place
                 if not continue_assign and username:
                     remove_user_from_excludelist(username)
@@ -150,7 +151,7 @@ def check_and_process_expired_leaves():
                 if doc_id and user_email:
                     update_leave_status(doc_id, user_email, "completed")
     except Exception as e:
-        print(f"[LEAVE-EXPIRY ERROR] {e}")
+        log.error("Leave expiry check failed", tag="LEAVE-EXPIRY", exc=e)
 # ==============================================================
 # BACKGROUND DATA UPDATER
 # ==============================================================
@@ -159,7 +160,7 @@ def background_updater():
     global tasks, df, user_analytics, EXCLUDED_USERS
     while True:
         try:
-            print("[BG] Updating SharePoint data...")
+            log.debug("Refreshing SharePoint data...", tag="BG")
             # Fetch latest SharePoint list
             tasks = fetch_sharepoint_list(SITE_DOMAIN, SITE_PATH, LIST_NAME)
             
@@ -187,27 +188,27 @@ def background_updater():
                 existing_item = find_existing_user_item(existing_items, username)
                 if existing_item:
                     update_user_analytics_in_sharepoint(existing_item["id"], item_fields)
-                    print(f"Updated {username} in SharePoint")
+                    log.debug(f"Updated analytics for {username}", tag="BG")
                 else:
                     add_item_to_sharepoint(item_fields)  
-                    print(f"Added new user {username} to SharePoint")
+                    log.info(f"New user added to analytics: {username}", tag="BG")
             # Perform smart rotation
             swp()
             # Sync supplier emails in background
             try:
                 sync_all_pending_supplier_emails()
             except Exception as se:
-                print(f"[BG-SYNC ERROR] {se}")
+                log.error("Email sync failed", tag="BG-SYNC", exc=se)
                 
             # Process expired leaves
             try:
                 check_and_process_expired_leaves()
             except Exception as le:
-                print(f"[BG-LEAVE ERROR] {le}")
+                log.error("Leave expiry processing failed", tag="BG-LEAVE", exc=le)
                 
-            print(f"[BG] Data updated successfully at {datetime.now()}", flush=True)
+            log.info(f"Data refresh complete at {datetime.now().strftime("%H:%M:%S")}", tag="BG")
         except Exception as e:
-            print("[BG] Error during update:", e)
+            log.error("Background update failed", tag="BG", exc=e)
         time.sleep(100)
 # ==============================================================
 # ROUTES
@@ -558,7 +559,7 @@ def generate_temp_quote_docx(summary, reply_content, tracking_id):
         doc.save(filename)
         return "/" + filename
     except Exception as e:
-        print("Failed to generate DOCX:", e)
+        log.error("Failed to generate quote DOCX", tag="QUOTE", exc=e)
         return None
 def sync_supplier_emails_for_user(user_email):
     """Refactored to perform targeted searches for each pending email in Cosmos DB."""
@@ -592,11 +593,11 @@ def sync_supplier_emails_for_user(user_email):
                 search_query += f' {keyword_search}'
             # Wrap the whole thing in double-quotes and then URL encode
             quoted_search = f'"{search_query}"'
-            print(f"[SYNC] Searching for {tracking_id} using KQL: {quoted_search}")
+            log.debug(f"Email search for {tracking_id[:8]}... | KQL: {quoted_search}", tag="SYNC")
             url = f"{GRAPH_API_ENDPOINT}/users/{user_email}/messages?$search={requests.utils.quote(quoted_search)}&$top=10&$select=id,subject,bodyPreview,body,from"
             resp = requests.get(url, headers=headers)
             if resp.status_code != 200:
-                print(f"[SYNC] Search failed for {tracking_id}: {resp.text}")
+                log.error(f"Email search failed for tracking {tracking_id[:8]}...: {resp.status_code}", tag="SYNC")
                 continue
             messages = resp.json().get("value", [])
             for msg in messages:
@@ -653,10 +654,10 @@ def sync_supplier_emails_for_user(user_email):
                         matched += 1
                         break # Found the reply for this specific tracked item
                     except Exception as e:
-                        print(f"[SYNC] AI Error for {tracking_id}: {e}")
+                        log.error(f"AI extraction failed for {tracking_id[:8]}...", tag="SYNC", exc=e)
         return matched
     except Exception as e:
-        print(f"[SYNC ERROR] {user_email}: {e}")
+        log.error(f"Email sync error for {user_email}", tag="SYNC", exc=e)
         return 0
 @app.route("/api/check_email_replies", methods=["POST"])
 def check_email_replies():
@@ -673,16 +674,16 @@ def sync_all_pending_supplier_emails():
         if not pending:
             return
         unique_users = {pe['user_email'] for pe in pending if 'user_email' in pe}
-        print(f"[BG-SYNC] Checking replies for {len(unique_users)} users: {unique_users}")
+        log.debug(f"Checking email replies for {len(unique_users)} user(s)", tag="BG-SYNC")
         for user_email in unique_users:
             try:
                 count = sync_supplier_emails_for_user(user_email)
                 if count > 0:
-                    print(f"[BG-SYNC] Found {count} new replies for {user_email}")
+                    log.info(f"Found {count} new supplier reply/replies for {user_email}", tag="BG-SYNC")
             except Exception as e:
-                print(f"[BG-SYNC ERROR] User {user_email}: {e}")
+                log.error(f"Email sync error for {user_email}", tag="BG-SYNC", exc=e)
     except Exception as e:
-        print(f"[BG-SYNC ERROR] Global loop: {e}")
+        log.error("Global email sync loop failed", tag="BG-SYNC", exc=e)
 # ==============================================================
 def get_first(quote_data, key, index=0, default=""):
     """
@@ -769,7 +770,7 @@ def send_for_approval():
         "Rate": (total_rate / sum([int(q) for q in quote_data.get("quantity[]", [])])) if count else 0,
         "AllItems": json.dumps(combined_items, indent=2)
     }
-    print("DEBUG SharePoint payload:", json.dumps(item_fields, indent=2))
+    log.debug(f"SharePoint quote payload: {list(item_fields.keys())}", tag="QUOTE")
     try:
         # Add SharePoint list item
         resp_json = add_sharepoint_list_item(item_fields)
@@ -777,20 +778,19 @@ def send_for_approval():
             raise Exception("Failed to create SharePoint item")
         item_id = resp_json.get("id")
         if supplier_file and supplier_file.filename:
-            print("File detected in request")
+            log.debug(f"Supplier file received: {supplier_file.filename}", tag="QUOTE")
             file_name = supplier_file.filename  # Use secure_filename if needed
             file_bytes = supplier_file.read()
-            print(f"File size: {len(file_bytes)} bytes")
             # Upload file to SharePoint document library folder (replace 'QuoteAttachments' with your folder path)
             share_link = upload_file_to_sharepoint_folder( folder_path="Shared Documents/QuoteAttachments", file_name=file_name, file_bytes=file_bytes)
-            print("File uploaded. Share link:", share_link)
+            log.debug(f"File uploaded to SharePoint. Link generated.", tag="QUOTE")
             # Update SharePoint list item with link
             update_sharepoint_item_with_link(item_id, share_link)
         else:
-            print("No file in request or filename missing")
+            log.debug("No supplier file attached to quote submission.", tag="QUOTE")
         return render_template("pages/quote_success.html", user=user, added_items=1)
     except Exception as e:
-        print("SharePoint Error:", e)
+        log.error("Failed to add quote to SharePoint", tag="QUOTE", exc=e)
         return f"âŒ Error adding quote to SharePoint: {str(e)}", 500
 @app.route("/quote_decision")
 def quote_decision():
@@ -806,7 +806,7 @@ def quote_decision():
         # Filter only quotes created by this user
         quote_items = [q for q in quote_items if q.get("QuoteCreator") == user_name]
     except Exception as e:
-        print(f"Error fetching SharePoint list items: {e}")
+        log.error("Failed to fetch SharePoint list items", tag="SP", exc=e)
         quote_items = []
     return render_template("pages/quote_decision.html", user=user, quote_items=quote_items)
 @app.route("/quote_details/<quote_id>")
@@ -836,7 +836,7 @@ def quote_details(quote_id):
     is_approved = approval_status.lower() == "approved"
     quote["IsApproved"] = is_approved
     if is_approved:
-        print("approved")
+        log.debug("Quote approval action executed.", tag="QUOTE")
     # -----------------------------
     # Parse AllItems JSON
     # -----------------------------
@@ -906,7 +906,7 @@ def quote_details(quote_id):
             quote['AllItems_parsed'] = []
             quote['Totals'] = {}
     except Exception as e:
-        print("Error parsing AllItems:", e)
+        log.error("Failed to parse AllItems JSON in quote", tag="QUOTE", exc=e)
         quote['AllItems_parsed'] = []
         quote['Totals'] = {}
     return render_template("pages/quote_details.html", quote=quote, user=user)
@@ -956,7 +956,7 @@ def vendors():
     vendors = get_excel_data_from_onedrive("Partnership_Status.xlsx", "Vendor-Partnership")
     df=pd.DataFrame(vendors)
     # Check the columns first
-    print(df.columns)
+    # log.debug(f"DataFrame columns: {list(df.columns)}", tag="DATA")  # uncomment to debug
     # Example: select only useful columns
     columns_of_interest = ['text', 'values']  # or actual column names in your df
     df_selected = df[columns_of_interest]
@@ -966,7 +966,7 @@ def vendors():
         'ID', 'Vendor', 'Col3', 'Status', 'Col5', 'Comments', 'URL', 'Admin User', 'Password', 'Col10', 'Contact', 'Col12'
     ])
     # View the cleaned DataFrame
-    print(df_expanded.head())
+    # log.debug(f"df_expanded head:\n{df_expanded.head()}", tag="DATA")  # uncomment to debug
     return render_template("pages/vendors.html", data=df_expanded.to_dict(orient="records"), user=user)
 @app.route("/vendor/<vendor_id>")
 def vendor_detail(vendor_id):
@@ -1027,7 +1027,7 @@ def pa_get_session(session_id):
             "session_title": session_doc.get("session_title", "Chat")
         })
     except Exception as e:
-        print(f"Error fetching session: {e}")
+        log.error("Failed to fetch session", tag="CHAT", exc=e)
         return jsonify({"error": "Session not found"}), 404
 @app.route("/api/personal_assistant/log", methods=["POST"])
 def pa_save_log():
@@ -1102,26 +1102,26 @@ def pa_chat():
                 files_text += f"[Error reading file: {str(e)}]\n"
     # Get chat history from Cosmos DB
     chat_history = []
-    print(f"[PA_CHAT] session_id received: '{session_id}'", flush=True)
+    log.debug(f"Session received: {session_id}", tag="PA-CHAT")
     if session_id and session_id not in ("", "null", "undefined"):
         msgs = get_session_messages(session_id)
         if msgs:
             # Clean history for OpenAI: filter out system logs and strip timestamps
             chat_history = [{"role": m["role"], "content": m["content"]} for m in msgs if m.get("role") != "system_log"]
-            print(f"[PA_CHAT] Prepared {len(chat_history)} messages for AI (filtered logs)", flush=True)
+            log.debug(f"Prepared {len(chat_history)} messages for AI", tag="PA-CHAT")
         else:
-            print(f"[PA_CHAT] No messages found for session {session_id}", flush=True)
+            log.debug(f"No messages found for session {session_id}", tag="PA-CHAT")
     else:
-        print("[PA_CHAT] No session_id — starting fresh conversation", flush=True)
+        log.debug("No session_id — starting fresh conversation", tag="PA-CHAT")
     # Save user message to Cosmos
     title = message[:40].strip() + ("..." if len(message) > 40 else "") if message else "Chat with Assistant"
     # Only set title on the FIRST message (when session_id is empty — new session)
     first_message = not session_id or session_id in ("", "null", "undefined")
     if not first_message:
         title = None  # Don't override existing session title
-    print(f"[PA_CHAT] Saving user message. title={title}, first_message={first_message}, agent={agent_type}", flush=True)
+    log.debug(f"Saving user message | agent={agent_type}, first={first_message}", tag="PA-CHAT")
     generated_session_id = save_session_message(session_id, email, "user", message, title=title, agent_type=agent_type)
-    print(f"[PA_CHAT] Generated/Updated session_id: {generated_session_id}", flush=True)
+    log.debug(f"Session ID set: {generated_session_id}", tag="PA-CHAT")
     try:
         system_instr = ""
         if is_analysis:
@@ -1200,7 +1200,7 @@ def send_email_api():
                 error_detail = response.json().get("error", {}).get("message", response.text)
             except Exception:
                 error_detail = response.text
-            print(f"[GRAPH EMAIL ERROR] Status: {response.status_code} | Detail: {error_detail}")
+            log.error(f"Graph email send failed: HTTP {response.status_code} — {error_detail}", tag="GRAPH-MAIL")
             return jsonify({"success": False, "error": f"Graph API Error ({response.status_code}): {error_detail}"}), response.status_code
     except Exception as e:
         import traceback
@@ -1280,7 +1280,7 @@ def tp():
             for f in files
         ]
     except Exception as e:
-        print("Error:", e)
+        log.error("An unexpected error occurred", exc=e)
         files = []
         default_attachments = []
     return render_template("tp.html", files=files, default_attachments=default_attachments, user=session.get("user"))
@@ -1299,7 +1299,7 @@ def download_source_docx(file_id):
             mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
         )
     except Exception as e:
-        print("Error downloading DOCX:", e)
+        log.error("Failed to download DOCX", tag="QUOTE", exc=e)
         return f"Error: {e}", 500
 @app.route("/download/file/<file_id>")
 def download_file_from_onedrive(file_id):
@@ -1311,7 +1311,7 @@ def download_file_from_onedrive(file_id):
             download_name=file_name
         )
     except Exception as e:
-        print("Error downloading file:", e)
+        log.error("Failed to download file", tag="FILE", exc=e)
         return f"Error: {e}", 500
 @app.route('/analyze', methods=['POST'])
 def analyze_document():
@@ -1596,7 +1596,7 @@ def process_files():
     except Exception as e:
         return jsonify({'message': f'OpenAI API Error: {str(e)}'}), 500
     except Exception as e:
-        print(f"Error during file processing: {e}")
+        log.error("File processing failed", tag="FILE", exc=e)
         return jsonify({'message': f'Internal Server Error: {str(e)}'}), 500
 # ==============================================================
 @app.route('/test_metadata', methods=['POST'])
@@ -1607,7 +1607,7 @@ def metadata_test():
     # If the other code sends Form data (e.g., requests.post(url, data=data))
     else:
         data = request.form.to_dict()
-    print(f"Received data: {data}")
+    log.debug(f"Received payload keys: {list(data.keys()) if isinstance(data, dict) else type(data).__name__}", tag="API")
     return jsonify({"status": "success", "received": data}), 200
 @app.route('/assist')
 def assist():
@@ -1624,7 +1624,7 @@ def assist():
             if not t.get('Title'):
                 t['Title'] = t.get('ProjectName') or t.get('ProposalName') or t.get('Name') or t.get('ItemName') or 'Unnamed Task'
             user_items.append(t)
-    print(f"User {user_name} has {len(user_items)} assigned items.", flush=True)
+    log.debug(f"{user_name} has {len(user_items)} assigned item(s)", tag="DATA")
     return render_template("assist.html", user=user, tasks=user_items)
 # @app.route("/line_items")
 # def line_items():
@@ -1692,7 +1692,7 @@ def analyze_procurement_requirements(task_id):
         file_to_analyze = request.files.get('file')
         content_to_analyze = ""
         if file_to_analyze:
-            print(f"[ANALYZE] Analyzing manually uploaded file: {file_to_analyze.filename}")
+            log.info(f"Analyzing uploaded file: {file_to_analyze.filename}", tag="ANALYZE")
             ext = file_to_analyze.filename.split('.')[-1].lower()
             file_bytes = file_to_analyze.read()
             # Reuse parsing logic...
@@ -1741,7 +1741,7 @@ def _parse_file_content(ext, file_bytes, filename):
         elif ext == 'txt':
             text += file_bytes.decode('utf-8', errors='ignore') + "\n"
     except Exception as e:
-        print(f"Error parsing {filename}: {e}")
+        log.error(f"Failed to parse file: {filename}", tag="ANALYZE", exc=e)
     return text
 def _run_requirement_analyzer(content):
     try:
@@ -1763,7 +1763,7 @@ Requirements:
             return json.loads(match.group(0))
         return []
     except Exception as e:
-        print(f"AI Analysis Error: {e}")
+        log.error("AI analysis failed", tag="ANALYZE", exc=e)
         return []
 @app.route('/api/shared_projects/analyze/<project_id>', methods=['POST'])
 def analyze_shared_project(project_id):
@@ -2223,7 +2223,7 @@ def search_users():
             return jsonify({"users": users_data})
         return jsonify({"users": []})
     except Exception as e:
-        print(f"[API ERROR] search_users: {e}")
+        log.error("search_users API failed", tag="API", exc=e)
         return jsonify({"users": []})
 @app.route('/api/shared_projects', methods=['GET', 'POST'])
 def handle_shared_projects():
@@ -2286,7 +2286,7 @@ def invite_to_project(project_id):
                 }
                 requests.post(f"{GRAPH_API_ENDPOINT}/users/{user_email}/sendMail", headers=headers, json=mail_payload)
             except Exception as e:
-                print(f"[MAIL ERROR] Failed to send invite email to {email}: {e}")
+                log.error(f"Failed to send invite email to {email}", tag="MAIL", exc=e)
             success_count += 1
     return jsonify({"success": True, "invited": success_count})
 @app.route('/api/shared_projects/<project_id>/accept', methods=['POST'])
@@ -2339,7 +2339,7 @@ def shared_chat(project_id):
                 elif ext == 'txt':
                     files_text += file_bytes.decode('utf-8', errors='ignore') + "\n"
             except Exception as e:
-                print(f"[SHARED CHAT] Error parsing file {file.filename}: {e}")
+                log.error(f"Failed to parse shared chat file: {file.filename}", tag="SHARED-CHAT", exc=e)
                 files_text += f"\n[Error parsing file {file.filename}: {str(e)}]\n"
     project = get_shared_project_details(project_id)
     if not project: return jsonify({"error": "Project not found"}), 404
@@ -2398,7 +2398,7 @@ def api_quote_status():
     res = list(task_supplier_quotes_container.query_items(query=query, parameters=[{'name':'@trackId','value':tracking_id},{'name':'@taskId','value':task_id}], enable_cross_partition_query=True))
     if not res:
         # Fallback: Check if it exists in tracked_emails and has AI data
-        print(f"[STATUS] Quote {tracking_id} not in dedicated container. Checking tracked_emails fallback...")
+        log.debug(f"Quote {tracking_id[:8]}... not in quotes container — checking tracked_emails", tag="STATUS")
         tracked_res = list(tracked_emails_container.query_items(query="SELECT * FROM c WHERE c.id = @id", parameters=[{'name':'@id','value':tracking_id}], enable_cross_partition_query=True))
         if tracked_res:
             t_doc = tracked_res[0]
@@ -2551,10 +2551,10 @@ def api_leave_submit():
             if current_peak >= max_limit:
                 auto_status = "WL" if waitlist_enabled else "rejected"
                 reject_reason = f"Global leave capacity reached ({max_limit} active leaves) for the requested dates. Status changed to {auto_status}."
-        print(f"[LEAVE SUBMIT] Concurrency Check: Peak={current_peak if max_limit > 0 else 'N/A'}, Limit={max_limit}. Status: {auto_status}")
+        log.info(f"Leave concurrency check: Peak={current_peak if max_limit > 0 else "N/A"}, Limit={max_limit} → {auto_status}", tag="LEAVE")
     else:
         auto_status = "pending"
-        print(f"[LEAVE SUBMIT] Auto-approval disabled. Status: {auto_status}")
+        log.debug(f"Auto-approval off. Status set to: {auto_status}", tag="LEAVE")
     handoff_to_user = None
     proposals_transferred = []
     handoff_results = {}
@@ -2564,7 +2564,7 @@ def api_leave_submit():
             # ---- Step 1: Exclude user from task assignment ----
             if not continue_assign:
                 add_user_to_excludelist(username)
-                print(f"[LEAVE] Added {username} to excludeusers SP list.")
+                log.info(f"Added {username} to exclude list (on leave)", tag="LEAVE")
             # ---- Step 2: Handoff proposals ----
             if handoff_enabled:
                 proposals = get_ongoing_proposals_for_user(username)
@@ -2576,13 +2576,13 @@ def api_leave_submit():
                     handoff_to_user = manual_user
                 if handoff_to_user and proposal_ids:
                     handoff_results = handoff_proposals_to_user(username, handoff_to_user, proposal_ids)
-                    print(f"[LEAVE] Handoff: {len(handoff_results['success'])} proposals moved to {handoff_to_user}")
+                    log.info(f"Handoff: {len(handoff_results["success"])} proposal(s) reassigned to {handoff_to_user}", tag="LEAVE")
                 elif not proposal_ids:
-                    print("[LEAVE] No proposals to handoff.")
+                    log.debug("No proposals to handoff for this leave.", tag="LEAVE")
                 else:
-                    print("[LEAVE] Could not determine handoff user.")
+                    log.warn("Could not determine handoff user for leave.", tag="LEAVE")
         else:
-            print(f"[LEAVE] Leave handled manually or waitlisted ({auto_status}). Skipping exclude and handoff.")
+            log.debug(f"Leave waitlisted/manual ({auto_status}). Skipping exclude + handoff.", tag="LEAVE")
         # ---- Step 3: Save to Cosmos DB ----
         doc_id = save_leave_request(
             user_email=email,
@@ -2637,7 +2637,7 @@ def api_leave_submit():
         else:
             return jsonify({"success": False, "error": "Database error"}), 500
     except Exception as e:
-        print(f"[ERROR] api_leave_submit: {e}", flush=True)
+        log.error("Leave submission API failed", tag="LEAVE", exc=e)
         return jsonify({"success": False, "error": str(e)}), 500
 @app.route("/api/leave/availability", methods=["GET"])
 def api_leave_availability():
@@ -2744,7 +2744,7 @@ def send_graph_email(to_email, subject, html_body):
     try:
         token = get_access_token()
         if not token:
-            print("[LEAVE EMAIL ERROR] No access token available.")
+            log.error("Leave email failed: no access token available.", tag="LEAVE-MAIL")
             return False
         headers = {
             "Authorization": f"Bearer {token}",
@@ -2767,13 +2767,13 @@ def send_graph_email(to_email, subject, html_body):
         url = f"{GRAPH_API_ENDPOINT}/users/{from_email}/sendMail"
         response = requests.post(url, headers=headers, json=message)
         if response.status_code == 202:
-            print(f"[LEAVE EMAIL] Sent '{subject}' to {to_email}")
+            log.info(f"Leave email sent: '{subject}' → {to_email}", tag="LEAVE-MAIL")
             return True
         else:
-            print(f"[LEAVE EMAIL ERROR] {response.status_code} - {response.text}")
+            log.error(f"Leave email send failed: HTTP {response.status_code}", tag="LEAVE-MAIL")
             return False
     except Exception as e:
-        print(f"[LEAVE EMAIL EXCEPTION] {e}")
+        log.error("Leave email exception", tag="LEAVE-MAIL", exc=e)
         return False
 @app.route("/api/admin/leave/settings", methods=["GET", "POST"])
 def api_admin_leave_settings():

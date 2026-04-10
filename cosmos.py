@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 import pandas as pd
 import datetime
 import uuid
+from logger import log
 
 # =======================
 # CONFIGURATION
@@ -28,9 +29,9 @@ try:
                 id="item_distributors",
                 partition_key=PartitionKey(path="/id")
             )
-            print("[COSMOS INFO] item_distributors container ready.", flush=True)
+            log.debug("item_distributors container ready.", tag="COSMOS")
         except Exception as e_dist:
-            print(f"[COSMOS ERROR] Could not create/get item_distributors container: {e_dist}", flush=True)
+            log.error(f"Failed to init item_distributors container: {e_dist}", tag="COSMOS")
             distributors_container = None
 
         # --- Dedicated container for Chat Sessions ---
@@ -41,9 +42,9 @@ try:
                 partition_key=PartitionKey(path="/id"),
                 default_ttl=-1  # Enable TTL; each doc sets its own ttl value
             )
-            print("[COSMOS INFO] chat_sessions container ready.", flush=True)
+            log.debug("chat_sessions container ready.", tag="COSMOS")
         except Exception as e_sess:
-            print(f"[COSMOS ERROR] Could not create/get chat_sessions container: {e_sess}", flush=True)
+            log.error(f"Failed to init chat_sessions container: {e_sess}", tag="COSMOS")
             sessions_container = None
             
         # --- Dedicated container for Shared Projects ---
@@ -52,9 +53,9 @@ try:
                 id="shared_projects",
                 partition_key=PartitionKey(path="/id")
             )
-            print("[COSMOS INFO] shared_projects container ready.", flush=True)
+            log.debug("shared_projects container ready.", tag="COSMOS")
         except Exception as e_sp:
-            print(f"[COSMOS ERROR] Could not create/get shared_projects container: {e_sp}", flush=True)
+            log.error(f"Failed to init shared_projects container: {e_sp}", tag="COSMOS")
             shared_projects_container = None
 
         # --- Dedicated container for In-App Notifications ---
@@ -64,9 +65,9 @@ try:
                 partition_key=PartitionKey(path="/id"),
                 default_ttl=2592000  # 30 days
             )
-            print("[COSMOS INFO] in_app_notifications container ready.", flush=True)
+            log.debug("in_app_notifications container ready.", tag="COSMOS")
         except Exception as e_notif:
-            print(f"[COSMOS ERROR] Could not create/get in_app_notifications container: {e_notif}", flush=True)
+            log.error(f"Failed to init in_app_notifications container: {e_notif}", tag="COSMOS")
             notifications_container = None
             
         # --- Dedicated container for Procurement Knowledge & Feedback ---
@@ -75,9 +76,9 @@ try:
                 id="procurement_knowledge",
                 partition_key=PartitionKey(path="/id")
             )
-            print("[COSMOS INFO] procurement_knowledge container ready.", flush=True)
+            log.debug("procurement_knowledge container ready.", tag="COSMOS")
         except Exception as e_pk:
-            print(f"[COSMOS ERROR] Could not create/get procurement_knowledge container: {e_pk}", flush=True)
+            log.error(f"Failed to init procurement_knowledge container: {e_pk}", tag="COSMOS")
             procurement_knowledge_container = None
             
         # --- Dedicated container for Tracked Emails ---
@@ -86,9 +87,9 @@ try:
                 id="tracked_emails",
                 partition_key=PartitionKey(path="/task_id")
             )
-            print("[COSMOS INFO] tracked_emails container ready.", flush=True)
+            log.debug("tracked_emails container ready.", tag="COSMOS")
         except Exception as e_te:
-            print(f"[COSMOS ERROR] Could not create/get tracked_emails container: {e_te}", flush=True)
+            log.error(f"Failed to init tracked_emails container: {e_te}", tag="COSMOS")
             tracked_emails_container = None
 
         # --- Dedicated container for Task Supplier Quotes ---
@@ -97,9 +98,9 @@ try:
                 id="task_supplier_quotes",
                 partition_key=PartitionKey(path="/task_id")
             )
-            print("[COSMOS INFO] task_supplier_quotes container ready.", flush=True)
+            log.debug("task_supplier_quotes container ready.", tag="COSMOS")
         except Exception as e_tsq:
-            print(f"[COSMOS ERROR] Could not create/get task_supplier_quotes container: {e_tsq}", flush=True)
+            log.error(f"Failed to init task_supplier_quotes container: {e_tsq}", tag="COSMOS")
             task_supplier_quotes_container = None
 
         # --- Dedicated container for Leave Requests ---
@@ -108,9 +109,9 @@ try:
                 id="leave_requests",
                 partition_key=PartitionKey(path="/user_email")
             )
-            print("[COSMOS INFO] leave_requests container ready.", flush=True)
+            log.debug("leave_requests container ready.", tag="COSMOS")
         except Exception as e_lr:
-            print(f"[COSMOS ERROR] Could not create/get leave_requests container: {e_lr}", flush=True)
+            log.error(f"Failed to init leave_requests container: {e_lr}", tag="COSMOS")
             leave_requests_container = None
 
         # --- Dedicated container for Leave Settings (limits, holidays, notices) ---
@@ -119,13 +120,13 @@ try:
                 id="leave_settings",
                 partition_key=PartitionKey(path="/setting_type")
             )
-            print("[COSMOS INFO] leave_settings container ready.", flush=True)
+            log.debug("leave_settings container ready.", tag="COSMOS")
         except Exception as e_ls:
-            print(f"[COSMOS ERROR] Could not create/get leave_settings container: {e_ls}", flush=True)
+            log.error(f"Failed to init leave_settings container: {e_ls}", tag="COSMOS")
             leave_settings_container = None
 
     else:
-        print("Warning: COSMOS_ENDPOINT or COSMOS_KEY is missing. Cosmos DB features will be disabled.")
+        log.warn("COSMOS_ENDPOINT or COSMOS_KEY missing — Cosmos DB disabled.", tag="COSMOS")
         client = None
         database = None
         container = None
@@ -135,7 +136,7 @@ try:
         leave_requests_container = None
         leave_settings_container = None
 except Exception as e:
-    print(f"Error initializing CosmosClient: {e}")
+    log.error("CosmosClient initialization failed", tag="COSMOS", exc=e)
     client = None
     database = None
     container = None
@@ -170,7 +171,7 @@ def get_detailed_quote_with_items(estimate_id):
         response = container.read_item(item=estimate_id, partition_key=estimate_id)
         return response
     except Exception as e:
-        print(f"❌ Error: Quote {estimate_id} not found. {e}")
+        log.error(f"Quote {estimate_id} not found", tag="COSMOS", exc=e)
         return None
 
 
@@ -182,7 +183,7 @@ def get_all_data_full():
     if container is None:
         return []
         
-    print("📡 Fetching Master Data from Cosmos DB...")
+    log.debug("Fetching all master data from Cosmos DB...", tag="COSMOS")
     query = "SELECT * FROM c"
     items = list(container.query_items(query=query, enable_cross_partition_query=True))
     return items # Returning raw list of dicts to keep all nested data
@@ -195,7 +196,7 @@ def search_quotes_by_item(search_term):
     if container is None:
         return pd.DataFrame()
         
-    print(f"🔍 Searching for items containing: '{search_term}'...")
+    log.debug(f"Searching for items: '{search_term}'", tag="COSMOS")
     
     # Using CONTAINS for a fuzzy search (not case-sensitive in many Cosmos setups)
     query = {
@@ -226,7 +227,7 @@ def deep_search_item_with_quote_context(search_term):
     if container is None:
         return pd.DataFrame()
         
-    print(f"🔍 Deep searching for: '{search_term}'...")
+    log.debug(f"Deep searching: '{search_term}'", tag="COSMOS")
     
     query = {
         "query": """
@@ -268,7 +269,7 @@ def search_item_and_get_full_quotes(search_term):
     if container is None:
         return []
         
-    print(f"🔍 Searching for item: '{search_term}' and retrieving full quotes...")
+    log.debug(f"Full quote search: '{search_term}'", tag="COSMOS")
     
     # We select '*' to get the full document
     # We use EXISTS to check if any line item matches your search
@@ -307,7 +308,7 @@ def get_user_sessions(user_email):
     Fetches all chat sessions for a specific user.
     """
     if sessions_container is None:
-        print("[COSMOS WARN] sessions_container is None. Cannot fetch sessions.", flush=True)
+        log.warn("sessions_container is None — cannot fetch sessions.", tag="COSMOS")
         return []
     
     query = {
@@ -318,10 +319,10 @@ def get_user_sessions(user_email):
     }
     try:
         results = list(sessions_container.query_items(query=query, enable_cross_partition_query=True))
-        print(f"[COSMOS INFO] Fetched {len(results)} sessions for {user_email}", flush=True)
+        log.debug(f"Fetched {len(results)} session(s) for {user_email}", tag="COSMOS")
         return results
     except Exception as e:
-        print(f"[COSMOS ERROR] Error fetching sessions for {user_email}: {e}", flush=True)
+        log.error(f"Failed to fetch sessions for {user_email}", tag="COSMOS", exc=e)
         import traceback
         traceback.print_exc()
         return []
@@ -332,19 +333,19 @@ def get_session_messages(session_id):
     Returns messages stripped of 'timestamp' field so OpenAI API doesn't reject them.
     """
     if sessions_container is None:
-        print("[COSMOS WARN] sessions_container is None. Cannot retrieve session.", flush=True)
+        log.warn("sessions_container is None — cannot retrieve session.", tag="COSMOS")
         return None
         
     try:
         response = sessions_container.read_item(item=session_id, partition_key=session_id)
         messages = response.get("messages", [])
         msg_count = len(messages)
-        print(f"[COSMOS INFO] Loaded session {session_id} with {msg_count} messages.", flush=True)
+        log.debug(f"Session {session_id} loaded ({msg_count} messages)", tag="COSMOS")
         # Strip timestamp so OpenAI only gets role/content
         # Keep full message for UI but clean version for AI (done at the call site if needed)
         return messages
     except Exception as e:
-        print(f"[COSMOS ERROR] Error retrieving session {session_id}: {e}", flush=True)
+        log.error(f"Failed to retrieve session {session_id}", tag="COSMOS", exc=e)
         return None
 
 def save_session_message(session_id, user_email, role, content, title=None, agent_type="personal", task_id=None):
@@ -353,21 +354,21 @@ def save_session_message(session_id, user_email, role, content, title=None, agen
     Sets TTL of 5 days (432000 seconds) for automatic deletion.
     """
     if sessions_container is None:
-        print("[COSMOS WARN] sessions_container is None. Cannot save session.", flush=True)
+        log.warn("sessions_container is None — cannot save session.", tag="COSMOS")
         if not session_id:
             session_id = str(uuid.uuid4())
         return session_id
 
     if not session_id or session_id in ("null", "undefined", ""):
         session_id = str(uuid.uuid4())
-        print(f"[COSMOS INFO] Generated new session_id: {session_id}", flush=True)
+        log.debug(f"New session created: {session_id}", tag="COSMOS")
         
     try:
         try:
             session = sessions_container.read_item(item=session_id, partition_key=session_id)
-            print(f"[COSMOS INFO] Found existing session {session_id}", flush=True)
+            log.debug(f"Existing session found: {session_id}", tag="COSMOS")
         except Exception:
-            print(f"[COSMOS INFO] Creating new session document: {session_id}", flush=True)
+            log.debug(f"Creating new session document: {session_id}", tag="COSMOS")
             session = {
                 "id": session_id,
                 "user_email": user_email,
@@ -395,10 +396,10 @@ def save_session_message(session_id, user_email, role, content, title=None, agen
             session["session_title"] = title
 
         sessions_container.upsert_item(body=session)
-        print(f"[COSMOS INFO] ✅ Saved {role} message to session {session_id} (title: {session.get('session_title')})", flush=True)
+        log.debug(f"Saved [{role}] message to session {session_id}", tag="COSMOS")
         return session_id
     except Exception as e:
-        print(f"[COSMOS ERROR] Error saving session message: {e}", flush=True)
+        log.error("Failed to save session message", tag="COSMOS", exc=e)
         import traceback
         traceback.print_exc()
         return session_id
@@ -408,14 +409,14 @@ def delete_session(session_id):
     Deletes a session document from chat_sessions container.
     """
     if sessions_container is None:
-        print("[COSMOS WARN] sessions_container is None. Cannot delete session.", flush=True)
+        log.warn("sessions_container is None — cannot delete session.", tag="COSMOS")
         return False
     try:
         sessions_container.delete_item(item=session_id, partition_key=session_id)
-        print(f"[COSMOS INFO] Deleted session {session_id}", flush=True)
+        log.debug(f"Session deleted: {session_id}", tag="COSMOS")
         return True
     except Exception as e:
-        print(f"[COSMOS ERROR] Error deleting session {session_id}: {e}", flush=True)
+        log.error(f"Failed to delete session {session_id}", tag="COSMOS", exc=e)
         return False
 
 # =======================
@@ -428,10 +429,10 @@ def upsert_item_distributors(mapping):
     Each document: { "id": item_id, "name": item_name, "purchase_history": [...] }
     """
     if distributors_container is None:
-        print("[COSMOS WARN] distributors_container is None. Cannot save mapping.", flush=True)
+        log.warn("distributors_container is None — cannot save mapping.", tag="COSMOS")
         return False
     
-    print(f"📡 Syncing {len(mapping)} item-history records to Cosmos DB...")
+    log.debug(f"Syncing {len(mapping)} item-distributor record(s) to Cosmos DB", tag="COSMOS")
     try:
         for item_id, details in mapping.items():
             doc = {
@@ -441,10 +442,10 @@ def upsert_item_distributors(mapping):
                 "updated_at": datetime.datetime.utcnow().isoformat()
             }
             distributors_container.upsert_item(body=doc)
-        print("✅ Sync complete.", flush=True)
+        log.debug("Distributor sync complete.", tag="COSMOS")
         return True
     except Exception as e:
-        print(f"[COSMOS ERROR] Error upserting distributors: {e}", flush=True)
+        log.error("Failed to upsert distributors", tag="COSMOS", exc=e)
         return False
 
 def get_item_distributors(item_id):
@@ -469,7 +470,7 @@ def search_item_distributors(search_term):
     if distributors_container is None:
         return []
     
-    print(f"🔍 Searching distributors for: '{search_term}'...")
+    log.debug(f"Searching distributors for: '{search_term}'", tag="COSMOS")
     
     query = {
         "query": """
@@ -487,7 +488,7 @@ def search_item_distributors(search_term):
         results = list(distributors_container.query_items(query=query, enable_cross_partition_query=True))
         return results
     except Exception as e:
-        print(f"[COSMOS ERROR] Error searching distributors: {e}", flush=True)
+        log.error("Failed to search distributors", tag="COSMOS", exc=e)
         return []
 
 # =======================
@@ -499,7 +500,7 @@ def save_procurement_feedback(user_email, original_items, distributors, is_true_
     Saves a curated record of an enquiry, the found distributors, and the user's feedback.
     """
     if procurement_knowledge_container is None:
-        print("[COSMOS WARN] procurement_knowledge_container is None. Cannot save feedback.", flush=True)
+        log.warn("procurement_knowledge_container is None.", tag="COSMOS")
         return False
         
     doc_id = str(uuid.uuid4())
@@ -515,10 +516,10 @@ def save_procurement_feedback(user_email, original_items, distributors, is_true_
     
     try:
         procurement_knowledge_container.upsert_item(body=doc)
-        print(f"[COSMOS INFO] Saved procurement knowledge feedback. ID: {doc_id}", flush=True)
+        log.debug(f"Procurement feedback saved: {doc_id}", tag="COSMOS")
         return True
     except Exception as e:
-        print(f"[COSMOS ERROR] Error saving procurement feedback: {e}", flush=True)
+        log.error("Failed to save procurement feedback", tag="COSMOS", exc=e)
         return False
 
 def search_procurement_knowledge(query):
@@ -529,7 +530,7 @@ def search_procurement_knowledge(query):
     if procurement_knowledge_container is None:
         return []
         
-    print(f"🔍 Searching curated procurement knowledge for: '{query}'...")
+    log.debug(f"Searching procurement knowledge: '{query}'", tag="COSMOS")
     
     # We look for the query in notes, distributors' names/items, or enquired items
     sql_query = {
@@ -553,7 +554,7 @@ def search_procurement_knowledge(query):
         results = list(procurement_knowledge_container.query_items(query=sql_query, enable_cross_partition_query=True))
         return results
     except Exception as e:
-        print(f"[COSMOS ERROR] Error searching procurement knowledge: {e}", flush=True)
+        log.error("Failed to search procurement knowledge", tag="COSMOS", exc=e)
         return []
 
 # =======================
@@ -583,7 +584,7 @@ def create_shared_project(task_data, creator_email):
         shared_projects_container.create_item(body=doc)
         return project_id
     except Exception as e:
-        print(f"[COSMOS ERROR] create_shared_project: {e}")
+        log.error("Create shared project failed", tag="COSMOS", exc=e)
         return None
 
 def invite_collaborator(project_id, inviter_email, invitee_email):
@@ -609,7 +610,7 @@ def invite_collaborator(project_id, inviter_email, invitee_email):
         )
         return True
     except Exception as e:
-        print(f"[COSMOS ERROR] invite_collaborator: {e}")
+        log.error("Invite collaborator failed", tag="COSMOS", exc=e)
         return False
 
 def accept_collaboration_invite(notification_id, user_email):
@@ -635,7 +636,7 @@ def accept_collaboration_invite(notification_id, user_email):
         mark_notification_read(notification_id)
         return True
     except Exception as e:
-        print(f"[COSMOS ERROR] accept_collaboration_invite: {e}")
+        log.error("Accept invite failed", tag="COSMOS", exc=e)
         return False
 
 def get_shared_projects_for_user(user_email):
@@ -651,7 +652,7 @@ def get_shared_projects_for_user(user_email):
     try:
         return list(shared_projects_container.query_items(query=query, enable_cross_partition_query=True))
     except Exception as e:
-        print(f"[COSMOS ERROR] get_shared_projects_for_user: {e}")
+        log.error("Get shared projects failed", tag="COSMOS", exc=e)
         return []
 
 def get_shared_project_details(project_id):
@@ -676,7 +677,7 @@ def save_shared_session_message(project_id, role, content, user_email):
         shared_projects_container.upsert_item(body=project)
         return True
     except Exception as e:
-        print(f"[COSMOS ERROR] save_shared_session_message: {e}")
+        log.error("Save shared message failed", tag="COSMOS", exc=e)
         return False
 
 def get_shared_project_activity(project_id):
@@ -707,7 +708,7 @@ def save_user_notification(user_email, message, type="info", project_id=None, me
         notifications_container.create_item(body=doc)
         return True
     except Exception as e:
-        print(f"[COSMOS ERROR] save_user_notification: {e}")
+        log.error("Save notification failed", tag="COSMOS", exc=e)
         return False
 
 def get_user_notifications(user_email, unread_only=True):
@@ -723,7 +724,7 @@ def get_user_notifications(user_email, unread_only=True):
     try:
         return list(notifications_container.query_items(query=query, enable_cross_partition_query=True))
     except Exception as e:
-        print(f"[COSMOS ERROR] get_user_notifications: {e}")
+        log.error("Get notifications failed", tag="COSMOS", exc=e)
         return []
 
 def mark_notification_read(notification_id):
@@ -734,7 +735,7 @@ def mark_notification_read(notification_id):
         notifications_container.upsert_item(body=notif)
         return True
     except Exception as e:
-        print(f"[COSMOS ERROR] mark_notification_read: {e}")
+        log.error("Mark notification read failed", tag="COSMOS", exc=e)
         return False
 
 # =======================
@@ -761,7 +762,7 @@ def save_tracked_email(task_id, session_id, to_email, subject, tracking_id, user
         tracked_emails_container.upsert_item(body=doc)
         return True
     except Exception as e:
-        print(f"[COSMOS ERROR] save_tracked_email: {e}")
+        log.error("Save tracked email failed", tag="COSMOS", exc=e)
         return False
 
 def get_tracked_emails_for_task(task_id):
@@ -775,7 +776,7 @@ def get_tracked_emails_for_task(task_id):
     try:
         return list(tracked_emails_container.query_items(query=query, enable_cross_partition_query=True))
     except Exception as e:
-        print(f"[COSMOS ERROR] get_tracked_emails_for_task: {e}")
+        log.error("Get tracked emails failed", tag="COSMOS", exc=e)
         return []
 
 def update_tracked_email_reply(tracking_id, task_id, reply_content, summary, quote_doc_path=None, ai_parsed_data=None):
@@ -793,7 +794,7 @@ def update_tracked_email_reply(tracking_id, task_id, reply_content, summary, quo
         tracked_emails_container.upsert_item(body=doc)
         return True
     except Exception as e:
-        print(f"[COSMOS ERROR] update_tracked_email_reply: {e}")
+        log.error("Update email reply failed", tag="COSMOS", exc=e)
         return False
 
 def save_task_supplier_quote(task_id, tracking_id, supplier_email, summary, parsed_json):
@@ -814,7 +815,7 @@ def save_task_supplier_quote(task_id, tracking_id, supplier_email, summary, pars
         task_supplier_quotes_container.upsert_item(body=doc)
         return quote_id
     except Exception as e:
-        print(f"[COSMOS ERROR] save_task_supplier_quote: {e}")
+        log.error("Save supplier quote failed", tag="COSMOS", exc=e)
         return False
 
 def update_task_supplier_quote_status(quote_id, task_id, status):
@@ -825,7 +826,7 @@ def update_task_supplier_quote_status(quote_id, task_id, status):
         task_supplier_quotes_container.upsert_item(body=doc)
         return True
     except Exception as e:
-        print(f"[COSMOS ERROR] update_task_supplier_quote_status: {e}")
+        log.error("Update quote status failed", tag="COSMOS", exc=e)
         return False
 
 def get_task_supplier_quotes(task_id, status_filter=None):
@@ -839,7 +840,7 @@ def get_task_supplier_quotes(task_id, status_filter=None):
             parameters = [{"name": "@taskId", "value": task_id}]
         return list(task_supplier_quotes_container.query_items(query=query, parameters=parameters, enable_cross_partition_query=True))
     except Exception as e:
-        print(f"[COSMOS ERROR] get_task_supplier_quotes: {e}")
+        log.error("Get supplier quotes failed", tag="COSMOS", exc=e)
         return []
 
 def get_pending_tracked_emails(user_email=None):
@@ -857,7 +858,7 @@ def get_pending_tracked_emails(user_email=None):
     try:
         return list(tracked_emails_container.query_items(query=query, enable_cross_partition_query=True))
     except Exception as e:
-        print(f"[COSMOS ERROR] get_pending_tracked_emails: {e}")
+        log.error("Get pending emails failed", tag="COSMOS", exc=e)
         return []
 
 
@@ -918,7 +919,7 @@ def update_project_heartbeat(project_id, user_email):
         shared_projects_container.upsert_item(body=project)
         return True
     except Exception as e:
-        print(f"[COSMOS ERROR] update_project_heartbeat: {e}")
+        log.error("Update heartbeat failed", tag="COSMOS", exc=e)
         return False
 
 def get_project_presence(project_id):
@@ -966,7 +967,7 @@ def save_leave_request(user_email, username, leave_start, leave_end,
         status          - "active" | "completed" | "cancelled"
     """
     if not leave_requests_container:
-        print("[COSMOS WARN] leave_requests_container is None.", flush=True)
+        log.warn("leave_requests_container is None.", tag="COSMOS")
         return None
 
     doc_id = str(uuid.uuid4())
@@ -992,10 +993,10 @@ def save_leave_request(user_email, username, leave_start, leave_end,
     }
     try:
         leave_requests_container.create_item(body=doc)
-        print(f"[COSMOS INFO] Leave request saved for {user_email} ({leave_start} → {leave_end})", flush=True)
+        log.info(f"Leave saved for {user_email}: {leave_start} → {leave_end}", tag="COSMOS")
         return doc_id
     except Exception as e:
-        print(f"[COSMOS ERROR] save_leave_request: {e}", flush=True)
+        log.error("Failed to save leave request", tag="COSMOS", exc=e)
         return None
 
 
@@ -1015,7 +1016,7 @@ def get_active_leaves():
             query=query, enable_cross_partition_query=True
         ))
     except Exception as e:
-        print(f"[COSMOS ERROR] get_active_leaves: {e}", flush=True)
+        log.error("Failed to get active leaves", tag="COSMOS", exc=e)
         return []
 
 
@@ -1034,7 +1035,7 @@ def get_leave_history_for_user(user_email):
             query=query, enable_cross_partition_query=True
         ))
     except Exception as e:
-        print(f"[COSMOS ERROR] get_leave_history_for_user: {e}", flush=True)
+        log.error("Failed to get leave history", tag="COSMOS", exc=e)
         return []
 
 
@@ -1050,10 +1051,10 @@ def update_leave_status(doc_id, user_email, new_status):
         doc["status"] = new_status
         doc["updated_at"] = datetime.datetime.utcnow().isoformat()
         leave_requests_container.upsert_item(body=doc)
-        print(f"[COSMOS INFO] Leave {doc_id} status → {new_status}", flush=True)
+        log.info(f"Leave {doc_id} status updated → {new_status}", tag="COSMOS")
         return True
     except Exception as e:
-        print(f"[COSMOS ERROR] update_leave_status: {e}", flush=True)
+        log.error("Failed to update leave status", tag="COSMOS", exc=e)
         return False
 
 
@@ -1078,7 +1079,7 @@ def get_all_leaves():
             query=query, enable_cross_partition_query=True
         ))
     except Exception as e:
-        print(f"[COSMOS ERROR] get_all_leaves: {e}", flush=True)
+        log.error("Failed to get all leaves", tag="COSMOS", exc=e)
         return []
 
 
@@ -1130,7 +1131,7 @@ def get_max_concurrent_leave_count(start_date_str, end_date_str):
             
         return peak_count
     except Exception as e:
-        print(f"[COSMOS ERROR] get_max_concurrent_leave_count: {e}", flush=True)
+        log.error("Failed to get max concurrent leave count", tag="COSMOS", exc=e)
         return 0
 
 
@@ -1144,10 +1145,10 @@ def save_leave_setting(setting_data):
         return None
     try:
         leave_settings_container.upsert_item(body=setting_data)
-        print(f"[COSMOS INFO] Leave setting saved: {setting_data.get('id')}", flush=True)
+        log.debug(f"Leave setting saved: {setting_data.get("id")}", tag="COSMOS")
         return True
     except Exception as e:
-        print(f"[COSMOS ERROR] save_leave_setting: {e}", flush=True)
+        log.error("Failed to save leave setting", tag="COSMOS", exc=e)
         return None
 
 
@@ -1189,10 +1190,10 @@ def save_holiday(title, date_str, end_date_str=None, holiday_type="holiday",
     }
     try:
         leave_settings_container.create_item(body=doc)
-        print(f"[COSMOS INFO] Holiday saved: {title} ({date_str})", flush=True)
+        log.debug(f"Holiday saved: {title} ({date_str})", tag="COSMOS")
         return doc_id
     except Exception as e:
-        print(f"[COSMOS ERROR] save_holiday: {e}", flush=True)
+        log.error("Failed to save holiday", tag="COSMOS", exc=e)
         return None
 
 
@@ -1206,7 +1207,7 @@ def get_holidays():
             partition_key="holiday"
         ))
     except Exception as e:
-        print(f"[COSMOS ERROR] get_holidays: {e}", flush=True)
+        log.error("Failed to get holidays", tag="COSMOS", exc=e)
         return []
 
 
@@ -1216,10 +1217,10 @@ def delete_holiday(doc_id):
         return False
     try:
         leave_settings_container.delete_item(item=doc_id, partition_key="holiday")
-        print(f"[COSMOS INFO] Holiday deleted: {doc_id}", flush=True)
+        log.debug(f"Holiday deleted: {doc_id}", tag="COSMOS")
         return True
     except Exception as e:
-        print(f"[COSMOS ERROR] delete_holiday: {e}", flush=True)
+        log.error("Failed to delete holiday", tag="COSMOS", exc=e)
         return False
 
 
@@ -1266,7 +1267,7 @@ def get_user_leave_count(user_email, year=None, month=None):
 
         return {"yearly": yearly_count, "monthly": monthly_count}
     except Exception as e:
-        print(f"[COSMOS ERROR] get_user_leave_count: {e}", flush=True)
+        log.error("Failed to get user leave count", tag="COSMOS", exc=e)
         return {"yearly": 0, "monthly": 0}
 
 
@@ -1281,10 +1282,10 @@ def approve_leave_request(doc_id, user_email, admin_email, remarks=""):
         doc["reviewed_at"] = datetime.datetime.utcnow().isoformat()
         doc["admin_remarks"] = remarks
         leave_requests_container.replace_item(item=doc_id, body=doc)
-        print(f"[COSMOS INFO] Leave {doc_id} approved by {admin_email}", flush=True)
+        log.info(f"Leave {doc_id} approved by {admin_email}", tag="COSMOS")
         return True
     except Exception as e:
-        print(f"[COSMOS ERROR] approve_leave_request: {e}", flush=True)
+        log.error("Failed to approve leave request", tag="COSMOS", exc=e)
         return False
 
 
@@ -1299,9 +1300,9 @@ def reject_leave_request(doc_id, user_email, admin_email, remarks=""):
         doc["reviewed_at"] = datetime.datetime.utcnow().isoformat()
         doc["admin_remarks"] = remarks
         leave_requests_container.replace_item(item=doc_id, body=doc)
-        print(f"[COSMOS INFO] Leave {doc_id} rejected by {admin_email}", flush=True)
+        log.info(f"Leave {doc_id} rejected by {admin_email}", tag="COSMOS")
         return True
     except Exception as e:
-        print(f"[COSMOS ERROR] reject_leave_request: {e}", flush=True)
+        log.error("Failed to reject leave request", tag="COSMOS", exc=e)
         return False
 
