@@ -206,7 +206,7 @@ def background_updater():
             except Exception as le:
                 log.error("Leave expiry processing failed", tag="BG-LEAVE", exc=le)
                 
-            log.info(f"Data refresh complete at {datetime.now().strftime("%H:%M:%S")}", tag="BG")
+            log.info(f"Data refresh complete at {datetime.now().strftime('%H:%M:%S')}", tag="BG")
         except Exception as e:
             log.error("Background update failed", tag="BG", exc=e)
         time.sleep(100)
