@@ -175,9 +175,74 @@ def fetch_sharepoint_list(site_domain, site_path, list_name):
     list_id = get_list_id(access_token, site_id, list_name)
     raw_items = get_list_items(access_token, site_id, list_id)
 
-    structured_items = [flatten_fields(item.get("fields", {}), user_cache) for item in raw_items]
+    structured_items = []
+    for item in raw_items:
+        flat = flatten_fields(item.get("fields", {}), user_cache)
+        flat["id"] = item.get("id")
+        structured_items.append(flat)
     return structured_items
 
+
+def get_latest_delta_link(site_domain, site_path, list_name):
+    """
+    Returns the latest deltaLink for a given SharePoint list without fetching all items.
+    """
+    access_token = get_access_token()
+    site_id = get_site_id(access_token, site_domain, site_path)
+    list_id = get_list_id(access_token, site_id, list_name)
+    headers = {"Authorization": f"Bearer {access_token}"}
+    url = f"{GRAPH_API}/sites/{site_id}/lists/{list_id}/items/delta?token=latest"
+    resp = requests.get(url, headers=headers)
+    if resp.status_code == 200:
+        return resp.json().get("@odata.deltaLink")
+    else:
+        log.error(f"Failed to get latest delta link: {resp.text}", tag="SP")
+        return None
+
+def fetch_sharepoint_delta(site_domain, site_path, list_name, delta_link):
+    """
+    Fetches only the changed SharePoint list items using the provided delta_link.
+    Returns: (processed_items, removed_ids, next_delta_link)
+    """
+    access_token = get_access_token()
+    site_id = get_site_id(access_token, site_domain, site_path)
+    list_id = get_list_id(access_token, site_id, list_name)
+    
+    headers = {"Authorization": f"Bearer {access_token}", "Prefer": "HonorNonIndexedQueriesWarningMayFailRandomly"}
+    
+    url = delta_link
+    items = []
+    next_delta_link = None
+    
+    while url:
+        resp = requests.get(url, headers=headers)
+        if resp.status_code == 410:
+            raise ValueError("Delta token expired")
+        elif resp.status_code != 200:
+            log.error(f"Delta fetch failed: {resp.text}", tag="SP")
+            raise Exception(f"Error fetching delta items: {resp.text}")
+            
+        data = resp.json()
+        items.extend(data.get("value", []))
+        
+        url = data.get("@odata.nextLink")
+        if not url:
+            next_delta_link = data.get("@odata.deltaLink")
+            
+    processed_items = []
+    removed_ids = []
+    for item in items:
+        if "@removed" in item:
+            removed_ids.append(item.get("id"))
+        else:
+            # For added/modified items, fetch them individually to get the $expand properly!
+            item_id = item.get("id")
+            full_item = fetch_sharepoint_item_by_id(site_domain, site_path, list_name, item_id)
+            if full_item:
+                full_item["id"] = item_id
+                processed_items.append(full_item)
+            
+    return processed_items, removed_ids, next_delta_link
 
 def fetch_sharepoint_item_by_id(site_domain, site_path, list_name, item_id):
     """
@@ -272,8 +337,11 @@ def compute_overall_analytics(df, period=None, excluded_users=None):
 
     # Strictly filter out excluded users BEFORE computing anything
     if excluded_users:
-        _excl_norm = [str(u).strip().lower() for u in excluded_users]
-        df = df[~df["AssignedTo"].fillna("").astype(str).str.strip().str.lower().isin(_excl_norm)].copy()
+        _excl_norm = [str(u).strip().lower() for u in excluded_users if u]
+        # Exclude row if ANY user in AssignedTo is in the excluded list
+        df = df[~df["AssignedTo"].fillna("").astype(str).str.lower().apply(
+            lambda x: any(u.strip() in _excl_norm for u in x.split(','))
+        )].copy()
 
     if df.empty:
         return {"total_users": 0, "total_tasks": 0, "tasks_completed": 0, "tasks_pending": 0, "tasks_missed": 0, "orders_received": 0, "changes": {}}
@@ -350,8 +418,10 @@ def compute_user_analytics(df, excluded_users=None):
 
     # Strictly filter out excluded users
     if excluded_users:
-        _excl_norm = [str(u).strip().lower() for u in excluded_users]
-        df = df[~df["AssignedTo"].fillna("").astype(str).str.strip().str.lower().isin(_excl_norm)].copy()
+        _excl_norm = [str(u).strip().lower() for u in excluded_users if u]
+        df = df[~df["AssignedTo"].fillna("").astype(str).str.lower().apply(
+            lambda x: any(u.strip() in _excl_norm for u in x.split(','))
+        )].copy()
     if df.empty:
         return {}
 
@@ -393,11 +463,12 @@ def compute_user_analytics_with_last_date(df, EXCLUDED_USERS, period=None):
     if df.empty or 'AssignedTo' not in df.columns:
         return {}
     # Normalize for exclusion
-    exclude_users_normalized = [str(u).strip().lower() for u in EXCLUDED_USERS]
-
+    exclude_users_normalized = [str(u).strip().lower() for u in EXCLUDED_USERS if u]
 
     # ✅ Make a copy to avoid SettingWithCopyWarning
-    df = df[~df['AssignedTo'].fillna('').astype(str).str.strip().str.lower().isin(exclude_users_normalized)].copy()
+    df = df[~df['AssignedTo'].fillna('').astype(str).str.lower().apply(
+        lambda x: any(u.strip() in exclude_users_normalized for u in x.split(','))
+    )].copy()
     if df.empty:
         return {}
 
@@ -518,8 +589,10 @@ def generate_user_analytics(df, user_column='AssignedTo', status_column='Status'
     now_utc = pd.Timestamp.now(tz='UTC')
 
     # Filter out excluded users
-    exclude_users_normalized = [str(u).strip().lower() for u in exclude_users]
-    df_filtered = df[~df[user_column].fillna('').astype(str).str.strip().str.lower().isin(exclude_users_normalized)]
+    exclude_users_normalized = [str(u).strip().lower() for u in exclude_users if u]
+    df_filtered = df[~df[user_column].fillna('').astype(str).str.lower().apply(
+        lambda x: any(u.strip() in exclude_users_normalized for u in x.split(','))
+    )].copy()
 
 
     # Group by user
@@ -529,17 +602,17 @@ def generate_user_analytics(df, user_column='AssignedTo', status_column='Status'
         total_tasks = len(group)
 
         # Completed tasks
-        completed_tasks_df = group[group[status_column] == 'Completed']
+        completed_tasks_df = group[group['SubmissionStatus'] == 'Submitted']
 
         # Ongoing tasks: Not submitted + either due date in future or start date in future
         ongoing_tasks_df = group[
-            (group[status_column] != 'Submitted') & 
+            (group['SubmissionStatus'] != 'Submitted') & 
             ((group[due_column] >= now_utc) | (group[start_column] >= now_utc))
         ]
 
         # Missed tasks: Not submitted + due date in past
         missed_tasks_df = group[
-            (group[status_column] != 'Submitted') & 
+            (group['SubmissionStatus'] != 'Submitted') & 
             (group[due_column] < now_utc)
         ]
 
@@ -595,15 +668,15 @@ def get_user_analytics_specific(df: pd.DataFrame, username: str) -> dict:
     # Filter tasks for the user
     user_tasks = df[df['AssignedTo'] == username]
 
-    completed_tasks = user_tasks[user_tasks['Status'] == 'Completed']
+    completed_tasks = user_tasks[user_tasks['SubmissionStatus'] == 'Submitted']
 
     ongoing_tasks = user_tasks[
-        (user_tasks['Status'] != 'Submitted') &
+        (user_tasks['SubmissionStatus'] != 'Submitted') &
         (user_tasks['DueDate'] >= now_utc)
     ]
 
     missed_tasks = user_tasks[
-        (user_tasks['Status'] != 'Submitted') &
+        (user_tasks['SubmissionStatus'] != 'Submitted') &
         (user_tasks['DueDate'] < now_utc)
     ]
 
@@ -1366,17 +1439,22 @@ def calculate_priority_score(user_analytics):
     1. Low active tasks → higher priority
     2. Among similar tasks, longer idle → higher priority
     """
-    now = datetime.now(timezone.utc)
+    now = pd.Timestamp.now(tz='UTC')
     scores = []
 
     for _, row in user_analytics.iterrows():
         active_tasks = int(row["OngoingTasksCount"])
         last_assigned = row["LastAssignedDate"]
 
-        if isinstance(last_assigned, str):
-            last_assigned = datetime.fromisoformat(last_assigned)
-
-        days_since_last = (now - last_assigned).total_seconds() / (24 * 3600)
+        if pd.isna(last_assigned) or last_assigned is None:
+            days_since_last = 9999
+        else:
+            if isinstance(last_assigned, str):
+                last_assigned = pd.to_datetime(last_assigned, utc=True)
+            elif isinstance(last_assigned, datetime):
+                last_assigned = pd.to_datetime(last_assigned, utc=True)
+                
+            days_since_last = (now - last_assigned).total_seconds() / (24 * 3600)
 
         # Primary: negative active tasks (so fewer tasks → higher score)
         # Secondary: days_since_last (more idle → higher score)
@@ -1805,21 +1883,31 @@ def save_distributors_data_to_sharepoint(distributors_data):
 # -----------------------------------------------------------------------------------------------------------
 
 def excludeusers_from_sl():
-    access_token = get_access_token()
-    site_id = get_site_id(access_token, "hamdaz1.sharepoint.com", "/sites/Test")
-    list_id = get_list_id(access_token, site_id, "excludeusers")
-    url = f"{GRAPH_API_ENDPOINT}/sites/{site_id}/lists/{list_id}/items?expand=fields"
-    headers = {"Authorization": f"Bearer {access_token}"}
-    all_items = []
-    while url:
-        resp = requests.get(url, headers=headers)
-        resp.raise_for_status()
-        data = resp.json()
-        all_items.extend(data.get("value", []))
-        url = data.get("@odata.nextLink")  # Fetch next page if exists
-    excluded_users = [item['fields']['Usernames'].strip() for item in all_items]
-    log.debug(f"Excluded users loaded: {excluded_users}", tag="SP")
-    return excluded_users
+    try:
+        access_token = get_access_token()
+        site_id = get_site_id(access_token, "hamdaz1.sharepoint.com", "/sites/Test")
+        list_id = get_list_id(access_token, site_id, "excludeusers")
+        url = f"{GRAPH_API_ENDPOINT}/sites/{site_id}/lists/{list_id}/items?expand=fields"
+        headers = {"Authorization": f"Bearer {access_token}"}
+        all_items = []
+        while url:
+            resp = requests.get(url, headers=headers)
+            resp.raise_for_status()
+            data = resp.json()
+            all_items.extend(data.get("value", []))
+            url = data.get("@odata.nextLink")  # Fetch next page if exists
+        
+        excluded_users = []
+        for item in all_items:
+            username = item.get('fields', {}).get('Usernames')
+            if username:
+                excluded_users.append(str(username).strip())
+                
+        log.debug(f"Excluded users loaded: {excluded_users}", tag="SP")
+        return excluded_users
+    except Exception as e:
+        log.error(f"Error fetching excluded users: {e}", tag="SP")
+        return []
 
 def user_with_jobs_ls():
     access_token = get_access_token()

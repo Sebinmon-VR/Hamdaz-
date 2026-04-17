@@ -70,8 +70,11 @@ index = pc.Index("hamdaz")
 # Initialize global data (first load)
 log.info("Fetching initial SharePoint data...", tag="INIT")
 tasks = fetch_sharepoint_list(SITE_DOMAIN, SITE_PATH, LIST_NAME)
+delta_link = get_latest_delta_link(SITE_DOMAIN, SITE_PATH, LIST_NAME)
+tasks_dict = {t["id"]: t for t in tasks if "id" in t}
 df = items_to_dataframe(tasks)
 user_analytics = generate_user_analytics(df, exclude_users=EXCLUDED_USERS)
+previous_user_analytics = {}
 log.info("Data loaded successfully.", tag="INIT")
 # ==============================================================
 # HELPER FUNCTIONS
@@ -155,26 +158,38 @@ def check_and_process_expired_leaves():
 # ==============================================================
 # BACKGROUND DATA UPDATER
 # ==============================================================
-def background_updater():
-    """Runs in background to refresh SharePoint data periodically."""
-    global tasks, df, user_analytics, EXCLUDED_USERS
+def background_data_updater():
+    """Runs in background to incrementally refresh SharePoint data."""
+    global tasks, tasks_dict, delta_link, df, user_analytics, EXCLUDED_USERS, previous_user_analytics
     while True:
         try:
-            log.debug("Refreshing SharePoint data...", tag="BG")
-            # Fetch latest SharePoint list
-            tasks = fetch_sharepoint_list(SITE_DOMAIN, SITE_PATH, LIST_NAME)
+            # log.debug("Refreshing SharePoint data...", tag="BG-DATA")
             
-            EXCLUDED_USERS = excludeusers_from_sl()
+            new_excluded_users = excludeusers_from_sl()
+            if new_excluded_users is not None and isinstance(new_excluded_users, list):
+                EXCLUDED_USERS = new_excluded_users
             
-            # list_columns= get_list_columns(SITE_DOMAIN , SITE_PATH , LIST_NAME)
-            df = items_to_dataframe(tasks)
+            raw_tasks, removed_ids, next_delta = fetch_sharepoint_delta(SITE_DOMAIN, SITE_PATH, LIST_NAME, delta_link=delta_link)
+            delta_link = next_delta
+            
+            # If there are changes, update local dictionary and dataframe
+            if raw_tasks or removed_ids:
+                log.info(f"Delta: {len(raw_tasks)} changed, {len(removed_ids)} removed.", tag="BG-DATA")
+                for t in raw_tasks:
+                    tasks_dict[t["id"]] = t
+                for rid in removed_ids:
+                    tasks_dict.pop(rid, None)
+                tasks = list(tasks_dict.values())
+                df = items_to_dataframe(tasks)
+            
+            # We recalculate user analytics every time since it's driven 
+            # by current date/time (e.g., missed vs ongoing)
             user_analytics = generate_user_analytics(df, exclude_users=EXCLUDED_USERS)
-            # Calculate priority score and rank
             user_analytics = calculate_priority_score(user_analytics)
             user_analytics = assign_priority_rank(user_analytics)
-            # Fetch existing SharePoint items
+            
             existing_items = get_existing_useranalytics_items()
-            # jobcount= user_with_jobs_ls() ////
+            
             for _, row in user_analytics.iterrows():
                 username = row["User"]
                 item_fields = {
@@ -182,34 +197,46 @@ def background_updater():
                     "ActiveTasks": int(row["OngoingTasksCount"]),
                     "RecentDate": row["LastAssignedDate"].isoformat() if isinstance(row["LastAssignedDate"], datetime) else row["LastAssignedDate"],
                     "Priority": int(row["PriorityRank"]),
-                    # "jobcount": int(jobcount.get(username, 0)) ////
                 }
-                # ✅ Use safe helper to find existing user
-                existing_item = find_existing_user_item(existing_items, username)
-                if existing_item:
-                    update_user_analytics_in_sharepoint(existing_item["id"], item_fields)
-                    log.debug(f"Updated analytics for {username}", tag="BG")
-                else:
-                    add_item_to_sharepoint(item_fields)  
-                    log.info(f"New user added to analytics: {username}", tag="BG")
+                
+                # Compare against cached state to avoid unnecessary PATCH requests
+                prev_state = previous_user_analytics.get(username)
+                if prev_state != item_fields:
+                    existing_item = find_existing_user_item(existing_items, username)
+                    if existing_item:
+                        update_user_analytics_in_sharepoint(existing_item["id"], item_fields)
+                        log.debug(f"Updated analytics for {username}", tag="BG-DATA")
+                    else:
+                        add_item_to_sharepoint(item_fields)  
+                        log.info(f"New user added to analytics: {username}", tag="BG-DATA")
+                    previous_user_analytics[username] = item_fields.copy()
+            
             # Perform smart rotation
             swp()
-            # Sync supplier emails in background
-            try:
-                sync_all_pending_supplier_emails()
-            except Exception as se:
-                log.error("Email sync failed", tag="BG-SYNC", exc=se)
-                
-            # Process expired leaves
-            try:
-                check_and_process_expired_leaves()
-            except Exception as le:
-                log.error("Leave expiry processing failed", tag="BG-LEAVE", exc=le)
-                
-            log.info(f"Data refresh complete at {datetime.now().strftime('%H:%M:%S')}", tag="BG")
+            
+            # log.info(f"Data refresh complete.", tag="BG-DATA")
         except Exception as e:
-            log.error("Background update failed", tag="BG", exc=e)
-        time.sleep(100)
+            log.error("Data update failed", tag="BG-DATA", exc=e)
+            
+        time.sleep(60)
+
+def background_email_updater():
+    """Runs in background to sync supplier emails."""
+    while True:
+        try:
+            sync_all_pending_supplier_emails()
+        except Exception as e:
+            log.error("Email sync failed", tag="BG-EMAIL", exc=e)
+        time.sleep(45)
+
+def background_maintenance_updater():
+    """Runs every half hour to expire old leaves."""
+    while True:
+        try:
+            check_and_process_expired_leaves()
+        except Exception as e:
+            log.error("Leave expiry check failed", tag="BG-MAINT", exc=e)
+        time.sleep(1800)
 # ==============================================================
 # ROUTES
 # ==============================================================
@@ -2858,6 +2885,8 @@ def api_admin_reject_leave(doc_id):
     return jsonify({"success": res})
 # START FLASK + BACKGROUND UPDATER
 # ==============================================================
-threading.Thread(target=background_updater, daemon=True).start()
+threading.Thread(target=background_data_updater, daemon=True).start()
+threading.Thread(target=background_email_updater, daemon=True).start()
+threading.Thread(target=background_maintenance_updater, daemon=True).start()
 if __name__ == "__main__":
     app.run(debug=True)
