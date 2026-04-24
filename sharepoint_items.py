@@ -1909,6 +1909,60 @@ def excludeusers_from_sl():
         log.error(f"Error fetching excluded users: {e}", tag="SP")
         return []
 
+def superusers_from_sl():
+    try:
+        access_token = get_access_token()
+        site_id = get_site_id(access_token, "hamdaz1.sharepoint.com", "/sites/Test")
+        list_id = get_list_id(access_token, site_id, "superusers")
+        url = f"{GRAPH_API_ENDPOINT}/sites/{site_id}/lists/{list_id}/items?expand=fields"
+        headers = {"Authorization": f"Bearer {access_token}"}
+        all_items = []
+        while url:
+            resp = requests.get(url, headers=headers)
+            resp.raise_for_status()
+            data = resp.json()
+            all_items.extend(data.get("value", []))
+            url = data.get("@odata.nextLink")
+        
+        superusers = []
+        for item in all_items:
+            mail = item.get('fields', {}).get('mail')
+            if mail:
+                superusers.append(str(mail).strip().lower())
+                
+        log.debug(f"Superusers loaded: {superusers}", tag="SP")
+        return superusers
+    except Exception as e:
+        log.error(f"Error fetching superusers: {e}", tag="SP")
+        return []
+
+def approvers_from_sl():
+    try:
+        access_token = get_access_token()
+        site_id = get_site_id(access_token, "hamdaz1.sharepoint.com", "/sites/Test")
+        list_id = get_list_id(access_token, site_id, "approvers")
+        url = f"{GRAPH_API_ENDPOINT}/sites/{site_id}/lists/{list_id}/items?expand=fields"
+        headers = {"Authorization": f"Bearer {access_token}"}
+        all_items = []
+        while url:
+            resp = requests.get(url, headers=headers)
+            resp.raise_for_status()
+            data = resp.json()
+            all_items.extend(data.get("value", []))
+            url = data.get("@odata.nextLink")
+        
+        approvers = []
+        for item in all_items:
+            mail = item.get('fields', {}).get('mail')
+            if mail:
+                approvers.append(str(mail).strip().lower())
+                
+        log.debug(f"Approvers loaded: {approvers}", tag="SP")
+        return approvers
+    except Exception as e:
+        log.error(f"Error fetching approvers: {e}", tag="SP")
+        return []
+
 def user_with_jobs_ls():
     access_token = get_access_token()
     site_id = get_site_id(access_token, "hamdaz1.sharepoint.com", "/sites/Test")

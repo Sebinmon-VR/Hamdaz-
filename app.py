@@ -43,8 +43,6 @@ TENANT_ID = os.getenv("TENANT_ID")
 REDIRECT_URI = os.getenv("REDIRECT_URI")
 AUTHORITY = f"https://login.microsoftonline.com/{TENANT_ID}"
 SCOPE = ["User.Read", "Mail.Send"]
-SUPERUSERS = ["jishad@hamdaz.com", "hisham@hamdaz.com" , "sebin@hamdaz.com" ,"sujeel@hamdaz.com","shibit@hamdaz.com", "althaf@hamdaz.com" , "ashna@hamdaz.com"]
-approvers = ["shibit@hamdaz.com", "althaf@hamdaz.com" ,"sebin@hamdaz.com" , "sujeel@hamdaz.com", "ashna@hamdaz.com"]
 LIMITED_USERS = [""]
 # Initialize MSAL
 msal_app = ConfidentialClientApplication(
@@ -60,6 +58,12 @@ LIST_NAME = "Proposals"
 test_path = "/sites/Test"
 test_proposals_list = "testproposals"
 EXCLUDED_USERS = excludeusers_from_sl() 
+fetched_superusers = superusers_from_sl()
+if fetched_superusers:
+    SUPERUSERS = fetched_superusers
+fetched_approvers = approvers_from_sl()
+if fetched_approvers:
+    approvers = fetched_approvers
 # ✅ Initialize the OpenAI Client properly
 openai.api_key = os.getenv("OPENAI_API_KEY")
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")  
@@ -120,47 +124,61 @@ def get_analytics_data(df, period_type='month', year=None, month=None):
     per_user = compute_user_analytics_with_last_date(df, EXCLUDED_USERS, period)
     return analytics, per_user
 # ==============================================================
-# LEAVE EXPIRY HELPER — called by background_updater
+# LEAVE LIFECYCLE HELPER — called by background_maintenance_updater
 # ==============================================================
 def check_and_process_expired_leaves():
     """
-    Checks all active leave records in Cosmos DB.
-    If a leave s end date has passed today, it:
-    1. Removes the user from SP excludeusers list
-    2. Marks the leave as completed in Cosmos DB
+    Checks all active leave records in Cosmos DB and manages the
+    SP excludeusers list based on the leave's actual date range:
+
+    1. If today >= leave_start  → add user to excludeusers (leave has begun)
+    2. If today >  leave_end    → remove user from excludeusers and mark completed
+
+    This ensures users are ONLY excluded during the dates they selected,
+    NOT from the moment they submit the request.
     """
     try:
         from cosmos import get_active_leaves, update_leave_status
         today = datetime.now().date()
         active_leaves = get_active_leaves()
         for leave in active_leaves:
+            leave_start_str = leave.get("leave_start", "")
             leave_end_str = leave.get("leave_end", "")
-            if not leave_end_str:
+            if not leave_start_str or not leave_end_str:
                 continue
             try:
+                leave_start_date = datetime.strptime(leave_start_str, "%Y-%m-%d").date()
                 leave_end_date = datetime.strptime(leave_end_str, "%Y-%m-%d").date()
             except ValueError:
                 continue
+
+            username = leave.get("username", "")
+            user_email = leave.get("user_email", "")
+            doc_id = leave.get("id", "")
+            continue_assign = leave.get("continue_assign", False)
+
+            # ---- Leave has ended → clean up ----
             if today > leave_end_date:
-                username = leave.get("username", "")
-                user_email = leave.get("user_email", "")
-                doc_id = leave.get("id", "")
-                continue_assign = leave.get("continue_assign", False)
                 log.info(f"Leave expired for {username} (end: {leave_end_str})", tag="LEAVE-EXPIRY")
-                # Remove from excludeusers only if they were added in the first place
                 if not continue_assign and username:
                     remove_user_from_excludelist(username)
-                # Mark leave as completed in Cosmos
                 if doc_id and user_email:
                     update_leave_status(doc_id, user_email, "completed")
+
+            # ---- Leave has started but not yet ended → ensure user is excluded ----
+            elif today >= leave_start_date:
+                if not continue_assign and username:
+                    log.debug(f"Leave active for {username} ({leave_start_str} → {leave_end_str}) — ensuring excluded.", tag="LEAVE-EXPIRY")
+                    add_user_to_excludelist(username)
+
     except Exception as e:
-        log.error("Leave expiry check failed", tag="LEAVE-EXPIRY", exc=e)
+        log.error("Leave lifecycle check failed", tag="LEAVE-EXPIRY", exc=e)
 # ==============================================================
 # BACKGROUND DATA UPDATER
 # ==============================================================
 def background_data_updater():
     """Runs in background to incrementally refresh SharePoint data."""
-    global tasks, tasks_dict, delta_link, df, user_analytics, EXCLUDED_USERS, previous_user_analytics
+    global tasks, tasks_dict, delta_link, df, user_analytics, EXCLUDED_USERS, previous_user_analytics, SUPERUSERS, approvers
     while True:
         try:
             # log.debug("Refreshing SharePoint data...", tag="BG-DATA")
@@ -168,6 +186,14 @@ def background_data_updater():
             new_excluded_users = excludeusers_from_sl()
             if new_excluded_users is not None and isinstance(new_excluded_users, list):
                 EXCLUDED_USERS = new_excluded_users
+                
+            new_superusers = superusers_from_sl()
+            if new_superusers:
+                SUPERUSERS = new_superusers
+                
+            new_approvers = approvers_from_sl()
+            if new_approvers:
+                approvers = new_approvers
             
             raw_tasks, removed_ids, next_delta = fetch_sharepoint_delta(SITE_DOMAIN, SITE_PATH, LIST_NAME, delta_link=delta_link)
             delta_link = next_delta
@@ -2586,13 +2612,12 @@ def api_leave_submit():
     proposals_transferred = []
     handoff_results = {}
     try:
-        # Only do exclude/handoff if auto-approved
+        # Only do handoff if auto-approved.
+        # NOTE: Exclusion from task assignment is handled by the background
+        # maintenance job (check_and_process_expired_leaves) which adds the user
+        # to the SP excludeusers list only when their leave_start date arrives.
         if auto_status == "active":
-            # ---- Step 1: Exclude user from task assignment ----
-            if not continue_assign:
-                add_user_to_excludelist(username)
-                log.info(f"Added {username} to exclude list (on leave)", tag="LEAVE")
-            # ---- Step 2: Handoff proposals ----
+            # ---- Step 1: Handoff proposals ----
             if handoff_enabled:
                 proposals = get_ongoing_proposals_for_user(username)
                 proposal_ids = [p["id"] for p in proposals]
@@ -2608,8 +2633,9 @@ def api_leave_submit():
                     log.debug("No proposals to handoff for this leave.", tag="LEAVE")
                 else:
                     log.warn("Could not determine handoff user for leave.", tag="LEAVE")
+            log.info(f"{username} leave saved ({leave_start} → {leave_end}). Exclusion will activate on leave start date.", tag="LEAVE")
         else:
-            log.debug(f"Leave waitlisted/manual ({auto_status}). Skipping exclude + handoff.", tag="LEAVE")
+            log.debug(f"Leave waitlisted/manual ({auto_status}). Skipping handoff.", tag="LEAVE")
         # ---- Step 3: Save to Cosmos DB ----
         doc_id = save_leave_request(
             user_email=email,
