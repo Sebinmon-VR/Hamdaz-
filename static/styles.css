@@ -53,10 +53,10 @@ nav {
 }
 
 main {
-    margin-left: 200px;
+    margin-left: 230px;
     margin-top: 60px;
     min-height: calc(100vh - 60px);
-    width: calc(100% - 200px); /* Adjusted to match your margin-left */
+    width: calc(100% - 230px); /* Adjusted to match your margin-left */
     position: relative; /* Required for the pseudo-element */
     overflow-y: auto;
     overflow-x: hidden;
@@ -68,7 +68,7 @@ main::before {
       content: "";
     position: fixed; /* Keeps the background stable while scrolling */
     top: 60px; /* Match your margin-top */
-    left: 200px; /* Match your margin-left */
+    left: 230px; /* Match your margin-left */
     right: 0;
     bottom: 0;
     

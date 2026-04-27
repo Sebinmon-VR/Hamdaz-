@@ -1306,3 +1306,56 @@ def reject_leave_request(doc_id, user_email, admin_email, remarks=""):
         log.error("Failed to reject leave request", tag="COSMOS", exc=e)
         return False
 
+
+
+# =======================
+# USERANALYTICS SNAPSHOT  (Leave Cycle — durable storage)
+# =======================
+
+def save_useranalytics_snapshot(doc_id: str, user_email: str, snapshot: dict) -> bool:
+    """
+    Saves the user's non-analytics SP useranalytics fields (Jobs, swapcounter, etc.)
+    as an extra field on their existing leave document in Cosmos DB.
+
+    Storing it here makes it durable: if the server restarts while the user is on
+    leave the snapshot is still readable from Cosmos when their leave ends.
+    """
+    if not leave_requests_container:
+        return False
+    try:
+        doc = leave_requests_container.read_item(item=doc_id, partition_key=user_email.lower())
+        doc["useranalytics_snapshot"] = snapshot
+        doc["snapshot_saved_at"] = datetime.datetime.utcnow().isoformat()
+        leave_requests_container.upsert_item(body=doc)
+        log.debug(
+            f"Useranalytics snapshot saved for {user_email} in leave {doc_id}: {list(snapshot.keys())}",
+            tag="COSMOS"
+        )
+        return True
+    except Exception as e:
+        log.error(f"Failed to save useranalytics snapshot for {user_email}", tag="COSMOS", exc=e)
+        return False
+
+
+def get_useranalytics_snapshot(doc_id: str, user_email: str) -> dict:
+    """
+    Reads back the useranalytics snapshot from a leave document.
+    Returns the snapshot dict, or {} if not found.
+
+    Called when a leave ends so the preserved SP fields (Jobs, swapcounter, etc.)
+    can be merged into the re-created useranalytics row.
+    """
+    if not leave_requests_container:
+        return {}
+    try:
+        doc = leave_requests_container.read_item(item=doc_id, partition_key=user_email.lower())
+        snapshot = doc.get("useranalytics_snapshot", {})
+        if snapshot:
+            log.debug(
+                f"Useranalytics snapshot loaded for {user_email}: {list(snapshot.keys())}",
+                tag="COSMOS"
+            )
+        return snapshot
+    except Exception as e:
+        log.error(f"Failed to load useranalytics snapshot for {user_email}", tag="COSMOS", exc=e)
+        return {}

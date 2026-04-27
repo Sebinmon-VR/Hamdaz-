@@ -1426,6 +1426,33 @@ def get_existing_useranalytics_items():
     return all_items
 
 
+def delete_user_from_useranalytics(username: str) -> bool:
+    """
+    Deletes a user's row from the SP useranalytics list.
+    Called when a user goes on leave so their stale data does not
+    pollute the priority-ranking and smart-swap (swp()) logic.
+    Safe to call even if the user has no row — returns True in that case.
+    """
+    try:
+        token = get_access_token()
+        site_id = get_site_id(token, "hamdaz1.sharepoint.com", "/sites/Test")
+        list_id = get_list_id(token, site_id, "useranalytics")
+        existing = get_existing_useranalytics_items()
+        item = find_existing_user_item(existing, username)
+        if not item:
+            log.debug(f"{username} not in useranalytics — nothing to delete.", tag="SP")
+            return True
+        item_id = item["id"]
+        del_url = f"{GRAPH_API_ENDPOINT}/sites/{site_id}/lists/{list_id}/items/{item_id}"
+        headers = {"Authorization": f"Bearer {token}"}
+        resp = requests.delete(del_url, headers=headers)
+        resp.raise_for_status()
+        log.info(f"Deleted useranalytics row for {username}.", tag="SP")
+        return True
+    except Exception as e:
+        log.error(f"Failed to delete useranalytics row for {username}", tag="SP", exc=e)
+        return False
+
 
 from datetime import datetime, timezone
 

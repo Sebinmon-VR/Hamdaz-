@@ -79,6 +79,10 @@ tasks_dict = {t["id"]: t for t in tasks if "id" in t}
 df = items_to_dataframe(tasks)
 user_analytics = generate_user_analytics(df, exclude_users=EXCLUDED_USERS)
 previous_user_analytics = {}
+# Keyed by username — holds SP fields (Jobs, swapcounter, etc.) that were
+# snapshotted from Cosmos when a leave ended, waiting to be merged the next
+# time background_data_updater re-adds the user's useranalytics row.
+_pending_analytics_restores = {}
 log.info("Data loaded successfully.", tag="INIT")
 # ==============================================================
 # HELPER FUNCTIONS
@@ -128,19 +132,37 @@ def get_analytics_data(df, period_type='month', year=None, month=None):
 # ==============================================================
 def check_and_process_expired_leaves():
     """
-    Checks all active leave records in Cosmos DB and manages the
-    SP excludeusers list based on the leave's actual date range:
+    Runs every 30 min (via background_maintenance_updater) and:
 
-    1. If today >= leave_start  → add user to excludeusers (leave has begun)
-    2. If today >  leave_end    → remove user from excludeusers and mark completed
+    LEAVE START  (today >= leave_start):
+      1. Adds user to SP excludeusers
+      2. Snapshots all non-recalculated SP useranalytics fields (Jobs, swapcounter, etc.)
+         into Cosmos DB (inside the leave document) — durable across server restarts.
+      3. Deletes the stale useranalytics row so it no longer poisons priority / swap logic.
+      4. Evicts the user from the in-memory analytics cache.
 
-    This ensures users are ONLY excluded during the dates they selected,
-    NOT from the moment they submit the request.
+    LEAVE END  (today > leave_end):
+      1. Removes user from SP excludeusers.
+      2. Reads the snapshot back from Cosmos and queues it in _pending_analytics_restores.
+         background_data_updater will merge it when it next re-adds the user's row.
+      3. Evicts the user from the in-memory analytics cache so a fresh row is written ASAP.
+      4. Marks the leave document as completed.
+
+    RECONCILIATION SWEEP (runs every call, after the leave loop):
+      Cross-checks the live excludeusers SP list against the useranalytics SP list and
+      deletes any rows that belong to currently excluded users. Safety net for edge-cases
+      (e.g. manual SP edits, race conditions between background threads).
     """
+    # Fields the BG data tick always recalculates fresh — never snapshot these.
+    _RECALCULATED = {"username", "activetasks", "recentdate", "priority",
+                     "priorityscore", "priorityrank"}
+
     try:
-        from cosmos import get_active_leaves, update_leave_status
+        from cosmos import get_active_leaves, update_leave_status, \
+                           save_useranalytics_snapshot, get_useranalytics_snapshot
         today = datetime.now().date()
         active_leaves = get_active_leaves()
+
         for leave in active_leaves:
             leave_start_str = leave.get("leave_start", "")
             leave_end_str = leave.get("leave_end", "")
@@ -157,28 +179,92 @@ def check_and_process_expired_leaves():
             doc_id = leave.get("id", "")
             continue_assign = leave.get("continue_assign", False)
 
-            # ---- Leave has ended → clean up ----
+            # ----------------------------------------------------------------
+            # LEAVE HAS ENDED → restore user
+            # ----------------------------------------------------------------
             if today > leave_end_date:
                 log.info(f"Leave expired for {username} (end: {leave_end_str})", tag="LEAVE-EXPIRY")
                 if not continue_assign and username:
                     remove_user_from_excludelist(username)
+                    # Pull the snapshot from Cosmos and queue it for the BG data tick
+                    if doc_id and user_email:
+                        snapshot = get_useranalytics_snapshot(doc_id, user_email)
+                        if snapshot:
+                            _pending_analytics_restores[username] = snapshot
+                            log.info(
+                                f"Queued analytics restore for {username}: {list(snapshot.keys())}",
+                                tag="LEAVE-EXPIRY"
+                            )
+                    # Force a fresh analytics row by clearing the in-memory cache
+                    previous_user_analytics.pop(username, None)
+                    log.debug(f"Cache evicted for {username} — fresh row on next BG tick.", tag="LEAVE-EXPIRY")
                 if doc_id and user_email:
                     update_leave_status(doc_id, user_email, "completed")
 
-            # ---- Leave has started but not yet ended → ensure user is excluded ----
+            # ----------------------------------------------------------------
+            # LEAVE HAS STARTED but not yet ended → ensure user is excluded
+            # ----------------------------------------------------------------
             elif today >= leave_start_date:
                 if not continue_assign and username:
-                    log.debug(f"Leave active for {username} ({leave_start_str} → {leave_end_str}) — ensuring excluded.", tag="LEAVE-EXPIRY")
+                    log.debug(
+                        f"Leave active for {username} ({leave_start_str} → {leave_end_str}) — ensuring excluded.",
+                        tag="LEAVE-EXPIRY"
+                    )
                     add_user_to_excludelist(username)
+
+                    # Snapshot the existing SP row ONCE before deleting it
+                    if doc_id and user_email and not leave.get("useranalytics_snapshot"):
+                        existing_items = get_existing_useranalytics_items()
+                        existing_item = find_existing_user_item(existing_items, username)
+                        if existing_item:
+                            raw_fields = existing_item.get("fields", {})
+                            snapshot = {
+                                k: v for k, v in raw_fields.items()
+                                if k.lower() not in _RECALCULATED
+                                and not k.startswith("@")        # SP odata metadata
+                                and k not in ("id", "ID", "Title")  # SP system fields
+                            }
+                            if snapshot:
+                                save_useranalytics_snapshot(doc_id, user_email, snapshot)
+
+                    # Remove stale row so it no longer corrupts priority / swp()
+                    delete_user_from_useranalytics(username)
+                    # Clear cache so the BG data tick doesn't try to PATCH a deleted row
+                    previous_user_analytics.pop(username, None)
 
     except Exception as e:
         log.error("Leave lifecycle check failed", tag="LEAVE-EXPIRY", exc=e)
+
+    # ----------------------------------------------------------------
+    # RECONCILIATION SWEEP
+    # Purge any useranalytics rows that belong to currently excluded users.
+    # Catches edge-cases missed by the leave loop above (e.g. manual SP edits).
+    # ----------------------------------------------------------------
+    try:
+        current_excluded = excludeusers_from_sl()
+        if not current_excluded:
+            return
+        existing_analytics = get_existing_useranalytics_items()
+        excluded_lower = {u.strip().lower() for u in current_excluded}
+        for item in existing_analytics:
+            raw_fields = item.get("fields", {})
+            row_username = raw_fields.get("Username", "").strip()
+            if row_username.lower() in excluded_lower:
+                log.info(
+                    f"Reconciliation: purging stale useranalytics row for excluded user '{row_username}'.",
+                    tag="LEAVE-EXPIRY"
+                )
+                delete_user_from_useranalytics(row_username)
+                previous_user_analytics.pop(row_username, None)
+    except Exception as e:
+        log.error("Leave reconciliation sweep failed", tag="LEAVE-EXPIRY", exc=e)
 # ==============================================================
 # BACKGROUND DATA UPDATER
 # ==============================================================
 def background_data_updater():
     """Runs in background to incrementally refresh SharePoint data."""
-    global tasks, tasks_dict, delta_link, df, user_analytics, EXCLUDED_USERS, previous_user_analytics, SUPERUSERS, approvers
+    global tasks, tasks_dict, delta_link, df, user_analytics, EXCLUDED_USERS, \
+           previous_user_analytics, SUPERUSERS, approvers, _pending_analytics_restores
     while True:
         try:
             # log.debug("Refreshing SharePoint data...", tag="BG-DATA")
@@ -233,7 +319,18 @@ def background_data_updater():
                         update_user_analytics_in_sharepoint(existing_item["id"], item_fields)
                         log.debug(f"Updated analytics for {username}", tag="BG-DATA")
                     else:
-                        add_item_to_sharepoint(item_fields)  
+                        # User is being re-added (returned from leave or genuinely new).
+                        # If a snapshot was queued by check_and_process_expired_leaves,
+                        # merge it so Jobs, swapcounter etc. are preserved on the restored row.
+                        fields_to_write = item_fields.copy()
+                        restore = _pending_analytics_restores.pop(username, None)
+                        if restore:
+                            fields_to_write.update(restore)
+                            log.info(
+                                f"Restored leave snapshot for {username}: {list(restore.keys())}",
+                                tag="BG-DATA"
+                            )
+                        add_item_to_sharepoint(fields_to_write)
                         log.info(f"New user added to analytics: {username}", tag="BG-DATA")
                     previous_user_analytics[username] = item_fields.copy()
             
@@ -280,6 +377,13 @@ def update_analytics():
         "analytics": analytics,
         "per_user": per_user
     })
+@app.route("/pg")
+def pg_page():
+    if "user" not in session:
+        return redirect(url_for("login"))
+    user = session["user"]
+    return render_template("pg.html", user=user)
+
 @app.route("/")
 def index():
     if "user" in session:
